@@ -8,7 +8,6 @@
 import { MeiliSearch, type Index, type SearchResponse } from 'meilisearch';
 import type {
   SearchIndex,
-  SearchDocument,
   SearchQuery,
   SearchResultItem,
   SearchIndexResult,
@@ -199,13 +198,15 @@ export class MeilisearchAdapter implements SearchIndex {
 
     if (filters.categories && filters.categories.length > 0) {
       const categoryFilters = filters.categories.map(
-        (c) => `category = "${c}"`
+        (c) => `category = "${this.escapeFilterValue(c)}"`
       );
       conditions.push(`(${categoryFilters.join(' OR ')})`);
     }
 
     if (filters.tags && filters.tags.length > 0) {
-      const tagFilters = filters.tags.map((t) => `tags = "${t}"`);
+      const tagFilters = filters.tags.map(
+        (t) => `tags = "${this.escapeFilterValue(t)}"`
+      );
       conditions.push(`(${tagFilters.join(' OR ')})`);
     }
 
@@ -263,23 +264,6 @@ export class MeilisearchAdapter implements SearchIndex {
     };
   }
 
-  /**
-   * Reconstruct a SearchDocument from a flattened Meilisearch hit,
-   * reassembling the Money value object from the denormalized fields.
-   */
-  private toSearchDocument(hit: MeilisearchDocument): SearchDocument {
-    return {
-      productId: hit.productId,
-      name: hit.name,
-      description: hit.description,
-      category: hit.category,
-      tags: hit.tags,
-      price: Money.create(hit.currencyCode, hit.priceUnits, hit.priceNanos),
-      availableQuantity: hit.availableQuantity,
-      status: hit.status,
-      createdAt: hit.createdAt,
-    };
-  }
 
   private toSearchResult(
     response: SearchResponse<MeilisearchDocument>,
@@ -335,5 +319,13 @@ export class MeilisearchAdapter implements SearchIndex {
     } catch {
       return 1;
     }
+  }
+
+  /**
+   * Escapes double quotes and backslashes in filter values to prevent
+   * Meilisearch filter injection.
+   */
+  private escapeFilterValue(value: string): string {
+    return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   }
 }
