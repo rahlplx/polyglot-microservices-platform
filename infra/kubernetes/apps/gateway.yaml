@@ -1,0 +1,42 @@
+# Gateway Service — Go
+# API Gateway: gRPC proxy + REST pass-through, rate limiting, auth
+# Resource budget: CPU 100m/500m, Memory 128Mi/512Mi, 3 replicas
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gateway
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/component: api-gateway
+    app.kubernetes.io/part-of: polyglot-microservices
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: polyglot-microservices
+  source:
+    repoURL: https://github.com/example/polyglot-microservices.git
+    targetRevision: main
+    kustomize:
+      namePrefix: ""
+      nameSuffix: ""
+      images:
+        - gateway=ghcr.io/example/gateway:latest
+      namespace: production
+    path: services/gateway/kustomize
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

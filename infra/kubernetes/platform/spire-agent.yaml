@@ -1,0 +1,171 @@
+# SPIRE Agent DaemonSet — 1 per node
+# Node attestation via K8s PSAT
+# Workload API via Unix domain socket
+# SVID rotation: 1h TTL with automatic renewal
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-agent
+  namespace: production
+  labels:
+    app.kubernetes.io/name: spire-agent
+    app.kubernetes.io/component: identity
+    app.kubernetes.io/part-of: polyglot-microservices
+data:
+  agent.conf: |
+    agent {
+      data_dir = "/run/spire/data"
+      log_level = "INFO"
+      server_address = "spire-server.production.svc.cluster.local"
+      server_port = "8081"
+      trust_bundle_path = "/run/spire/bundle/bundle.crt"
+      trust_domain = "trust.example.org"
+      svid_ttl = "1h"
+      sync_base_dir = "/run/spire/data"
+
+      authorized_delegates = ["spiffe://trust.example.org/ns/production/sa/*"]
+    }
+
+    plugins {
+      NodeAttestor "k8s_psat" {
+        plugin_data {
+          cluster = "production"
+        }
+      }
+
+      KeyManager "disk" {
+        plugin_data {
+          directory = "/run/spire/data"
+        }
+      }
+
+      WorkloadAttestor "k8s" {
+        plugin_data {
+          skip_kubelet_verification = true
+        }
+      }
+
+      WorkloadAttestor "unix" {
+        plugin_data {}
+      }
+    }
+
+    health_checks {
+      listener_enabled = true
+      bind_address = "0.0.0.0"
+      bind_port = "8090"
+    }
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: spire-agent
+  namespace: production
+  labels:
+    app.kubernetes.io/name: spire-agent
+    app.kubernetes.io/component: identity
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: argocd
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spire-agent
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spire-agent
+        app.kubernetes.io/component: identity
+        app.kubernetes.io/part-of: polyglot-microservices
+    spec:
+      serviceAccountName: spire-agent
+      hostPID: true
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: spire-agent
+          image: ghcr.io/spiffe/spire-agent:1.9.3
+          args:
+            - -config
+            - /run/spire/config/agent.conf
+          ports:
+            - name: health
+              containerPort: 8090
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: config
+              mountPath: /run/spire/config
+              readOnly: true
+            - name: bundle
+              mountPath: /run/spire/bundle
+              readOnly: true
+            - name: data
+              mountPath: /run/spire/data
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+            - name: spire-token
+              mountPath: /var/run/secrets/tokens
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8090
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: config
+          configMap:
+            name: spire-agent
+        - name: bundle
+          configMap:
+            name: spire-bundle
+        - name: data
+          hostPath:
+            path: /var/run/spire/agent/data
+            type: DirectoryOrCreate
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: DirectoryOrCreate
+        - name: spire-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: spire-agent
+                  expirationSeconds: 3600
+                  audience: spire-server
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spire-agent
+  namespace: production
+  labels:
+    app.kubernetes.io/name: spire-agent
+    app.kubernetes.io/part-of: polyglot-microservices
+  annotations:
+    spiffe.io/spiffe-id: spiffe://trust.example.org/ns/production/sa/spire-agent

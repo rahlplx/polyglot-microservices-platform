@@ -1,0 +1,42 @@
+# Analytics Service — Python
+# Time-series queries, aggregation pipelines, report generation
+# Resource budget: CPU 500m/2000m, Memory 1Gi/4Gi, 2 replicas
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: analytics
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: analytics
+    app.kubernetes.io/component: analytics-service
+    app.kubernetes.io/part-of: polyglot-microservices
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: polyglot-microservices
+  source:
+    repoURL: https://github.com/example/polyglot-microservices.git
+    targetRevision: main
+    kustomize:
+      namePrefix: ""
+      nameSuffix: ""
+      images:
+        - analytics=ghcr.io/example/analytics:latest
+      namespace: production
+    path: services/analytics/kustomize
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

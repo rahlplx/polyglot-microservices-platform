@@ -1,0 +1,163 @@
+# Schema CI — Buf lint + breaking change detection on PR
+# Ensures Protobuf schema compatibility across all services
+# Runs on every PR that touches schemas/ directory
+name: Schema CI
+
+on:
+  pull_request:
+    paths:
+      - 'schemas/**'
+      - 'buf.yaml'
+      - 'buf.gen.yaml'
+    branches:
+      - develop
+      - main
+  push:
+    paths:
+      - 'schemas/**'
+      - 'buf.yaml'
+      - 'buf.gen.yaml'
+    branches:
+      - develop
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+env:
+  BUF_VERSION: "1.29.0"
+
+jobs:
+  buf-lint:
+    name: Buf Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: ${{ env.BUF_VERSION }}
+
+      - name: Buf Lint
+        run: buf lint schemas/
+        continue-on-error: false
+
+      - name: Buf Format Check
+        run: |
+          buf format schemas/ --exit-code
+
+  buf-breaking:
+    name: Buf Breaking Change Detection
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.base_ref }}
+          path: base
+
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: ${{ env.BUF_VERSION }}
+
+      - name: Buf Breaking (against base)
+        run: |
+          buf breaking schemas/ --against base/schemas/
+
+  proto-consistency:
+    name: Proto Consistency Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: ${{ env.BUF_VERSION }}
+
+      - name: Verify generated code is up-to-date
+        run: |
+          buf generate schemas/
+          if ! git diff --exit-code --quiet schemas/generated/; then
+            echo "::error::Generated code is out of date. Run 'buf generate' and commit the changes."
+            git diff schemas/generated/
+            exit 1
+          fi
+
+  openapi-validation:
+    name: OpenAPI Spec Validation
+    runs-on: ubuntu-latest
+    needs: [buf-lint]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install OpenAPI validator
+        run: npm install -g @redocly/cli@latest
+
+      - name: Validate OpenAPI specs
+        run: |
+          for spec in schemas/openapi/*/v1.yaml; do
+            echo "Validating $spec"
+            redocly lint "$spec" || exit 1
+          done
+
+  pact-contract-check:
+    name: Pact Contract Verification
+    runs-on: ubuntu-latest
+    needs: [buf-lint]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Pact tools
+        run: npm install -g @pact-foundation/pact-cli@latest
+
+      - name: Verify Pact contracts exist
+        run: |
+          echo "Checking Pact contract directories..."
+          for dir in schemas/contracts/*/; do
+            if [ -d "$dir" ]; then
+              echo "Found contract directory: $dir"
+              if [ -z "$(ls -A "$dir")" ]; then
+                echo "::warning::Contract directory $dir is empty"
+              fi
+            fi
+          done
+
+  schema-ci-summary:
+    name: Schema CI Summary
+    runs-on: ubuntu-latest
+    needs: [buf-lint, buf-breaking, proto-consistency, openapi-validation, pact-contract-check]
+    if: always()
+    steps:
+      - name: Check all jobs
+        run: |
+          if [ "${{ needs.buf-lint.result }}" != "success" ] || \
+             [ "${{ needs.buf-breaking.result }}" != "success" ] || \
+             [ "${{ needs.proto-consistency.result }}" != "success" ] || \
+             [ "${{ needs.openapi-validation.result }}" != "success" ]; then
+            echo "::error::Schema CI failed. Fix lint, breaking change, consistency, or OpenAPI issues before merging."
+            exit 1
+          fi
+          echo "All schema CI checks passed."

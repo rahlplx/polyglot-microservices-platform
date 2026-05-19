@@ -1,0 +1,42 @@
+# Payment Service — Go
+# Payment processing, Circuit Breaker, ACL sidecar for external gateway
+# Resource budget: CPU 200m/1000m, Memory 256Mi/1Gi, 2 replicas
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: payment
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: payment
+    app.kubernetes.io/component: payment-service
+    app.kubernetes.io/part-of: polyglot-microservices
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: polyglot-microservices
+  source:
+    repoURL: https://github.com/example/polyglot-microservices.git
+    targetRevision: main
+    kustomize:
+      namePrefix: ""
+      nameSuffix: ""
+      images:
+        - payment=ghcr.io/example/payment:latest
+      namespace: production
+    path: services/payment/kustomize
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

@@ -1,0 +1,42 @@
+# Identity Service — Rust
+# SPIFFE/SPIRE integration, memory-safe crypto, mTLS certificate management
+# Resource budget: CPU 100m/300m, Memory 256Mi/512Mi, 2 replicas
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: identity
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: identity
+    app.kubernetes.io/component: identity-service
+    app.kubernetes.io/part-of: polyglot-microservices
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: polyglot-microservices
+  source:
+    repoURL: https://github.com/example/polyglot-microservices.git
+    targetRevision: main
+    kustomize:
+      namePrefix: ""
+      nameSuffix: ""
+      images:
+        - identity=ghcr.io/example/identity:latest
+      namespace: production
+    path: services/identity/kustomize
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

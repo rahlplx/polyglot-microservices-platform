@@ -1,0 +1,241 @@
+# OTel Collector DaemonSet — 1 per node
+# Receivers: OTLP/gRPC (4317) + OTLP/HTTP (4318)
+# Processors: tail_sampling, batch, resource
+# Exporters: OTLP (to Gateway), Prometheus (self-monitoring)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: production
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: polyglot-microservices
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+            max_recv_msg_size_mib: 16
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      tail_sampling:
+        decision_wait: 10s
+        num_traces: 100000
+        expected_new_traces_per_sec: 100
+        policies:
+          - name: errors
+            type: status_code
+            status_code:
+              status_codes:
+                - ERROR
+          - name: slow-traces
+            type: latency
+            latency:
+              threshold_ms: 2000
+          - name: critical-paths
+            type: string_attribute
+            string_attribute:
+              key: "service.namespace"
+              values:
+                - "gateway"
+                - "order"
+                - "payment"
+          - name: sample-10-percent
+            type: probabilistic
+            probabilistic:
+              sampling_percentage: 10
+
+      batch:
+        send_batch_size: 8192
+        send_batch_max_size: 16384
+        timeout: 5s
+
+      resource:
+        attributes:
+          - key: collector.source
+            value: "daemonset"
+            action: upsert
+
+      filter:
+        error_mode: ignore
+        traces:
+          span:
+            - 'attributes["log.level"] == "DEBUG"'
+
+    exporters:
+      otlp:
+        endpoint: otel-gateway.production.svc.cluster.local:4317
+        tls:
+          ca_file: /etc/spire/certs/bundle.crt
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
+        sending_queue:
+          enabled: true
+          num_consumers: 10
+          queue_size: 5000
+
+      prometheus:
+        endpoint: 0.0.0.0:8889
+        namespace: otel_collector
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [tail_sampling, batch, resource]
+          exporters: [otlp]
+        metrics:
+          receivers: [otlp]
+          processors: [batch, resource]
+          exporters: [otlp, prometheus]
+        logs:
+          receivers: [otlp]
+          processors: [filter, batch, resource]
+          exporters: [otlp]
+
+      telemetry:
+        logs:
+          level: info
+        metrics:
+          address: 0.0.0.0:8888
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: otel-collector
+  namespace: production
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: argocd
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: otel-collector
+        app.kubernetes.io/component: observability
+        app.kubernetes.io/part-of: polyglot-microservices
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8889"
+    spec:
+      serviceAccountName: otel-collector
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          effect: NoSchedule
+      containers:
+        - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:0.96.0
+          args:
+            - --config=/etc/otelcol/config.yaml
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+              protocol: TCP
+              hostPort: 4317
+            - name: otlp-http
+              containerPort: 4318
+              protocol: TCP
+              hostPort: 4318
+            - name: metrics
+              containerPort: 8889
+              protocol: TCP
+            - name: telemetry
+              containerPort: 8888
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 200m
+              memory: 384Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol
+            - name: spire-certs
+              mountPath: /etc/spire/certs
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-config
+        - name: spire-certs
+          projected:
+            sources:
+              - configMap:
+                  name: spire-bundle
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: production
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: polyglot-microservices
+  annotations:
+    spiffe.io/spiffe-id: spiffe://trust.example.org/ns/production/sa/otel-collector
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: production
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: otel-collector
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+      protocol: TCP
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+      protocol: TCP
+    - name: metrics
+      port: 8889
+      targetPort: 8889
+      protocol: TCP

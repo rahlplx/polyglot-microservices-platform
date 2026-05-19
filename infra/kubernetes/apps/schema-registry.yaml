@@ -1,0 +1,42 @@
+# Schema Registry Service — Go
+# Buf registry, proto compilation, schema validation API
+# Resource budget: CPU 100m/300m, Memory 128Mi/256Mi, 2 replicas
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: schema-registry
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: schema-registry
+    app.kubernetes.io/component: schema-registry
+    app.kubernetes.io/part-of: polyglot-microservices
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: polyglot-microservices
+  source:
+    repoURL: https://github.com/example/polyglot-microservices.git
+    targetRevision: main
+    kustomize:
+      namePrefix: ""
+      nameSuffix: ""
+      images:
+        - schema-registry=ghcr.io/example/schema-registry:latest
+      namespace: production
+    path: services/schema-registry/kustomize
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

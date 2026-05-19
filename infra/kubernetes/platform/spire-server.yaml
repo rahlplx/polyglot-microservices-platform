@@ -1,0 +1,219 @@
+# SPIRE Server StatefulSet — 3 replicas
+# Trust root, CA, SQLite backend
+# SPIFFE ID format: spiffe://trust.example.org/...
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-server
+  namespace: production
+  labels:
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/component: identity
+    app.kubernetes.io/part-of: polyglot-microservices
+data:
+  server.conf: |
+    server {
+      bind_address = "0.0.0.0"
+      bind_port = "8081"
+      trust_domain = "trust.example.org"
+      data_dir = "/run/spire/data"
+      log_level = "INFO"
+      jwt_issuer = "https://trust.example.org"
+      default_x509_svid_ttl = "1h"
+      default_jwt_svid_ttl = "15m"
+
+      ca_key_type = "ec-p256"
+      ca_ttl = "72h"
+
+      federation {
+        bundle_endpoint {
+          address = "0.0.0.0"
+          port = 8443
+        }
+      }
+    }
+
+    plugins {
+      DataStore "sql" {
+        plugin_data {
+          database_type = "sqlite3"
+          connection_string = "/run/spire/data/datastore.sqlite3"
+        }
+      }
+
+      KeyManager "disk" {
+        plugin_data {
+          keys_path = "/run/spire/data/keys.json"
+        }
+      }
+
+      NodeAttestor "k8s_psat" {
+        plugin_data {
+          clusters = {
+            "production" = {
+              service_account_allow_list = ["production:spire-agent"]
+            }
+          }
+        }
+      }
+
+      NodeResolver "k8s" {
+        plugin_data {}
+      }
+
+      Notifier "k8sbundle" {
+        plugin_data {
+          namespace = "production"
+          config_map = "spire-bundle"
+        }
+      }
+    }
+
+    health_checks {
+      listener_enabled = true
+      bind_address = "0.0.0.0"
+      bind_port = "8080"
+    }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: spire-server
+  namespace: production
+  labels:
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/component: identity
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: argocd
+spec:
+  replicas: 3
+  serviceName: spire-server
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spire-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spire-server
+        app.kubernetes.io/component: identity
+        app.kubernetes.io/part-of: polyglot-microservices
+    spec:
+      serviceAccountName: spire-server
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values:
+                      - spire-server
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: spire-server
+          image: ghcr.io/spiffe/spire-server:1.9.3
+          args:
+            - -config
+            - /run/spire/config/server.conf
+          ports:
+            - name: grpc
+              containerPort: 8081
+              protocol: TCP
+            - name: health
+              containerPort: 8080
+              protocol: TCP
+            - name: federation
+              containerPort: 8443
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            - name: config
+              mountPath: /run/spire/config
+              readOnly: true
+            - name: data
+              mountPath: /run/spire/data
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: config
+          configMap:
+            name: spire-server
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: standard
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spire-server
+  namespace: production
+  labels:
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/part-of: polyglot-microservices
+  annotations:
+    spiffe.io/spiffe-id: spiffe://trust.example.org/ns/production/sa/spire-server
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spire-server
+  namespace: production
+  labels:
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: spire-server
+  ports:
+    - name: grpc
+      port: 8081
+      targetPort: 8081
+      protocol: TCP
+    - name: federation
+      port: 8443
+      targetPort: 8443
+      protocol: TCP
+---
+# Bundle ConfigMap — populated by SPIRE Server notifier plugin
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-bundle
+  namespace: production
+  labels:
+    app.kubernetes.io/name: spire-bundle
+    app.kubernetes.io/part-of: polyglot-microservices

@@ -1,0 +1,42 @@
+# CDC Relay Service — Java
+# Debezium connectors, PostgreSQL WAL capture, Kafka production, offset management
+# Resource budget: CPU 500m/2000m, Memory 1Gi/4Gi, 1 replica
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cdc-relay
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: cdc-relay
+    app.kubernetes.io/component: cdc-relay
+    app.kubernetes.io/part-of: polyglot-microservices
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: polyglot-microservices
+  source:
+    repoURL: https://github.com/example/polyglot-microservices.git
+    targetRevision: main
+    kustomize:
+      namePrefix: ""
+      nameSuffix: ""
+      images:
+        - cdc-relay=ghcr.io/example/cdc-relay:latest
+      namespace: production
+    path: services/cdc-relay/kustomize
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
