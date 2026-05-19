@@ -1,0 +1,62 @@
+{
+  "version": "1.0.0",
+  "description": "Token efficiency configuration for AI agents in this project",
+
+  "context_budget": {
+    "max_skill_loading_pct": 60,
+    "reserve_for_work_pct": 40,
+    "hard_context_limit_tokens": 200000,
+    "warning_threshold_pct": 80
+  },
+
+  "lazy_loading": {
+    "enabled": true,
+    "max_file_read_lines": 500,
+    "use_grep_before_read": true,
+    "use_glob_before_read": true,
+    "offset_limit_for_large_files": true
+  },
+
+  "prompt_compression": {
+    "subagent_prompts_use_bullets": true,
+    "reference_files_by_path_not_content": true,
+    "never_pass_full_conversation_history": true,
+    "compress_worklog_entries_max_words": 200
+  },
+
+  "output_efficiency": {
+    "no_redundant_summaries": true,
+    "batch_parallel_tool_calls": true,
+    "use_todo_write_for_tracking": true,
+    "prefer_code_comments_over_explanation": true
+  },
+
+  "search_before_read": {
+    "always_use_grep_first": true,
+    "always_use_glob_first": true,
+    "never_read_entire_large_files": true,
+    "targeted_line_ranges_only": true
+  },
+
+  "parallelization": {
+    "max_concurrent_subagents": 4,
+    "independent_reads_parallel": true,
+    "independent_fetches_parallel": true,
+    "dependent_operations_sequential": true
+  },
+
+  "skill_loading": {
+    "strategy": "lazy",
+    "only_load_invoked_skill": true,
+    "never_preload_all_gstack_skills": true,
+    "skill_priority": [
+      "browse",
+      "qa",
+      "review",
+      "ship",
+      "office-hours",
+      "design-consultation",
+      "design-html"
+    ]
+  }
+}
