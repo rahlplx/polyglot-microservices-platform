@@ -1,5 +1,5 @@
 # Context Template: Execution
-# Auto-injected before executing any task. Provides safety checks, skill loading rules, and gstack integration.
+# Auto-injected before executing any task. Provides safety checks, skill loading rules, phase-aware dispatch, and gstack integration.
 
 ## Pre-Execution Safety Checklist
 
@@ -10,6 +10,55 @@ Before any file write, code execution, or subagent dispatch:
 - [ ] **Worklog is current:** Read last entry to check for conflicts
 - [ ] **Skill is loaded:** Only the needed gstack skill is loaded (lazy, not eager)
 - [ ] **Token budget is clear:** Current task fits within remaining context
+- [ ] **Project phase is valid:** Current task is allowed within the current project phase
+- [ ] **No pending errors:** `.claude/error-pending.json` does not exist or has been resolved
+
+## Phase-Aware Execution Rules
+
+### Phase 0 (Foundation)
+- Only infrastructure verification and configuration
+- Do NOT start feature work
+- Verify gstack, configs, hooks, trigger engine
+
+### Phase 1 (Discovery & Spec)
+- Use /office-hours FIRST (mandatory)
+- Write specification documents
+- Run review gauntlet (/autoplan or individual reviews)
+- Do NOT implement yet
+
+### Phase 2 (Design & Architecture)
+- Use /design-consultation first
+- Explore variants with /design-shotgun
+- Implement design with /design-html
+- Audit with /design-review
+- Do NOT write production code yet (prototypes only)
+
+### Phase 3 (Implementation & Coding)
+- Full implementation allowed
+- Use type-specific skills (pdf/docx/charts/fullstack-dev)
+- Run /qa after implementation
+- Run /review before considering complete
+- Boil the Lake — complete implementation, no 90% shortcuts
+
+### Phase 4 (Testing & Validation)
+- /qa full pass
+- /benchmark performance check
+- /cso security audit (if web-facing)
+- Cross-browser, accessibility testing
+- Do NOT add new features
+
+### Phase 5 (Ship & Deploy)
+- /review before /ship (mandatory)
+- /ship → /land-and-deploy → /canary
+- /document-release for doc updates
+- Do NOT add new features during ship
+
+### Phase 6 (Retrospective & Knowledge)
+- /retro for retrospective
+- /learn for knowledge capture
+- /context-save for session preservation
+- Review reliability metrics
+- Identify process improvements
 
 ## gstack Skill Loading Protocol
 
@@ -49,6 +98,7 @@ When dispatching a subagent, inject this compressed context:
 
 ```
 Task ID: <id>
+Project Phase: <current phase from PROJECT_PLAN.md>
 Project Root: /home/z/my-project/
 Worklog: /home/z/my-project/worklog.md (READ before starting, APPEND when done)
 
@@ -56,8 +106,11 @@ Task: <compressed bullet-point specs>
 Input: <file paths to read>
 Output: <file path and format to produce>
 
+Spec Items: <relevant spec items from current PROJECT_PLAN.md phase>
+
 Rules:
 - Follow AGENTS.md 7-Phase Loop
+- Execute ONLY within the current project phase
 - Use gstack /browse for web browsing (NEVER mcp__claude-in-chrome__*)
 - All outputs to /home/z/my-project/download/
 - Append work record to /home/z/my-project/worklog.md
@@ -79,3 +132,10 @@ Last resort: Write error to /home/z/my-project/.claude/error-pending.json
 
 **After 2 consecutive failures on the same task → STOP and inform user.**
 **Suggest: "Please click the restart button in the top right corner to restart the session."**
+
+## Reliability Update
+
+After each execution step:
+- Record attempt/success/failover in `.claude/engine/reliability.json`
+- Check phase success rate — if below 90%, flag for review
+- Log any failover actions taken

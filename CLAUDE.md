@@ -1,6 +1,7 @@
 # CLAUDE.md — Project Configuration & AI Automation Blueprint
 
 > Auto-loaded by Claude Code at session start. Every AI agent reads this first.
+> **This file is a SESSION RULE.** It is non-negotiable. Every AI action must comply.
 
 ---
 
@@ -241,30 +242,60 @@ Every gstack skill invocation MUST include the ETHOS preamble:
 
 ---
 
-## 4. Project Structure
+## 4. PROJECT_PLAN.md — Phased Execution (SESSION RULE)
+
+**PROJECT_PLAN.md is a required companion document.** It defines 7 execution phases (0-6) with spec-driven gates. No phase starts until the previous phase's gate passes. The auto-trigger engine enforces phase-aware dispatch.
+
+### Phase Overview
+
+| Phase | Name | Gate | Key gstack Skills |
+|-------|------|------|-------------------|
+| 0 | Foundation | All infra verified | /browse, /health, /careful |
+| 1 | Discovery & Spec | /office-hours + reviews pass | /office-hours, /autoplan, /plan-*-review |
+| 2 | Design & Architecture | /design-review passes | /design-consultation, /design-shotgun, /design-html |
+| 3 | Implementation & Coding | /qa + /review pass | Type-specific skills + /qa, /review |
+| 4 | Testing & Validation | All tests pass | /qa, /benchmark, /cso |
+| 5 | Ship & Deploy | Production healthy | /review, /ship, /land-and-deploy, /canary |
+| 6 | Retrospective & Knowledge | Retro complete | /retro, /learn, /context-save |
+
+### Phase Session Rules
+
+1. **Read phase state at session start:** Check `.claude/session-state.json` for `current_phase`
+2. **Only execute within current phase:** No jumping ahead. Gate must pass first.
+3. **Spec items are atomic:** Each spec item in PROJECT_PLAN.md must be verified PASS or FAIL
+4. **Phase transitions are logged:** Append transition to worklog.md
+5. **Reliability is tracked per phase:** Below 90% success rate triggers process review
+6. **Context injection is phase-aware:** Each phase injects its own context template
+
+---
+
+## 5. Project Structure
 
 ```
 /home/z/my-project/
-├── CLAUDE.md              # This file — AI agent config, gstack rules, auto-trigger spec
-├── AGENTS.md              # 7-Phase agentic loop, subagent protocol, anti-patterns
+├── CLAUDE.md              # This file — AI agent config, gstack rules, auto-trigger spec (SESSION RULE)
+├── AGENTS.md              # 7-Phase agentic loop, subagent protocol, anti-patterns (SESSION RULE)
+├── PROJECT_PLAN.md        # Phased execution blueprint with spec-driven gates (SESSION RULE)
 ├── worklog.md             # Shared worklog across all agents (append only)
 ├── .freeze                # Freeze marker (exists = codebase frozen)
 ├── .claude/
 │   ├── skills/
 │   │   └── gstack -> ~/.claude/skills/gstack  # gstack symlink
 │   ├── engine/            # Auto-trigger engine & failover system
-│   │   ├── trigger-engine.sh   # Master trigger dispatcher (7 triggers)
+│   │   ├── trigger-engine.sh   # Master trigger dispatcher v3.0 (7 triggers, phase-aware)
 │   │   ├── failover.sh         # Failover chain executor (16 failover actions)
-│   │   └── triggers.json       # Trigger config, workflow router, context templates
+│   │   ├── triggers.json       # Trigger config, workflow router, context templates
+│   │   └── reliability.json    # Per-phase success rates, failover counts, alerts
 │   ├── context/           # Auto-injection context templates
-│   │   ├── session_context.md    # Session start: AI identity, ETHOS, project paths
-│   │   ├── task_context.md       # Task receive: classification, routing, budgets
-│   │   ├── execution_context.md  # Pre-exec: safety checks, skill chains, dispatch
-│   │   └── skill_injections.md   # Skill invoke: per-category prompt injections
+│   │   ├── session_context.md    # Session start: AI identity, ETHOS, project paths, phase state
+│   │   ├── task_context.md       # Task receive: classification, routing, budgets, phase spec
+│   │   ├── execution_context.md  # Pre-exec: safety checks, skill chains, phase dispatch
+│   │   └── skill_injections.md   # Skill invoke: per-category + per-phase prompt injections
 │   ├── config/
 │   │   └── token-efficiency.json # Token budget, lazy loading, parallelization
-│   ├── hooks/             # Legacy hook scripts (session-init, pre-exec, post-exec)
-│   └── session-state.json # Cross-session state persistence
+│   ├── hooks/             # Hook scripts (check-gstack, session-init, pre-exec, post-exec)
+│   ├── settings.json      # gstack team mode enforcement hook
+│   └── session-state.json # Cross-session state + phase tracking
 ├── skills/                # Project-level custom skills
 │   ├── coding-agent/      # Coding agent skill with memory & planning
 │   ├── ui-ux-pro-max/     # UI/UX design expertise skill
@@ -281,7 +312,7 @@ Every gstack skill invocation MUST include the ETHOS preamble:
 
 ---
 
-## 5. Agentic Engineering Principles
+## 6. Agentic Engineering Principles
 
 1. **Search Before Building** — Always check existing code, skills, and worklog before starting new work.
 2. **One Task Per Agent** — Each subagent handles exactly one well-defined subtask.
@@ -293,9 +324,33 @@ Every gstack skill invocation MUST include the ETHOS preamble:
 
 ---
 
-## 6. Language & Consistency
+## 7. Language & Consistency
 
 - **Language:** Match the user's input language for all responses, documents, and outputs.
 - **Chinese plots:** Use `Noto Sans SC` + `DejaVu Sans` fallback for matplotlib.
 - **Document fonts:** Use `LibSerif` (headings) + `Carlito` (body) for PDF generation.
 - **No emoji** in code files or documents unless explicitly requested.
+
+## gstack (REQUIRED — global install)
+
+**Before doing ANY work, verify gstack is installed:**
+
+```bash
+test -d ~/.claude/skills/gstack/bin && echo "GSTACK_OK" || echo "GSTACK_MISSING"
+```
+
+If GSTACK_MISSING: STOP. Do not proceed. Tell the user:
+
+> gstack is required for all AI-assisted work in this repo.
+> Install it:
+> ```bash
+> git clone --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack
+> cd ~/.claude/skills/gstack && ./setup --team
+> ```
+> Then restart your AI coding tool.
+
+Do not skip skills, ignore gstack errors, or work around missing gstack.
+
+Using gstack skills: After install, skills like /qa, /ship, /review, /investigate,
+and /browse are available. Use /browse for all web browsing.
+Use ~/.claude/skills/gstack/... for gstack file paths (the global path).

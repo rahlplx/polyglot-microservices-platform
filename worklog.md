@@ -139,3 +139,44 @@ Stage Summary:
 - Auto-trigger integration: task_receive trigger now runs NLP classification before routing
 - Embedding cache: precomputed at .claude/.embedding-cache/intent_embeddings.npz
 - Test results: Document queries correctly route to Type 1 with high confidence
+
+---
+Task ID: 6
+Agent: Main Agent
+Project Phase: 0 (Foundation) → Phase gate verified
+Task: Enable gstack team mode, create PROJECT_PLAN.md with phased spec-driven execution, implement reliability tracking, enhance all session rules with phase-aware auto-triggers
+
+Work Log:
+- Enabled gstack team mode: `./setup --team` → auto-update hook at session start, enforcement hook at PreToolUse
+- Initialized gstack team mode in project: `gstack-team-init required` → added check-gstack.sh enforcement hook + settings.json
+- Created PROJECT_PLAN.md (501 lines) with 7 execution phases (0-6), each with spec-driven requirements, auto-trigger mappings, certified gstack skill lists, and phase gates
+- Created reliability.json tracker: per-phase success rates, trigger metrics, failover log, alert thresholds (>95% target, <90% alert)
+- Updated session-state.json with phase tracking (current_phase, phase_status, gstack_team_mode)
+- Upgraded trigger-engine.sh to v3.0: phase-aware dispatch, reliability recording per trigger and per phase, phase metric alerts
+- Enhanced CLAUDE.md: added Section 4 (PROJECT_PLAN.md as SESSION RULE), phase overview table, phase session rules, updated project structure with reliability.json and settings.json
+- Enhanced AGENTS.md: added PROJECT_PLAN phase awareness, spec-driven gate checks per agentic loop phase, phase-aware task routing, spec item verification, reliability updates, phase gate assessment at handoff
+- Updated all 4 context templates with phase-aware injection: session_context.md (phase state table), task_context.md (phase-aware routing), execution_context.md (phase-specific execution rules), skill_injections.md (per-phase skill injections + spec items)
+- End-to-end tested all 7 triggers: session_start, task_receive, pre_execution, skill_invoke, subagent_dispatch, post_execution, error_recovery — all PASS
+- Verified reliability tracker records metrics correctly
+- Verified gstack team mode enforcement hook works (blocks without gstack)
+
+Spec Items Verified:
+- 0.1 gstack team mode: PASS
+- 0.2 CLAUDE.md with phase rules: PASS
+- 0.3 AGENTS.md with phase-aware execution: PASS
+- 0.4 PROJECT_PLAN.md created: PASS
+- 0.5 Auto-trigger engine v3.0 with phase dispatch: PASS
+- 0.6 Reliability tracker operational: PASS
+- 0.7 Context templates phase-aware: PASS
+- 0.8 gstack enforcement hook: PASS
+- 0.9 Session state with phase tracking: PASS
+- 0.10 NLP router integrated: PASS
+
+Stage Summary:
+- gstack team mode ENABLED with enforcement hooks (auto-update + block-without-gstack)
+- PROJECT_PLAN.md: 7 phases with 60 spec items total, spec-driven gates, certified gstack skill chains
+- Auto-trigger engine v3.0: phase-aware dispatch, reliability recording, NLP routing
+- Reliability tracker: per-phase metrics, trigger metrics, <90% alert threshold
+- All 3 SESSION RULE files updated: CLAUDE.md (356 lines), AGENTS.md (374 lines), PROJECT_PLAN.md (501 lines)
+- All 4 context templates updated with phase-aware injection
+- Phase 0 (Foundation): COMPLETE — 10/10 spec items PASS

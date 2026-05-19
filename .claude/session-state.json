@@ -5,6 +5,20 @@
   "last_task_type": "",
   "last_task_id": "",
   "last_activity": "",
-  "gstack_version": "",
-  "freeze_state": false
+  "gstack_version": "1.40.0.0",
+  "freeze_state": false,
+  "gstack_team_mode": true,
+  "current_phase": 0,
+  "phase_status": {
+    "0": "complete",
+    "1": "pending",
+    "2": "pending",
+    "3": "pending",
+    "4": "pending",
+    "5": "pending",
+    "6": "pending"
+  },
+  "nlp_confidence": "",
+  "nlp_intent": "",
+  "reliability_last_updated": ""
 }
