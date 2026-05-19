@@ -1,0 +1,292 @@
+# ACL Sidecar Configuration Template
+# This file defines the configuration for the Anti-Corruption Layer sidecar.
+# Copy this template to your service's deployment directory and customize
+# the values for your specific external integration.
+
+# =============================================================================
+# Circuit Breaker Configuration
+# =============================================================================
+circuit_breaker:
+  # The failure rate percentage (0.0-1.0) within the metrics window that triggers
+  # the circuit to open. When more than this percentage of requests fail, the
+  # circuit opens and all subsequent requests fail fast with a 503 status.
+  failure_rate_threshold: 0.5
+
+  # The number of consecutive failures required to open the circuit.
+  # This provides a fast-path trigger for consecutive failure bursts even
+  # before the failure rate threshold is calculated.
+  failure_threshold: 5
+
+  # The duration (in seconds) the circuit stays open before transitioning
+  # to the HALF-OPEN state. In HALF-OPEN, a limited number of test requests
+  # are allowed through to check if the external system has recovered.
+  reset_timeout_seconds: 30
+
+  # The number of test requests allowed through in HALF-OPEN state.
+  # If all test requests succeed, the circuit transitions to CLOSED.
+  # If any test request fails, the circuit transitions back to OPEN.
+  half_open_max_requests: 3
+
+  # The number of consecutive successful requests required in HALF-OPEN
+  # state to transition the circuit to CLOSED (normal operation).
+  success_threshold: 3
+
+  # The rolling time window (in seconds) for tracking failure rates.
+  # Failures older than this window are discarded, preventing stale
+  # failures from keeping the circuit open after recovery.
+  metrics_window_seconds: 60
+
+  # Whether to track slow responses as potential failures. When enabled,
+  # responses that exceed the slow_call_duration threshold increment
+  # the failure counter, allowing the circuit to open based on latency
+  # degradation rather than just explicit errors.
+  slow_call_tracking: true
+
+  # The duration threshold (in milliseconds) above which a response is
+  # considered slow. Only used when slow_call_tracking is enabled.
+  slow_call_duration_ms: 5000
+
+  # The percentage of slow calls (0.0-1.0) within the metrics window
+  # that triggers the circuit to open. For example, 0.5 means the
+  # circuit opens when more than 50% of calls are slow.
+  slow_call_rate_threshold: 0.5
+
+# =============================================================================
+# Retry Policy Configuration
+# =============================================================================
+retry:
+  # The maximum number of retry attempts for a failed request.
+  # The initial attempt is not counted as a retry, so max_retries: 3
+  # means up to 4 total attempts (1 initial + 3 retries).
+  max_retries: 3
+
+  # The initial backoff delay (in milliseconds) before the first retry.
+  initial_delay_ms: 100
+
+  # The multiplier applied to the backoff delay after each retry.
+  # With a multiplier of 2.0, the delays are: 100ms, 200ms, 400ms.
+  backoff_multiplier: 2.0
+
+  # The maximum backoff delay (in milliseconds), regardless of the
+  # multiplier calculation. This caps the exponential growth and
+  # prevents unreasonably long waits between retries.
+  max_delay_ms: 5000
+
+  # The jitter range (in milliseconds) added to each backoff delay.
+  # A random value between 0 and jitter_range_ms is added to the
+  # calculated backoff, preventing thundering herd problems when
+  # multiple instances retry simultaneously.
+  jitter_range_ms: 500
+
+  # HTTP status codes that should trigger a retry. Only these codes
+  # are considered transient and retryable. All other status codes
+  # (including 4xx client errors) are not retried.
+  retryable_status_codes:
+    - 429  # Too Many Requests
+    - 500  # Internal Server Error
+    - 502  # Bad Gateway
+    - 503  # Service Unavailable
+    - 504  # Gateway Timeout
+
+  # gRPC status codes that should trigger a retry.
+  retryable_grpc_codes:
+    - UNAVAILABLE
+    - DEADLINE_EXCEEDED
+    - RESOURCE_EXHAUSTED
+    - ABORTED
+
+  # The per-request timeout (in milliseconds) for each individual
+  # attempt, including retries. If a single attempt exceeds this
+  # timeout, it is cancelled and treated as a failure.
+  per_attempt_timeout_ms: 30000
+
+  # The total timeout (in milliseconds) across all attempts, including
+  # all retries and backoff delays. If the total elapsed time exceeds
+  # this value, the request is failed immediately regardless of
+  # remaining retries.
+  total_timeout_ms: 120000
+
+# =============================================================================
+# Rate Limiting Configuration
+# =============================================================================
+rate_limiting:
+  # The maximum number of requests allowed per second to the external
+  # system. This should be set below the external system's documented
+  # rate limit to leave headroom for bursts and retry attempts.
+  requests_per_second: 100
+
+  # The maximum number of requests allowed in a burst. The token bucket
+  # algorithm allows short bursts up to this limit before enforcing
+  # the steady-state rate.
+  burst_size: 200
+
+  # The strategy for handling requests that exceed the rate limit.
+  # "queue" buffers excess requests and processes them when capacity
+  # becomes available. "reject" immediately returns a 429 status.
+  excess_strategy: queue
+
+  # The maximum time (in milliseconds) a request can spend in the
+  # queue before being rejected. Only used when excess_strategy is
+  # "queue". This prevents unbounded queue growth during sustained
+  # over-limit conditions.
+  max_queue_wait_ms: 5000
+
+  # The maximum number of requests that can be queued simultaneously.
+  # When the queue is full, excess requests are immediately rejected.
+  # Only used when excess_strategy is "queue".
+  max_queue_size: 1000
+
+# =============================================================================
+# Allowed and Blocked Package Patterns
+# =============================================================================
+package_patterns:
+  # Import patterns that are explicitly allowed. These patterns are
+  # excluded from the blocked pattern check, allowing internal SDKs
+  # and shared libraries to be imported without triggering the
+  # proprietary import blocking rule.
+  allowed_patterns:
+    - "github.com/company/.*"              # Internal company packages
+    - "google.golang.org/.*"               # Google Protobuf and gRPC
+    - "go.opentelemetry.io/.*"             # OpenTelemetry SDK
+    - "github.com/segmentio/kafka-go"      # Kafka client (internal standard)
+    - "github.com/jackc/pgx/.*"            # PostgreSQL driver
+    - "github.com/redis/go-redis/.*"       # Redis client
+    - "com.google.protobuf.*"              # Java Protobuf
+    - "io.grpc.*"                          # Java gRPC
+    - "io.opentelemetry.*"                 # Java OpenTelemetry
+    - "org.apache.kafka.*"                 # Java Kafka client
+    - "org.postgresql.*"                   # Java PostgreSQL driver
+    - "com.company.*"                      # Internal company packages (Java)
+    - "@company/.*"                        # Internal company packages (Node.js)
+    - "@opentelemetry/.*"                  # Node.js OpenTelemetry
+    - "kafkajs/.*"                         # Node.js Kafka client
+    - "confluent_kafka"                    # Python Kafka client
+    - "opentelemetry\\..*"                 # Python OpenTelemetry
+    - "company\\..*"                       # Internal company packages (Python)
+
+  # Import patterns that are explicitly blocked. If any of these patterns
+  # match an import statement in the service's source code, the pre-commit
+  # hook and CI pipeline will reject the commit or fail the build.
+  # These patterns prevent proprietary vendor SDKs from being imported
+  # directly into the service's core logic.
+  blocked_patterns:
+    # Payment gateway SDKs
+    - "github.com/stripe/stripe-go/.*"       # Stripe Go SDK
+    - "com.stripe.*"                          # Stripe Java SDK
+    - "stripe"                                # Stripe Node.js SDK
+    - "github.com/adyen/adyen-go-api-library" # Adyen Go SDK
+    - "com.adyen.*"                           # Adyen Java SDK
+    - "@adyen/api-library.*"                  # Adyen Node.js SDK
+    - "com.braintreegateway.*"                # Braintree Java SDK
+    - "braintree.*"                           # Braintree Node.js SDK
+
+    # Notification provider SDKs
+    - "github.com/sendgrid/sendgrid-go"       # SendGrid Go SDK
+    - "com.sendgrid.*"                        # SendGrid Java SDK
+    - "@sendgrid/mail"                        # SendGrid Node.js SDK
+    - "github.com/twilio/twilio-go"           # Twilio Go SDK
+    - "com.twilio.*"                          # Twilio Java SDK
+    - "twilio.*"                              # Twilio Node.js SDK
+    - "firebase-admin.*"                      # Firebase Admin SDK (all languages)
+
+    # Shipping carrier SDKs
+    - "com.fedex.*"                           # FedEx SDK
+    - "com.ups.*"                             # UPS SDK
+    - "com.dhl.*"                             # DHL SDK
+
+    # General SaaS SDKs
+    - "github.com/sashabaranov/go-openai"     # OpenAI Go SDK
+    - "com.openai.*"                          # OpenAI Java SDK
+    - "openai"                                # OpenAI Node.js/Python SDK
+
+# =============================================================================
+# Health Check Configuration
+# =============================================================================
+health_check:
+  # The endpoint path for the sidecar's own health check.
+  # Kubernetes liveness probes should use this endpoint.
+  liveness_endpoint: /health
+
+  # The endpoint path for the sidecar's readiness check.
+  # Kubernetes readiness probes should use this endpoint.
+  # The readiness check also verifies that the external system
+  # is reachable (unless the circuit breaker is open).
+  readiness_endpoint: /ready
+
+  # The endpoint path for exposing Prometheus-format metrics.
+  # Kubernetes can scrape this endpoint for monitoring.
+  metrics_endpoint: /metrics
+
+  # The interval (in seconds) between periodic health checks
+  # of the external system. The sidecar probes the external
+  # system's health endpoint to detect outages early.
+  external_check_interval_seconds: 30
+
+  # The timeout (in seconds) for each external health check.
+  # If the health check does not respond within this time,
+  # the external system is considered unhealthy.
+  external_check_timeout_seconds: 5
+
+  # The HTTP status code range that indicates a healthy external
+  # system. Any status code outside this range is treated as
+  # unhealthy.
+  healthy_status_range:
+    min: 200
+    max: 299
+
+  # The number of consecutive unhealthy checks required before
+  # the sidecar reports itself as not ready. This prevents
+  # transient health check failures from causing unnecessary
+  # pod restarts or traffic redirection.
+  unhealthy_threshold: 3
+
+  # The number of consecutive healthy checks required before
+  # the sidecar reports itself as ready again after being
+  # in an unhealthy state.
+  healthy_threshold: 2
+
+# =============================================================================
+# Translation Layer Configuration
+# =============================================================================
+translation:
+  # The protocol used by the sidecar to communicate with the
+  # service core. Options: "http", "grpc".
+  service_protocol: grpc
+
+  # The port on which the sidecar listens for requests from
+  # the service core. The service core sends requests to
+  # localhost:service_port.
+  service_port: 8443
+
+  # The protocol used by the sidecar to communicate with the
+  # external system. Options: "http", "grpc", "soap".
+  external_protocol: http
+
+  # The base URL of the external system's API. The sidecar
+  # prepends this to all request paths when forwarding.
+  external_base_url: "https://api.example.com/v1"
+
+  # The authentication method for the external system.
+  # Options: "api_key", "bearer_token", "basic_auth", "oauth2", "mtls".
+  auth_method: bearer_token
+
+  # The name of the Kubernetes secret that contains the
+  # authentication credentials. The sidecar reads the secret
+  # at startup and refreshes it periodically.
+  auth_secret_name: "external-api-credentials"
+
+  # The key within the Kubernetes secret that contains the
+  # actual credential value (API key, token, etc.).
+  auth_secret_key: "api-token"
+
+  # Request header mappings: maps internal header names to
+  # the external system's expected header names.
+  header_mappings:
+    X-Request-ID: X-Correlation-ID
+    X-Client-ID: X-App-ID
+
+  # Whether to strip internal headers before forwarding
+  # requests to the external system. Internal headers may
+  # contain sensitive information (SPIFFE IDs, internal
+  # tracing context) that should not be exposed externally.
+  strip_internal_headers: true

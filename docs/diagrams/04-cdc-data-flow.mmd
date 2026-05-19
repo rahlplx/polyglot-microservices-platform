@@ -1,0 +1,87 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#E9EEF3', 'primaryTextColor': '#243447', 'primaryBorderColor': '#4C6EF5', 'lineColor': '#64748B', 'secondaryColor': '#EFF6FF', 'tertiaryColor': '#F8FAFC', 'fontSize': '13px'}}}%%
+graph LR
+    subgraph Source["Source Database"]
+        PG["🐘 PostgreSQL<br/>WAL-Enabled"]
+        OUTBOX["📤 Outbox Table<br/><i>order_outbox_events</i>"]
+    end
+
+    subgraph Capture["Change Capture — SC-5: CDC Pipeline"]
+        DEBEZIUM["🔄 Debezium Connect<br/>Connector<br/><i>Captures WAL Changes</i>"]
+    end
+
+    subgraph Transport["Event Transport"]
+        KAFKA_ORD["📨 Kafka Topic<br/><i>order.changes</i>"]
+        KAFKA_CAT["📨 Kafka Topic<br/><i>catalog.changes</i>"]
+        KAFKA_PAY["📨 Kafka Topic<br/><i>payment.changes</i>"]
+    end
+
+    subgraph Validation["Schema Validation"]
+        SCHEMA["📐 Schema Registry<br/><b>Go</b><br/>Avro / Protobuf<br/>Schema Validation"]
+        CHECKSUM["✅ Checksum Validation<br/><i>Migration Integrity</i>"]
+    end
+
+    subgraph Consumers["Event Consumers"]
+        ORD_SVC["📋 Order Service<br/><b>Java/Kotlin</b><br/>gRPC + Outbox"]
+        NOTIF_SVC["🔔 Notification Service<br/><b>Python</b><br/>CloudEvents"]
+        ANAL_SVC["📊 Analytics Service<br/><b>Python</b><br/>CloudEvents + gRPC"]
+    end
+
+    %% Outbox pattern flow
+    subgraph OutboxPattern["Outbox Pattern Flow"]
+        DOMAIN["🏛️ Domain Logic<br/>Writes Business Data"]
+        OUTBOX_WRITE["→ Outbox Write<br/>Atomic with Business Data"]
+        DEBEZIUM_READ["→ Debezium Reads<br/>Outbox Table CDC"]
+        KAFKA_EMIT["→ Kafka Emit<br/>Change Event"]
+        CONSUME["→ Consumers<br/>Process Events"]
+    end
+
+    %% Main flow
+    PG -->|"WAL Stream"| DEBEZIUM
+    OUTBOX -->|"CDC Capture"| DEBEZIUM
+    DEBEZIUM -->|"order events"| KAFKA_ORD
+    DEBEZIUM -->|"catalog events"| KAFKA_CAT
+    DEBEZIUM -->|"payment events"| KAFKA_PAY
+
+    KAFKA_ORD -->|"validate"| SCHEMA
+    KAFKA_CAT -->|"validate"| SCHEMA
+    KAFKA_PAY -->|"validate"| SCHEMA
+    SCHEMA -->|"checksum"| CHECKSUM
+
+    CHECKSUM -->|"verified"| ORD_SVC
+    CHECKSUM -->|"verified"| NOTIF_SVC
+    CHECKSUM -->|"verified"| ANAL_SVC
+
+    %% Outbox pattern sequence
+    DOMAIN --> OUTBOX_WRITE
+    OUTBOX_WRITE --> OUTBOX
+    OUTBOX --> DEBEZIUM_READ
+    DEBEZIUM_READ --> KAFKA_EMIT
+    KAFKA_EMIT --> CONSUME
+
+    style Source fill:#DBEAFE,stroke:#4C6EF5,stroke-width:2px
+    style PG fill:#EFF6FF,stroke:#4C6EF5,stroke-width:1px
+    style OUTBOX fill:#EFF6FF,stroke:#4C6EF5,stroke-width:1px
+
+    style Capture fill:#FEF3C7,stroke:#F59E0B,stroke-width:2px
+    style DEBEZIUM fill:#FFF7ED,stroke:#F59E0B,stroke-width:1px
+
+    style Transport fill:#D1FAE5,stroke:#10B981,stroke-width:2px
+    style KAFKA_ORD fill:#F0FDF4,stroke:#10B981,stroke-width:1px
+    style KAFKA_CAT fill:#F0FDF4,stroke:#10B981,stroke-width:1px
+    style KAFKA_PAY fill:#F0FDF4,stroke:#10B981,stroke-width:1px
+
+    style Validation fill:#F5F3FF,stroke:#8B5CF6,stroke-width:2px
+    style SCHEMA fill:#EDE9FE,stroke:#8B5CF6,stroke-width:1px
+    style CHECKSUM fill:#EDE9FE,stroke:#8B5CF6,stroke-width:1px
+
+    style Consumers fill:#E9EEF3,stroke:#64748B,stroke-width:2px
+    style ORD_SVC fill:#F8FAFC,stroke:#64748B,stroke-width:1px
+    style NOTIF_SVC fill:#F8FAFC,stroke:#64748B,stroke-width:1px
+    style ANAL_SVC fill:#F8FAFC,stroke:#64748B,stroke-width:1px
+
+    style OutboxPattern fill:#FFF7ED,stroke:#F59E0B,stroke-width:2px,stroke-dasharray: 5 5
+    style DOMAIN fill:#FFF7ED,stroke:#F59E0B,stroke-width:1px
+    style OUTBOX_WRITE fill:#FFF7ED,stroke:#F59E0B,stroke-width:1px
+    style DEBEZIUM_READ fill:#FFF7ED,stroke:#F59E0B,stroke-width:1px
+    style KAFKA_EMIT fill:#FFF7ED,stroke:#F59E0B,stroke-width:1px
+    style CONSUME fill:#FFF7ED,stroke:#F59E0B,stroke-width:1px

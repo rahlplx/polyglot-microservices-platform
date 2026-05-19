@@ -1,0 +1,76 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#E9EEF3', 'primaryTextColor': '#243447', 'primaryBorderColor': '#4C6EF5', 'lineColor': '#64748B', 'secondaryColor': '#EFF6FF', 'tertiaryColor': '#F8FAFC', 'fontSize': '13px'}}}%%
+graph TB
+    subgraph SPIRE["SPIRE Control Plane — SC-5: Zero-Trust Identity"]
+        SPIRE_SVR["🔐 SPIRE Server<br/>Trust Root & CA<br/>SVID Signing<br/><i>3 replicas, HA</i>"]
+        SPIRE_AGNT["🔑 SPIRE Agent<br/>Node Attestation<br/>Workload API<br/><i>DaemonSet, 1/node</i>"]
+    end
+
+    subgraph Services["Workloads"]
+        SVC_A["Service A<br/><b>Any Language</b><br/>Requests SVID"]
+        SVC_B["Service B<br/><b>Any Language</b><br/>Verifies Peer SVID"]
+    end
+
+    subgraph Ingress["Ingress Security"]
+        API_GW["🚪 API Gateway<br/>Validates SVID<br/>at Ingress Point"]
+    end
+
+    subgraph Protection["Code-Level Protection — SC-2: Vendor Isolation"]
+        ACL["🛡️ ACL Sidecar<br/>Blocks Proprietary Imports<br/><i>Runtime Enforcement</i>"]
+        PRECOMMIT["🔒 Pre-commit Hooks<br/>Scan for Vendor-Specific<br/>Packages<br/><i>CI/CD Gate</i>"]
+    end
+
+    subgraph MTLS["mTLS Handshake — SC-5: Service Identity"]
+        STEP1["① Service A requests<br/>SVID from SPIRE Agent"]
+        STEP2["② SPIRE Agent attests<br/>workload identity"]
+        STEP3["③ SPIRE Agent returns<br/>X.509 SVID + key"]
+        STEP4["④ Service A presents SVID<br/>to Service B"]
+        STEP5["⑤ Service B validates SVID<br/>via trust bundle"]
+        STEP6["⑥ mTLS Established<br/>Encrypted Channel"]
+    end
+
+    %% SPIRE flow
+    SPIRE_SVR -->|"Sign SVID"| SPIRE_AGNT
+    SPIRE_AGNT -->|"Workload API"| SVC_A
+    SPIRE_AGNT -->|"Workload API"| SVC_B
+
+    %% Service-to-service
+    SVC_A -->|"Present SVID"| SVC_B
+    SVC_B -->|"Validate SVID"| SVC_A
+
+    %% Gateway validation
+    SVC_A -->|"mTLS"| API_GW
+    API_GW -->|"Validate SVID"| SPIRE_AGNT
+
+    %% Protection layers
+    SVC_A --- ACL
+    ACL --- PRECOMMIT
+
+    %% Handshake steps
+    STEP1 --> STEP2
+    STEP2 --> STEP3
+    STEP3 --> STEP4
+    STEP4 --> STEP5
+    STEP5 --> STEP6
+
+    style SPIRE fill:#FEF3C7,stroke:#F59E0B,stroke-width:2px
+    style SPIRE_SVR fill:#FFF7ED,stroke:#F59E0B,stroke-width:1px
+    style SPIRE_AGNT fill:#FFF7ED,stroke:#F59E0B,stroke-width:1px
+
+    style Services fill:#DBEAFE,stroke:#4C6EF5,stroke-width:2px
+    style SVC_A fill:#EFF6FF,stroke:#4C6EF5,stroke-width:1px
+    style SVC_B fill:#EFF6FF,stroke:#4C6EF5,stroke-width:1px
+
+    style Ingress fill:#D1FAE5,stroke:#10B981,stroke-width:2px
+    style API_GW fill:#F0FDF4,stroke:#10B981,stroke-width:1px
+
+    style Protection fill:#FEE2E2,stroke:#EF4444,stroke-width:2px
+    style ACL fill:#FEF2F2,stroke:#EF4444,stroke-width:1px
+    style PRECOMMIT fill:#FEF2F2,stroke:#EF4444,stroke-width:1px
+
+    style MTLS fill:#EDE9FE,stroke:#8B5CF6,stroke-width:2px
+    style STEP1 fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1px
+    style STEP2 fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1px
+    style STEP3 fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1px
+    style STEP4 fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1px
+    style STEP5 fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1px
+    style STEP6 fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1px

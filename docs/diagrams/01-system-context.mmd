@@ -1,0 +1,56 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#E9EEF3', 'primaryTextColor': '#243447', 'primaryBorderColor': '#4C6EF5', 'lineColor': '#64748B', 'secondaryColor': '#EFF6FF', 'tertiaryColor': '#F8FAFC', 'fontSize': '14px'}}}%%
+graph TB
+    subgraph External["External Actors"]
+        Users["👤 Users<br/>Browser / Mobile"]
+        Cloud["☁️ Cloud Providers<br/>AWS / Azure / GCP"]
+        PaymentGW["💳 Third-Party<br/>Payment Gateway"]
+    end
+
+    subgraph Gateway["API Gateway Layer"]
+        GW["🚪 Gateway<br/><b>Go</b><br/>REST / gRPC Proxy"]
+    end
+
+    subgraph Core["Core Services — SC-1: Polyglot Runtime"]
+        ID["🔐 Identity Service<br/><b>Rust</b><br/>SPIFFE/SPIRE mTLS"]
+        CAT["📦 Catalog Service<br/><b>Node.js / TypeScript</b><br/>gRPC + REST"]
+        ORD["📋 Order Service<br/><b>Java / Kotlin</b><br/>gRPC + Outbox"]
+        PAY["💰 Payment Service<br/><b>Go</b><br/>gRPC + ACL Sidecar"]
+        NOTIF["🔔 Notification Service<br/><b>Python</b><br/>CloudEvents Consumer"]
+        ANAL["📊 Analytics Service<br/><b>Python</b><br/>CloudEvents + gRPC Query"]
+    end
+
+    subgraph Infra["Infrastructure Services"]
+        CDC["🔄 CDC Relay<br/><b>Java</b><br/>Kafka Producer"]
+        SCHEMA["📐 Schema Registry<br/><b>Go</b><br/>gRPC + REST"]
+    end
+
+    Users -->|"HTTPS"| GW
+    Cloud -->|"Events / APIs"| GW
+    GW -->|"mTLS"| ID
+    GW -->|"gRPC"| CAT
+    GW -->|"gRPC"| ORD
+    GW -->|"gRPC"| PAY
+    GW -->|"gRPC"| ANAL
+
+    ORD -->|"Outbox Event"| CDC
+    CDC -->|"Change Events"| NOTIF
+    CDC -->|"Change Events"| ANAL
+    CDC -->|"Schema Validate"| SCHEMA
+
+    PAY -->|"ACL Isolated Call"| PaymentGW
+    ID -->|"SVID / mTLS"| GW
+    CAT -->|"Schema Lookup"| SCHEMA
+
+    style External fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px
+    style Gateway fill:#EFF6FF,stroke:#4C6EF5,stroke-width:2px
+    style Core fill:#E9EEF3,stroke:#4C6EF5,stroke-width:2px
+    style Infra fill:#F0FDF4,stroke:#10B981,stroke-width:2px
+    style GW fill:#DBEAFE,stroke:#4C6EF5,stroke-width:2px
+    style ID fill:#DBEAFE,stroke:#4C6EF5,stroke-width:1px
+    style CAT fill:#DBEAFE,stroke:#4C6EF5,stroke-width:1px
+    style ORD fill:#DBEAFE,stroke:#4C6EF5,stroke-width:1px
+    style PAY fill:#DBEAFE,stroke:#4C6EF5,stroke-width:1px
+    style NOTIF fill:#DBEAFE,stroke:#4C6EF5,stroke-width:1px
+    style ANAL fill:#DBEAFE,stroke:#4C6EF5,stroke-width:1px
+    style CDC fill:#D1FAE5,stroke:#10B981,stroke-width:1px
+    style SCHEMA fill:#D1FAE5,stroke:#10B981,stroke-width:1px

@@ -1,0 +1,39 @@
+# Generated code (never commit generated code)
+schemas/generated/
+
+# Build artifacts
+*.o
+*.class
+*.pyc
+target/
+node_modules/
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# OTel
+*.otel.json
+
+# Embedding cache
+.claude/.embedding-cache/
+
+# PDF/Image generation temp files
+download/*.tmp

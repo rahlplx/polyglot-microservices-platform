@@ -1,0 +1,90 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#E9EEF3', 'primaryTextColor': '#243447', 'primaryBorderColor': '#4C6EF5', 'lineColor': '#64748B', 'secondaryColor': '#EFF6FF', 'tertiaryColor': '#F8FAFC', 'fontSize': '12px'}}}%%
+graph TB
+    subgraph NS["Namespace: production"]
+        subgraph ArgoCD["GitOps Control Plane"]
+            ARGO["🎯 ArgoCD<br/>Application Controller<br/>1 replica"]
+        end
+
+        subgraph Services["Application Services"]
+            GW_POD["🚪 Gateway Pod<br/><b>Go</b> | 2 replicas<br/>CPU: 250m / Mem: 256Mi"]
+            ID_POD["🔐 Identity Pod<br/><b>Rust</b> | 3 replicas<br/>CPU: 200m / Mem: 128Mi"]
+            CAT_POD["📦 Catalog Pod<br/><b>Node.js</b> | 2 replicas<br/>CPU: 250m / Mem: 256Mi"]
+            ORD_POD["📋 Order Pod<br/><b>Java/Kotlin</b> | 3 replicas<br/>CPU: 500m / Mem: 512Mi"]
+            PAY_POD["💰 Payment Pod<br/><b>Go</b> | 2 replicas<br/>CPU: 250m / Mem: 256Mi"]
+            NOTIF_POD["🔔 Notification Pod<br/><b>Python</b> | 2 replicas<br/>CPU: 250m / Mem: 256Mi"]
+            ANAL_POD["📊 Analytics Pod<br/><b>Python</b> | 2 replicas<br/>CPU: 500m / Mem: 512Mi"]
+        end
+
+        subgraph DataPlane["Data Plane — SC-5: CDC Pipeline"]
+            KAFKA["📨 Kafka Cluster<br/>3 brokers | HA"]
+            DEBEZIUM["🔄 Debezium Connect<br/>2 replicas"]
+            CDC_POD["🔄 CDC Relay Pod<br/><b>Java</b> | 2 replicas"]
+        end
+
+        subgraph Identity["Zero-Trust Identity — SC-5: mTLS"]
+            SPIRE_SVR["🔐 SPIRE Server<br/>3 replicas | HA"]
+            SPIRE_AGNT["🔐 SPIRE Agent<br/>DaemonSet | 1/node"]
+        end
+
+        subgraph Observability["Observability Stack — SC-4: OTel"]
+            OTEL_DS["🔭 OTel Collector<br/>DaemonSet | 1/node"]
+            OTEL_GW["🔭 OTel Gateway<br/>2 replicas | HA"]
+            PROM["📈 Prometheus<br/>2 replicas"]
+            TEMPO["🔍 Grafana Tempo<br/>Distributed Traces"]
+            LOKI["📝 Grafana Loki<br/>Log Aggregation"]
+            GRAFANA["📊 Grafana<br/>Dashboards"]
+        end
+
+        subgraph Registry["Schema Registry"]
+            SCHEMA_POD["📐 Schema Registry Pod<br/><b>Go</b> | 2 replicas"]
+        end
+    end
+
+    %% Data flow arrows
+    ARGO -->|"Git Sync"| Services
+    OTEL_DS -->|"Traces/Metrics"| OTEL_GW
+    OTEL_GW -->|"Push"| TEMPO
+    OTEL_GW -->|"Push"| LOKI
+    PROM -->|"Scrape"| OTEL_GW
+    GRAFANA -->|"Query"| PROM
+    GRAFANA -->|"Query"| TEMPO
+    GRAFANA -->|"Query"| LOKI
+
+    Services -->|"Emit Telemetry"| OTEL_DS
+    Services -->|"Produce Events"| KAFKA
+    KAFKA -->|"Consume"| DEBEZIUM
+    DEBEZIUM -->|"WAL CDC"| CDC_POD
+
+    SPIRE_SVR -->|"SVID Issuance"| SPIRE_AGNT
+    SPIRE_AGNT -->|"Workload API"| Services
+
+    CDC_POD -->|"Schema Validate"| SCHEMA_POD
+
+    style NS fill:#F8FAFC,stroke:#94A3B8,stroke-width:2px
+    style ArgoCD fill:#FFF7ED,stroke:#F59E0B,stroke-width:2px
+    style Services fill:#EFF6FF,stroke:#4C6EF5,stroke-width:2px
+    style DataPlane fill:#F0FDF4,stroke:#10B981,stroke-width:2px
+    style Identity fill:#FEF3C7,stroke:#F59E0B,stroke-width:2px
+    style Observability fill:#F5F3FF,stroke:#8B5CF6,stroke-width:2px
+    style Registry fill:#EFF6FF,stroke:#4C6EF5,stroke-width:2px
+
+    style ARGO fill:#FFF7ED,stroke:#F59E0B,stroke-width:1px
+    style GW_POD fill:#DBEAFE,stroke:#4C6EF5,stroke-width:1px
+    style ID_POD fill:#DBEAFE,stroke:#4C6EF5,stroke-width:1px
+    style CAT_POD fill:#DBEAFE,stroke:#4C6EF5,stroke-width:1px
+    style ORD_POD fill:#DBEAFE,stroke:#4C6EF5,stroke-width:1px
+    style PAY_POD fill:#DBEAFE,stroke:#4C6EF5,stroke-width:1px
+    style NOTIF_POD fill:#DBEAFE,stroke:#4C6EF5,stroke-width:1px
+    style ANAL_POD fill:#DBEAFE,stroke:#4C6EF5,stroke-width:1px
+    style KAFKA fill:#D1FAE5,stroke:#10B981,stroke-width:1px
+    style DEBEZIUM fill:#D1FAE5,stroke:#10B981,stroke-width:1px
+    style CDC_POD fill:#D1FAE5,stroke:#10B981,stroke-width:1px
+    style SPIRE_SVR fill:#FEF3C7,stroke:#F59E0B,stroke-width:1px
+    style SPIRE_AGNT fill:#FEF3C7,stroke:#F59E0B,stroke-width:1px
+    style OTEL_DS fill:#EDE9FE,stroke:#8B5CF6,stroke-width:1px
+    style OTEL_GW fill:#EDE9FE,stroke:#8B5CF6,stroke-width:1px
+    style PROM fill:#EDE9FE,stroke:#8B5CF6,stroke-width:1px
+    style TEMPO fill:#EDE9FE,stroke:#8B5CF6,stroke-width:1px
+    style LOKI fill:#EDE9FE,stroke:#8B5CF6,stroke-width:1px
+    style GRAFANA fill:#EDE9FE,stroke:#8B5CF6,stroke-width:1px
+    style SCHEMA_POD fill:#DBEAFE,stroke:#4C6EF5,stroke-width:1px

@@ -1,0 +1,87 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#E9EEF3', 'primaryTextColor': '#243447', 'primaryBorderColor': '#4C6EF5', 'lineColor': '#64748B', 'secondaryColor': '#EFF6FF', 'tertiaryColor': '#F8FAFC', 'fontSize': '13px'}}}%%
+graph TB
+    subgraph OutboundAdapters["Outbound Adapters"]
+        DB_A["🗄️ DB Adapter<br/>PostgreSQL / MongoDB"]
+        KAFKA_A["📤 Kafka Adapter<br/>CloudEvents Producer"]
+        OTEL_A["🔭 OTel Adapter<br/>Traces + Metrics Export"]
+        ACL_A["🛡️ ACL Sidecar<br/>Proprietary Isolation"]
+    end
+
+    subgraph OutboundPorts["Outbound Ports — Infrastructure Interfaces"]
+        DB_P["«interface»<br/>RepositoryPort"]
+        KAFKA_P["«interface»<br/>EventPublisherPort"]
+        OTEL_P["«interface»<br/>ObservabilityPort"]
+        ACL_P["«interface»<br/>ExternalServicePort"]
+    end
+
+    subgraph Domain["Domain Core — SC-3: Business Logic"]
+        ENT["📌 Entities<br/>& Value Objects"]
+        UC["⚙️ Use Cases<br/>& Domain Services"]
+        DOMAIN_EVENT["📡 Domain Events"]
+    end
+
+    subgraph InboundPorts["Inbound Ports — Use Case Interfaces"]
+        GRPC_P["«interface»<br/>GrpcUseCase"]
+        REST_P["«interface»<br/>RestUseCase"]
+        EVENT_P["«interface»<br/>EventHandler"]
+    end
+
+    subgraph InboundAdapters["Inbound Adapters"]
+        GRPC_A["🔌 gRPC Handler<br/>Protobuf Definitions"]
+        REST_A["🌐 REST Controller<br/>OpenAPI Endpoints"]
+        EVENT_A["📨 Event Consumer<br/>CloudEvents Subscriber"]
+    end
+
+    %% Dependency Rule: Adapters → Ports → Domain → Nothing
+    GRPC_A -->|"implements"| GRPC_P
+    REST_A -->|"implements"| REST_P
+    EVENT_A -->|"implements"| EVENT_P
+
+    GRPC_P -->|"orchestrates"| UC
+    REST_P -->|"orchestrates"| UC
+    EVENT_P -->|"orchestrates"| UC
+
+    UC -->|"uses"| ENT
+    UC -->|"emits"| DOMAIN_EVENT
+
+    UC -->|"depends on"| DB_P
+    UC -->|"depends on"| KAFKA_P
+    UC -->|"depends on"| OTEL_P
+    UC -->|"depends on"| ACL_P
+
+    DB_P -->|"implemented by"| DB_A
+    KAFKA_P -->|"implemented by"| KAFKA_A
+    OTEL_P -->|"implemented by"| OTEL_A
+    ACL_P -->|"implemented by"| ACL_A
+
+    %% Dependency rule annotation
+    DEP_RULE["📋 Dependency Rule<br/>Adapters → Ports → Domain<br/>Domain depends on NOTHING<br/>SC-3: Hexagonal Enforcement"]
+
+    style Domain fill:#DBEAFE,stroke:#4C6EF5,stroke-width:3px
+    style ENT fill:#EFF6FF,stroke:#4C6EF5,stroke-width:1px
+    style UC fill:#EFF6FF,stroke:#4C6EF5,stroke-width:1px
+    style DOMAIN_EVENT fill:#EFF6FF,stroke:#4C6EF5,stroke-width:1px
+
+    style InboundPorts fill:#FEF3C7,stroke:#F59E0B,stroke-width:2px
+    style GRPC_P fill:#FFF7ED,stroke:#F59E0B,stroke-width:1px
+    style REST_P fill:#FFF7ED,stroke:#F59E0B,stroke-width:1px
+    style EVENT_P fill:#FFF7ED,stroke:#F59E0B,stroke-width:1px
+
+    style OutboundPorts fill:#F0FDF4,stroke:#10B981,stroke-width:2px
+    style DB_P fill:#F0FDF4,stroke:#10B981,stroke-width:1px
+    style KAFKA_P fill:#F0FDF4,stroke:#10B981,stroke-width:1px
+    style OTEL_P fill:#F0FDF4,stroke:#10B981,stroke-width:1px
+    style ACL_P fill:#F0FDF4,stroke:#10B981,stroke-width:1px
+
+    style InboundAdapters fill:#E9EEF3,stroke:#64748B,stroke-width:2px
+    style GRPC_A fill:#F8FAFC,stroke:#64748B,stroke-width:1px
+    style REST_A fill:#F8FAFC,stroke:#64748B,stroke-width:1px
+    style EVENT_A fill:#F8FAFC,stroke:#64748B,stroke-width:1px
+
+    style OutboundAdapters fill:#E9EEF3,stroke:#64748B,stroke-width:2px
+    style DB_A fill:#F8FAFC,stroke:#64748B,stroke-width:1px
+    style KAFKA_A fill:#F8FAFC,stroke:#64748B,stroke-width:1px
+    style OTEL_A fill:#F8FAFC,stroke:#64748B,stroke-width:1px
+    style ACL_A fill:#F8FAFC,stroke:#64748B,stroke-width:1px
+
+    style DEP_RULE fill:#F1F5F9,stroke:#4C6EF5,stroke-width:2px,stroke-dasharray: 5 5
