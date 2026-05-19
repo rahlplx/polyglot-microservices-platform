@@ -1,0 +1,531 @@
+openapi: 3.1.0
+info:
+  title: Schema Registry Service API
+  description: |
+    The Schema Registry Service provides schema registration, validation,
+    compatibility checking, and breaking change detection for the polyglot
+    microservices architecture. It supports Protobuf, Avro, and JSON Schema
+    formats, with deep integration with the Buf CLI for compilation and
+    breaking change detection.
+
+    ## Authentication
+    - **Write operations (POST, DELETE):** JWT with `schema:write` scope
+      or SPIFFE/SPIRE mTLS with SVID validation
+    - **Read operations (GET):** Unauthenticated for internal service mesh
+      access, optional API key for external access
+    - **Admin operations (DELETE with permanent=true):** JWT with `schema:admin` scope
+
+    ## Compatibility Levels
+    - **NONE:** No compatibility checking
+    - **BACKWARD:** New schema can read old data
+    - **FORWARD:** Old schema can read new data
+    - **FULL:** Both BACKWARD and FORWARD
+    - **BACKWARD_TRANSITIVE:** New schema can read ALL old data
+    - **FORWARD_TRANSITIVE:** ALL old schemas can read new data
+    - **FULL_TRANSITIVE:** Both transitive backward and forward
+
+    ## Error Format
+    All errors follow RFC 7807 Problem Details:
+    ```json
+    {
+      "error": "Not Found",
+      "code": "SCHEMA_NOT_FOUND",
+      "message": "schema not found: subject \"order/v1/order.proto\""
+    }
+    ```
+  version: 1.0.0
+  contact:
+    name: Platform Team
+  license:
+    name: Proprietary
+
+servers:
+  - url: http://localhost:8081
+    description: Local development
+  - url: https://schema-registry.internal.example.com
+    description: Production
+
+tags:
+  - name: Schemas
+    description: Schema registration and retrieval
+  - name: Subjects
+    description: Subject listing and management
+  - name: Validation
+    description: Schema validation and breaking change detection
+
+paths:
+  /api/v1/schemas/subjects/{subject}/versions:
+    post:
+      tags: [Schemas]
+      operationId: registerSchema
+      summary: Register a new schema version
+      description: |
+        Registers a new schema version under the given subject. Compatible
+        with the Confluent Schema Registry API. The schema is validated for
+        syntax and compatibility before registration.
+      security:
+        - mtls: []
+        - apiKey: []
+      parameters:
+        - name: subject
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Subject name (e.g., "order/v1/order.proto")
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterSchemaRequest'
+      responses:
+        '200':
+          description: Schema registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterSchemaResponse'
+        '409':
+          description: Schema incompatible with previous version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Invalid schema syntax
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/schemas/subjects/{subject}/versions/{version}:
+    get:
+      tags: [Schemas]
+      operationId: getSchemaByVersion
+      summary: Get schema by version
+      parameters:
+        - name: subject
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Schema retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaResponse'
+        '404':
+          description: Schema not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/schemas/subjects/{subject}/versions/latest:
+    get:
+      tags: [Schemas]
+      operationId: getLatestSchema
+      summary: Get latest schema version
+      parameters:
+        - name: subject
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Latest schema retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaResponse'
+        '404':
+          description: Subject not found
+
+  /api/v1/schemas/ids/{id}:
+    get:
+      tags: [Schemas]
+      operationId: getSchemaById
+      summary: Get schema by global ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Schema retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaResponse'
+        '404':
+          description: Schema ID not found
+
+  /api/v1/schemas/subjects:
+    get:
+      tags: [Subjects]
+      operationId: listSubjects
+      summary: List all schema subjects
+      parameters:
+        - name: prefix
+          in: query
+          schema:
+            type: string
+          description: Filter subjects by prefix
+        - name: schemaType
+          in: query
+          schema:
+            type: string
+            enum: [PROTOBUF, AVRO, JSON_SCHEMA]
+          description: Filter by schema type
+        - name: deprecated
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include deprecated subjects
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: pageToken
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Subject list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListSubjectsResponse'
+
+  /api/v1/schemas/subjects/{subject}/versions:
+    get:
+      tags: [Subjects]
+      operationId: listVersions
+      summary: List all versions of a subject
+      parameters:
+        - name: subject
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Version list
+
+  /api/v1/schemas/subjects/{subject}:
+    delete:
+      tags: [Subjects]
+      operationId: deleteSubject
+      summary: Delete a subject and all versions
+      security:
+        - mtls: []
+        - apiKey: []
+      parameters:
+        - name: subject
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: permanent
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '204':
+          description: Subject deleted
+
+  /api/v1/schemas/subjects/{subject}/validate:
+    post:
+      tags: [Validation]
+      operationId: validateSchema
+      summary: Validate a schema without registering
+      parameters:
+        - name: subject
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateSchemaRequest'
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateSchemaResponse'
+
+  /api/v1/schemas/subjects/{subject}/check-breaking:
+    post:
+      tags: [Validation]
+      operationId: checkBreaking
+      summary: Check for breaking changes
+      parameters:
+        - name: subject
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckBreakingRequest'
+      responses:
+        '200':
+          description: Breaking change analysis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckBreakingResponse'
+
+  /health:
+    get:
+      tags: [Schemas]
+      operationId: healthCheck
+      summary: Health check endpoint
+      responses:
+        '200':
+          description: Service is healthy
+
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    mtls:
+      type: mutualTLS
+      description: SPIFFE/SPIRE mTLS with SVID validation
+
+  schemas:
+    RegisterSchemaRequest:
+      type: object
+      required: [schema]
+      properties:
+        schemaType:
+          type: string
+          enum: [PROTOBUF, AVRO, JSON_SCHEMA]
+          default: PROTOBUF
+          description: Schema format
+        schema:
+          type: string
+          description: Raw schema definition
+        references:
+          type: array
+          items:
+            $ref: '#/components/schemas/SchemaReference'
+        compatibility:
+          type: string
+          enum: [NONE, BACKWARD, FORWARD, FULL, BACKWARD_TRANSITIVE, FORWARD_TRANSITIVE, FULL_TRANSITIVE]
+          description: Optional compatibility level override
+        description:
+          type: string
+          description: Optional human-readable description
+
+    RegisterSchemaResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+          description: Assigned schema ID
+        version:
+          type: integer
+          format: int32
+          description: Assigned version number
+        fingerprint:
+          type: string
+          description: SHA-256 fingerprint of the schema definition
+        registered_at:
+          type: string
+          format: date-time
+        compatible:
+          type: boolean
+          description: Whether the schema passed compatibility checking
+
+    SchemaResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+        version:
+          type: integer
+          format: int32
+        subject:
+          type: string
+        schemaType:
+          type: string
+          enum: [PROTOBUF, AVRO, JSON_SCHEMA]
+        schema:
+          type: string
+          description: Raw schema definition
+        references:
+          type: array
+          items:
+            $ref: '#/components/schemas/SchemaReference'
+        fingerprint:
+          type: string
+        registered_at:
+          type: string
+          format: date-time
+        deprecated:
+          type: boolean
+        description:
+          type: string
+        compatibilityLevel:
+          type: string
+          enum: [NONE, BACKWARD, FORWARD, FULL, BACKWARD_TRANSITIVE, FORWARD_TRANSITIVE, FULL_TRANSITIVE]
+
+    SchemaReference:
+      type: object
+      properties:
+        name:
+          type: string
+        subject:
+          type: string
+        version:
+          type: integer
+          format: int32
+
+    ValidateSchemaRequest:
+      type: object
+      required: [schema]
+      properties:
+        schema:
+          type: string
+        schemaType:
+          type: string
+          enum: [PROTOBUF, AVRO, JSON_SCHEMA]
+          default: PROTOBUF
+        validationLevel:
+          type: string
+          enum: [SYNTAX, SEMANTIC, COMPATIBILITY, FULL]
+          default: SYNTAX
+        targetVersion:
+          type: integer
+          format: int32
+
+    ValidateSchemaResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
+
+    CheckBreakingRequest:
+      type: object
+      required: [proposedSchema]
+      properties:
+        proposedSchema:
+          type: string
+        checkLevel:
+          type: string
+          enum: [MINIMAL, DEFAULT, STRICT]
+          default: DEFAULT
+        previousVersion:
+          type: integer
+          format: int32
+
+    CheckBreakingResponse:
+      type: object
+      properties:
+        has_breaking_changes:
+          type: boolean
+        changes:
+          type: array
+          items:
+            type: object
+            properties:
+              change_type:
+                type: string
+              field_path:
+                type: string
+              description:
+                type: string
+              category:
+                type: string
+        severity:
+          type: string
+          enum: [INFO, WARNING, ERROR]
+        mitigations:
+          type: array
+          items:
+            type: object
+            properties:
+              change_type:
+                type: string
+              suggestion:
+                type: string
+              example:
+                type: string
+
+    ListSubjectsResponse:
+      type: object
+      properties:
+        subjects:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              compatibility_level:
+                type: string
+              latest_version:
+                type: integer
+              schema_type:
+                type: string
+              total_versions:
+                type: integer
+              deprecated:
+                type: boolean
+              registered_at:
+                type: string
+                format: date-time
+              description:
+                type: string
+        total_count:
+          type: integer
+          format: int64
+        next_page_token:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required: [error, code, message]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        message:
+          type: string

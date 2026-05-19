@@ -1,0 +1,231 @@
+// Proto definition for the Schema Registry Service API.
+// This is the source of truth for the Schema Registry gRPC contract.
+// Code generation is managed by Buf (buf generate).
+
+syntax = "proto3";
+
+package schemaregistry.v1;
+
+option go_package = "github.com/gstack/schema-registry-service/api/proto/schemaregistry/v1;schemaregistryv1";
+
+import "google/protobuf/timestamp.proto";
+
+// SchemaRegistryService provides schema registration, retrieval, validation,
+// compatibility checking, and breaking change detection for the polyglot
+// microservices architecture.
+service SchemaRegistryService {
+  // Register validates and registers a new schema version under a subject.
+  rpc Register(RegisterSchemaRequest) returns (RegisterSchemaResponse);
+
+  // Get retrieves a schema by subject and version, or by schema ID.
+  rpc Get(GetSchemaRequest) returns (GetSchemaResponse);
+
+  // Validate validates a schema definition without registering it.
+  rpc Validate(ValidateSchemaRequest) returns (ValidateSchemaResponse);
+
+  // CheckBreaking performs breaking change analysis between versions.
+  rpc CheckBreaking(CheckBreakingRequest) returns (CheckBreakingResponse);
+
+  // List lists all registered schema subjects with optional filtering.
+  rpc List(ListSchemasRequest) returns (ListSchemasResponse);
+}
+
+// SchemaType enumerates the supported schema formats.
+enum SchemaType {
+  SCHEMA_TYPE_UNSPECIFIED = 0;
+  PROTOBUF = 1;
+  AVRO = 2;
+  JSON_SCHEMA = 3;
+}
+
+// CompatibilityLevel defines the strictness of compatibility enforcement.
+enum CompatibilityLevel {
+  COMPATIBILITY_LEVEL_UNSPECIFIED = 0;
+  NONE = 1;
+  BACKWARD = 2;
+  FORWARD = 3;
+  FULL = 4;
+  BACKWARD_TRANSITIVE = 5;
+  FORWARD_TRANSITIVE = 6;
+  FULL_TRANSITIVE = 7;
+}
+
+// ValidationLevel defines the depth of validation to perform.
+enum ValidationLevel {
+  VALIDATION_LEVEL_UNSPECIFIED = 0;
+  SYNTAX = 1;
+  SEMANTIC = 2;
+  COMPATIBILITY = 3;
+  FULL = 4;
+}
+
+// CheckLevel defines the strictness of breaking change analysis.
+enum CheckLevel {
+  CHECK_LEVEL_UNSPECIFIED = 0;
+  MINIMAL = 1;
+  DEFAULT = 2;
+  STRICT = 3;
+}
+
+// SchemaReference represents a reference from one schema to another.
+message SchemaReference {
+  string name = 1;
+  string subject = 2;
+  int32 version = 3;
+}
+
+// RegisterSchemaRequest is the request for registering a new schema version.
+message RegisterSchemaRequest {
+  string subject = 1;
+  SchemaType schema_type = 2;
+  string schema_definition = 3;
+  repeated SchemaReference references = 4;
+  optional CompatibilityLevel compatibility_level = 5;
+  optional string description = 6;
+}
+
+// RegisterSchemaResponse is the response for schema registration.
+message RegisterSchemaResponse {
+  int32 schema_id = 1;
+  int32 version = 2;
+  string fingerprint = 3;
+  google.protobuf.Timestamp registered_at = 4;
+  CompatibilityResult compatibility_check = 5;
+}
+
+// GetSchemaRequest is the request for retrieving a schema.
+message GetSchemaRequest {
+  string subject = 1;
+  optional int32 version = 2;
+  optional int32 schema_id = 3;
+  bool include_references = 4;
+  bool include_deprecated = 5;
+}
+
+// GetSchemaResponse is the response for schema retrieval.
+message GetSchemaResponse {
+  int32 schema_id = 1;
+  int32 version = 2;
+  string subject = 3;
+  SchemaType schema_type = 4;
+  string schema_definition = 5;
+  repeated SchemaReference references = 6;
+  string fingerprint = 7;
+  google.protobuf.Timestamp registered_at = 8;
+  bool deprecated = 9;
+  optional string description = 10;
+}
+
+// ValidateSchemaRequest is the request for schema validation.
+message ValidateSchemaRequest {
+  string subject = 1;
+  string schema_definition = 2;
+  SchemaType schema_type = 3;
+  ValidationLevel validation_level = 4;
+  optional int32 target_version = 5;
+}
+
+// ValidateSchemaResponse is the response for schema validation.
+message ValidateSchemaResponse {
+  bool valid = 1;
+  repeated ValidationError errors = 2;
+  repeated ValidationWarning warnings = 3;
+  optional CompatibilityResult compatibility_result = 4;
+}
+
+// CheckBreakingRequest is the request for breaking change analysis.
+message CheckBreakingRequest {
+  string subject = 1;
+  optional int32 previous_version = 2;
+  string proposed_schema = 3;
+  CheckLevel check_level = 4;
+}
+
+// CheckBreakingResponse is the response for breaking change analysis.
+message CheckBreakingResponse {
+  bool has_breaking_changes = 1;
+  repeated BreakingChange changes = 2;
+  Severity severity = 3;
+  repeated MitigationSuggestion mitigations = 4;
+}
+
+// ListSchemasRequest is the request for listing schema subjects.
+message ListSchemasRequest {
+  optional string prefix = 1;
+  optional SchemaType schema_type = 2;
+  bool include_deprecated = 3;
+  int32 page_size = 4;
+  string page_token = 5;
+}
+
+// ListSchemasResponse is the response for listing schema subjects.
+message ListSchemasResponse {
+  repeated SubjectSummary subjects = 1;
+  int64 total_count = 2;
+  string next_page_token = 3;
+}
+
+// SubjectSummary provides a summary of a schema subject.
+message SubjectSummary {
+  string name = 1;
+  CompatibilityLevel compatibility_level = 2;
+  int32 latest_version = 3;
+  SchemaType schema_type = 4;
+  int32 total_versions = 5;
+  bool deprecated = 6;
+  google.protobuf.Timestamp registered_at = 7;
+  optional string description = 8;
+}
+
+// CompatibilityResult summarizes the outcome of a compatibility check.
+message CompatibilityResult {
+  bool compatible = 1;
+  repeated CompatibilityViolation violations = 2;
+  CompatibilityLevel compatibility_level = 3;
+}
+
+// CompatibilityViolation describes a single compatibility rule violation.
+message CompatibilityViolation {
+  string description = 1;
+  string field_path = 2;
+  string rule = 3;
+  string previous_type = 4;
+  string proposed_type = 5;
+}
+
+// ValidationError represents an error found during schema validation.
+message ValidationError {
+  string message = 1;
+  string location = 2;
+  string rule_id = 3;
+}
+
+// ValidationWarning represents a warning found during schema validation.
+message ValidationWarning {
+  string message = 1;
+  string location = 2;
+  string rule_id = 3;
+}
+
+// BreakingChange represents a detected breaking change between versions.
+message BreakingChange {
+  string change_type = 1;
+  string field_path = 2;
+  string description = 3;
+  string category = 4;  // WIRE, SOURCE, FILE
+}
+
+// MitigationSuggestion provides a suggestion for resolving a breaking change.
+message MitigationSuggestion {
+  string change_type = 1;
+  string suggestion = 2;
+  string example = 3;
+}
+
+// Severity enumerates the severity levels for breaking change analysis.
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  INFO = 1;
+  WARNING = 2;
+  ERROR = 3;
+}

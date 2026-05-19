@@ -1,0 +1,66 @@
+openapi: 3.1.0
+info:
+  title: Payment Service API
+  description: >
+    The Payment service does not expose a public REST API. All payment
+    operations are available exclusively through the gRPC interface defined
+    in payment.proto. This is a deliberate security design decision: payment
+    operations involve sensitive financial data and should only be invoked
+    by trusted internal services (primarily the Order service) over
+    mTLS-authenticated gRPC connections.
+  version: 0.1.0
+  contact:
+    name: gstack Platform Team
+
+servers:
+  - url: grpc://payment:50055
+    description: Internal gRPC endpoint (mTLS required)
+
+paths: {}
+
+components:
+  schemas:
+    Money:
+      type: object
+      description: Monetary amount with currency precision
+      properties:
+        units:
+          type: integer
+          format: int64
+          description: Whole currency units (e.g., dollars)
+        nanos:
+          type: integer
+          format: int32
+          description: Nano-units of the fractional amount
+        currency_code:
+          type: string
+          description: ISO 4217 3-letter currency code
+          example: USD
+
+    PaymentStatus:
+      type: string
+      enum:
+        - PENDING
+        - AUTHORIZED
+        - CAPTURED
+        - PARTIALLY_REFUNDED
+        - FULLY_REFUNDED
+        - VOIDED
+        - FAILED
+      description: Payment lifecycle states
+
+    CircuitState:
+      type: string
+      enum:
+        - CLOSED
+        - OPEN
+        - HALF_OPEN
+      description: Circuit breaker states
+
+  securitySchemes:
+    mTLS:
+      type: mutualTLS
+      description: SPIFFE/SPIRE mTLS authentication required for all gRPC calls
+
+security:
+  - mTLS: []
