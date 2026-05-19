@@ -8,6 +8,7 @@
 import { MeiliSearch, type Index, type SearchResponse } from 'meilisearch';
 import type {
   SearchIndex,
+  SearchDocument,
   SearchQuery,
   SearchResultItem,
   SearchIndexResult,
@@ -264,18 +265,38 @@ export class MeilisearchAdapter implements SearchIndex {
     };
   }
 
+  /**
+   * Reconstruct a SearchDocument from a flattened Meilisearch hit,
+   * reassembling the Money value object from the denormalized fields.
+   */
+  private toSearchDocument(hit: MeilisearchDocument): SearchDocument {
+    return {
+      productId: hit.productId,
+      name: hit.name,
+      description: hit.description,
+      category: hit.category,
+      tags: hit.tags,
+      price: Money.create(hit.currencyCode, hit.priceUnits, hit.priceNanos),
+      availableQuantity: hit.availableQuantity,
+      status: hit.status,
+      createdAt: hit.createdAt,
+    };
+  }
 
   private toSearchResult(
     response: SearchResponse<MeilisearchDocument>,
     facetFields: string[]
   ): SearchIndexResult {
-    const results: SearchResultItem[] = response.hits.map((hit) => ({
-      productId: hit.productId,
-      name: hit.name,
-      descriptionSnippet: hit.description?.slice(0, 200) ?? '',
-      price: Money.create(hit.currencyCode, hit.priceUnits, hit.priceNanos),
-      relevanceScore: hit._rankingScore ?? 0,
-    }));
+    const results: SearchResultItem[] = response.hits.map((hit) => {
+      const doc = this.toSearchDocument(hit);
+      return {
+        productId: doc.productId,
+        name: doc.name,
+        descriptionSnippet: doc.description?.slice(0, 200) ?? '',
+        price: doc.price,
+        relevanceScore: (hit as any)._rankingScore ?? 0,
+      };
+    });
 
     // Extract facets from Meilisearch facetDistribution
     const facets: Record<string, FacetValue[]> = {};
