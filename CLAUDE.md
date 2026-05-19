@@ -124,44 +124,120 @@ Gstack is the **primary AI skill system** for this project. It provides structur
 
 ---
 
-## 3. Auto-Hooks & Execution Triggers
+## 3. Auto-Trigger Engine & Failover System
 
-### Session Start Auto-Actions
+The auto-trigger engine is the brain of the agentic system. Every AI action MUST flow through certified triggers with failover chains. No ad-hoc execution.
 
-On every new session, the AI agent MUST:
+**Engine location:** `/home/z/my-project/.claude/engine/trigger-engine.sh`
+**Failover system:** `/home/z/my-project/.claude/engine/failover.sh`
+**Trigger config:** `/home/z/my-project/.claude/engine/triggers.json`
 
-1. **Read this file** (`CLAUDE.md`) — it's auto-loaded by Claude Code.
-2. **Read `AGENTS.md`** — for the systematic agentic engineering process.
-3. **Check `worklog.md`** — understand what previous agents have done.
-4. **Verify gstack** — run `ls ~/.claude/skills/gstack/setup` to confirm gstack is installed.
-5. **Check for frozen state** — if `/home/z/my-project/.freeze` exists, halt and report.
+### 7 Certified Triggers (in execution order)
 
-### Pre-Execution Hooks
+| # | Trigger | When | Auto? | Blocking? |
+|---|---------|------|-------|-----------|
+| 1 | `session_start` | Every session start | YES | YES |
+| 2 | `task_receive` | New task received | YES | NO |
+| 3 | `pre_execution` | Before any execution | YES | YES |
+| 4 | `skill_invoke` | gstack skill called | NO | NO |
+| 5 | `subagent_dispatch` | Subagent launched | NO | NO |
+| 6 | `post_execution` | After execution | YES | NO |
+| 7 | `error_recovery` | On any error | YES | NO |
 
-Before executing any task, the AI agent MUST:
+### Trigger → Action → Failover Chain
 
-1. **Classify the task** using the Type system (Type 1: Document, Type 2: Visualization, Type 3: Web Dev, Type 4: Data Processing).
-2. **Create a TODO list** with `TodoWrite` for any task with 3+ steps.
-3. **Estimate token budget** — if the task requires reading multiple large files, plan which sections are needed.
-4. **Check for conflicts** — verify no other agent is working on the same files (check worklog).
+Every trigger has a defined action sequence and failover chain:
 
-### Post-Execution Hooks
+```
+Trigger fires → Action 1 → (fail?) → Failover A → Action 2 → (fail?) → Failover B → ... → Escalate to user
+```
 
-After completing any task, the AI agent MUST:
+**session_start** failovers:
+- gstack missing → auto_install_gstack
+- CLAUDE.md missing → generate_default_claude_md
+- freeze active → halt_and_report
 
-1. **Update `worklog.md`** — append structured entry with Task ID, agent name, work log, and stage summary.
-2. **Mark TODO items complete** — use `TodoWrite` to update status.
-3. **Validate outputs** — check that generated files exist and are non-empty.
-4. **Clean up temp files** — remove any intermediate artifacts from `/home/z/my-project/download/`.
+**task_receive** failovers:
+- classification failed → default_to_type1
+- TODO creation failed → proceed_without_todo
 
-### Error Recovery Hooks
+**pre_execution** failovers:
+- freeze active → halt_and_report
+- output dir missing → create_output_dir
+- worklog conflict → warn_and_proceed
 
-On any error or timeout:
+**skill_invoke** failovers:
+- skill not found → fallback_to_generic
+- skill load error → retry_once_then_generic
 
-1. **Log the error** in worklog.md with full context.
-2. **Retry once** with adjusted parameters (timeout, approach).
-3. **After 2 consecutive failures** — inform the user and suggest restarting the session.
-4. **Never silently skip** a failed step.
+**subagent_dispatch** failovers:
+- context too large → truncate_to_essentials (max 8000 tokens)
+- subagent timeout → retry_with_simpler_prompt (max 1 retry)
+
+**post_execution** failovers:
+- output missing → log_error_and_report
+- worklog update failed → retry_once
+- cleanup failed → log_warning_only
+
+**error_recovery** failovers:
+- escalation failed → write_error_file to `.claude/error-pending.json`
+- log failed → write_stderr
+
+### The 2-Retry-Then-Escalate Rule
+
+On ANY failure:
+1. **Attempt 1:** Retry with original parameters
+2. **Attempt 2:** Retry with adjusted parameters (increased timeout, simplified approach)
+3. **Escalate:** Report to user with specific error details
+4. **After 2 consecutive failures → STOP** and suggest: "Please click the restart button to restart the session."
+5. **Never silently skip** a failed step
+
+### Context Auto-Injection Pipeline
+
+Context is automatically injected at each trigger point from templates:
+
+| Trigger | Context Template | What It Injects |
+|---------|-----------------|----------------|
+| session_start | `session_context.md` | AI identity, project paths, gstack rules, ETHOS principles, freeze state |
+| task_receive | `task_context.md` | Classification decision tree, workflow routing map, token budgets, skill mapping |
+| pre_execution | `execution_context.md` | Safety checklist, skill loading protocol, skill chain rules, subagent dispatch protocol |
+| skill_invoke | `skill_injections.md` | Category-specific prompt injections (Planning/Design/QA/Ship/Guardrail/Doc/Browser) |
+
+**Context template location:** `/home/z/my-project/.claude/context/`
+
+### Workflow Router — AI Only Triggers Into Certified Workflows
+
+The workflow router ensures the AI NEVER takes an ad-hoc path. Every task MUST be classified and routed:
+
+| Task Type | Trigger Patterns | Certified gstack Skills | System Skill | Fallback |
+|-----------|-----------------|------------------------|-------------|----------|
+| Type 1: Document | "generate document", "create report", "PDF", "docx", "xlsx", "ppt" | /office-hours, /design-consultation, /document-generate | pdf, docx, xlsx, ppt | pdf |
+| Type 2: Visualization | "chart", "diagram", "flowchart", "mind map", "plot" | /design-consultation, /design-shotgun, /design-review | charts | charts |
+| Type 3: Web Dev | "webpage", "dashboard", "interactive", "Next.js" | /design-html, /design-review, /qa, /review | fullstack-dev | fullstack-dev |
+| Type 4: Data | "process data", "analyze", "transform", "calculate" | /investigate, /benchmark, /health | (python) | python |
+
+**Ambiguity resolution:** If task type is unclear → Ask user: "Do you want a document with charts, or an interactive web page?"
+**Default route:** Type 1 (Document Creation) if classification fails.
+
+### Certified Skill Chains
+
+These are the ONLY approved skill sequences. No custom chains:
+
+| Workflow | Chain | Rule |
+|----------|-------|------|
+| Document with design | /office-hours → pdf | Design first, generate second |
+| Document with review | pdf → /review | Generate, then review |
+| Web app full cycle | /design-html → fullstack-dev → /qa → /ship | Design → Build → QA → Ship |
+| Code review only | /review | Standalone |
+| QA pass | /qa | Standalone |
+| Deploy pipeline | /ship → /land-and-deploy → /canary | Ship → Deploy → Monitor |
+
+### ETHOS Auto-Injection (Every Skill)
+
+Every gstack skill invocation MUST include the ETHOS preamble:
+1. **Boil the Lake** — Do the complete thing, not the 90% shortcut. Completeness is cheap with AI.
+2. **Search Before Building** — Check existing solutions first. The cost of not checking is reinventing something worse.
+3. **The Golden Age** — One person + AI = what used to take 20 people. The engineering barrier is gone.
 
 ---
 
@@ -169,13 +245,26 @@ On any error or timeout:
 
 ```
 /home/z/my-project/
-├── CLAUDE.md              # This file — AI agent configuration & rules
-├── AGENTS.md              # Systematic agentic engineering process
-├── worklog.md             # Shared worklog across all agents
+├── CLAUDE.md              # This file — AI agent config, gstack rules, auto-trigger spec
+├── AGENTS.md              # 7-Phase agentic loop, subagent protocol, anti-patterns
+├── worklog.md             # Shared worklog across all agents (append only)
 ├── .freeze                # Freeze marker (exists = codebase frozen)
 ├── .claude/
-│   └── skills/
-│       └── gstack -> ~/.claude/skills/gstack  # gstack symlink
+│   ├── skills/
+│   │   └── gstack -> ~/.claude/skills/gstack  # gstack symlink
+│   ├── engine/            # Auto-trigger engine & failover system
+│   │   ├── trigger-engine.sh   # Master trigger dispatcher (7 triggers)
+│   │   ├── failover.sh         # Failover chain executor (16 failover actions)
+│   │   └── triggers.json       # Trigger config, workflow router, context templates
+│   ├── context/           # Auto-injection context templates
+│   │   ├── session_context.md    # Session start: AI identity, ETHOS, project paths
+│   │   ├── task_context.md       # Task receive: classification, routing, budgets
+│   │   ├── execution_context.md  # Pre-exec: safety checks, skill chains, dispatch
+│   │   └── skill_injections.md   # Skill invoke: per-category prompt injections
+│   ├── config/
+│   │   └── token-efficiency.json # Token budget, lazy loading, parallelization
+│   ├── hooks/             # Legacy hook scripts (session-init, pre-exec, post-exec)
+│   └── session-state.json # Cross-session state persistence
 ├── skills/                # Project-level custom skills
 │   ├── coding-agent/      # Coding agent skill with memory & planning
 │   ├── ui-ux-pro-max/     # UI/UX design expertise skill
