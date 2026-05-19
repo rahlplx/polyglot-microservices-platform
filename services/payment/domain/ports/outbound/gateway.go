@@ -3,7 +3,7 @@ package outbound
 import (
 	"context"
 
-	"github.com/gstack/payment-service/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/models"
 )
 
 // PaymentGatewayPort defines the interface for communicating with external payment

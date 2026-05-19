@@ -1,0 +1,377 @@
+name: PR Quality Gates
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # ──────────────────────────────────────────────
+  # Conventional Commits validation
+  # ──────────────────────────────────────────────
+  conventional-commits:
+    name: "Conventional Commits"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for commit validation
+
+      - name: Validate PR title (Conventional Commits)
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert
+          requireScope: false
+          subjectPattern: ^[A-Z].+$
+          subjectPatternError: |
+            The subject must start with an uppercase letter and be descriptive.
+            Example: "feat: Add user authentication endpoint"
+
+      - name: Validate commit messages
+        run: |
+          # Get all commits in this PR
+          COMMITS=$(git log --format="%H %s" origin/${{ github.base_ref }}..HEAD)
+
+          echo "Validating ${#COMMITS[@]} commits..."
+
+          echo "$COMMITS" | while read -r hash message; do
+            # Check conventional commit format: type(scope)!: description
+            if ! echo "$message" | grep -qE "^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?(!)?: .+"; then
+              echo "::error::Commit $hash does not follow Conventional Commits: '$message'"
+              echo "Expected format: type(scope)!: description"
+              exit 1
+            fi
+            # Check subject length
+            SUBJECT_LEN=${#message}
+            if [ "$SUBJECT_LEN" -gt 72 ]; then
+              echo "::warning::Commit $hash subject exceeds 72 chars ($SUBJECT_LEN): '$message'"
+            fi
+          done
+
+          echo "All commits follow Conventional Commits format"
+
+  # ──────────────────────────────────────────────
+  # PR Size check
+  # ──────────────────────────────────────────────
+  pr-size:
+    name: "PR Size Check"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get diff stats
+        id: diff
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          STATS=$(git diff --stat origin/${{ github.base_ref }}...HEAD)
+          ADDED=$(git diff --numstat origin/${{ github.base_ref }}...HEAD | awk '{sum+=$1} END {print sum+0}')
+          DELETED=$(git diff --numstat origin/${{ github.base_ref }}...HEAD | awk '{sum+=$2} END {print sum+0}')
+          TOTAL=$((ADDED + DELETED))
+          FILES_CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | wc -l)
+
+          echo "added=$ADDED" >> "$GITHUB_OUTPUT"
+          echo "deleted=$DELETED" >> "$GITHUB_OUTPUT"
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          echo "files=$FILES_CHANGED" >> "$GITHUB_OUTPUT"
+
+          echo "### PR Size Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Lines added | ${ADDED} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Lines deleted | ${DELETED} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Total changes | ${TOTAL} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Files changed | ${FILES_CHANGED} |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check PR size limits
+        run: |
+          TOTAL=${{ steps.diff.outputs.total }}
+          FILES=${{ steps.diff.outputs.files }}
+
+          # Size thresholds
+          # XS:   0-50    lines
+          # S:    51-150  lines
+          # M:    151-400 lines
+          # L:    401-800 lines
+          # XL:   800+    lines (requires extra review)
+
+          if [ "$TOTAL" -gt 800 ]; then
+            echo "::warning::PR is XL (${TOTAL} lines changed). Consider breaking into smaller PRs."
+            echo "size=XL" >> "$GITHUB_OUTPUT"
+          elif [ "$TOTAL" -gt 400 ]; then
+            echo "::notice::PR is L (${TOTAL} lines changed)."
+            echo "size=L" >> "$GITHUB_OUTPUT"
+          elif [ "$TOTAL" -gt 150 ]; then
+            echo "::notice::PR is M (${TOTAL} lines changed)."
+            echo "size=M" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::PR is S/XS (${TOTAL} lines changed). Good job!"
+            echo "size=S" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Hard limit: reject PRs over 1500 lines (excluding generated files)
+          GENERATED_EXCLUDED=$(git diff --numstat origin/${{ github.base_ref }}...HEAD \
+            | grep -v -E '\.pb\.go|\.pb\.rs|_generated|\.lock|package-lock|yarn\.lock|go\.sum' \
+            | awk '{sum+=$1+$2} END {print sum+0}')
+
+          if [ "${GENERATED_EXCLUDED}" -gt 1500 ]; then
+            echo "::error::PR exceeds 1500-line limit (${GENERATED_EXCLUDED} non-generated lines). Please split into smaller PRs."
+            exit 1
+          fi
+
+      - name: Label PR with size
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sizeLabels = {
+              'XS': 'size/XS',
+              'S':  'size/S',
+              'M':  'size/M',
+              'L':  'size/L',
+              'XL': 'size/XL'
+            };
+            const size = process.env.SIZE || 'M';
+            const label = sizeLabels[size];
+
+            // Remove existing size labels
+            const existingLabels = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            for (const l of existingLabels.data) {
+              if (l.name.startsWith('size/')) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  name: l.name
+                });
+              }
+            }
+
+            // Add new size label
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: [label]
+            });
+
+  # ──────────────────────────────────────────────
+  # License check
+  # ──────────────────────────────────────────────
+  license-check:
+    name: "License Check"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install license checker
+        run: pip install licensecheck
+
+      - name: Check Python dependencies
+        run: |
+          for svc in notification analytics rl-engine; do
+            if [ -f "services/${svc}/requirements.txt" ]; then
+              echo "Checking licenses for ${svc}..."
+              cd "services/${svc}"
+              licensecheck --requirements requirements.txt \
+                --fail-licenses "GPL-3.0,AGPL-3.0,GPL-2.0,SSPL-1.0,BSL-1.1" \
+                --zero || true
+              cd "${{ github.workspace }}"
+            fi
+          done
+
+      - name: Check Node.js dependencies
+        run: |
+          cd services/catalog
+          npx license-checker --failOn "GPL-3.0;AGPL-3.0;GPL-2.0;SSPL-1.0;BSL-1.1" || true
+          cd "${{ github.workspace }}"
+
+      - name: Check Go dependencies
+        run: |
+          for svc in gateway payment schema-registry; do
+            if [ -f "services/${svc}/go.mod" ]; then
+              echo "Checking licenses for ${svc}..."
+              cd "services/${svc}"
+              go install github.com/google/go-licenses@latest
+              go-licenses check ./... \
+                --disallowed_types=forbidden \
+                --ignore github.com/${{ github.repository }} || true
+              cd "${{ github.workspace }}"
+            fi
+          done
+
+      - name: Check Rust dependencies
+        run: |
+          cd services/identity
+          cargo install cargo-license --locked 2>/dev/null || true
+          cargo license 2>/dev/null | \
+            grep -iE "GPL-3\.0|AGPL-3\.0|GPL-2\.0|SSPL|BSL" && {
+              echo "::error::Proprietary or copyleft license found in Rust dependencies"
+              exit 1
+            } || echo "No problematic Rust licenses found"
+          cd "${{ github.workspace }}"
+
+      - name: Check Gradle/Kotlin dependencies
+        run: |
+          cd services/order
+          ./gradlew licenseReport 2>/dev/null || true
+          if [ -f "build/reports/license/license-report.json" ]; then
+            python3 -c "
+          import json, sys
+          with open('build/reports/license/license-report.json') as f:
+              deps = json.load(f)
+          blocked = ['GPL-3.0', 'AGPL-3.0', 'GPL-2.0', 'SSPL-1.0', 'BSL-1.1']
+          for d in deps.get('dependencies', []):
+              lic = d.get('license', '')
+              for b in blocked:
+                  if b.lower() in lic.lower():
+                      print(f'::error::Blocked license {b} found in {d.get(\"name\", \"unknown\")}')
+                      sys.exit(1)
+          print('All Kotlin licenses OK')
+          " || true
+          fi
+          cd "${{ github.workspace }}"
+
+  # ──────────────────────────────────────────────
+  # Hexagonal Architecture Boundary Check
+  # ──────────────────────────────────────────────
+  hexagonal-boundary-check:
+    name: "Hexagonal Boundary Check"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify domain layer has zero infrastructure imports
+        run: |
+          echo "Checking hexagonal architecture boundaries across all services..."
+          VIOLATIONS=0
+
+          # ── Go services ──
+          for svc in gateway payment schema-registry; do
+            DOMAIN_DIR="services/${svc}/internal/domain"
+            if [ -d "$DOMAIN_DIR" ]; then
+              echo "Checking ${svc} domain layer..."
+              # Domain should never import infrastructure packages
+              INFRA_IMPORTS=$(rg -l \
+                --type go \
+                '"github\.com/[^"]+/(sql|database|redis|kafka|rabbitmq|grpc|http|postgres|mongo|s3|aws|gcp|azure)/' \
+                "$DOMAIN_DIR" 2>/dev/null || true)
+              if [ -n "$INFRA_IMPORTS" ]; then
+                echo "::error::${svc}: Domain layer contains infrastructure imports:"
+                echo "$INFRA_IMPORTS"
+                VIOLATIONS=$((VIOLATIONS + 1))
+              fi
+
+              # Also check for net/http, database/sql stdlib imports in domain
+              STDLIB_INFRA=$(rg -l \
+                --type go \
+                '"net/http"|"database/sql"|"net/rpc"' \
+                "$DOMAIN_DIR" 2>/dev/null || true)
+              if [ -n "$STDLIB_INFRA" ]; then
+                echo "::error::${svc}: Domain layer contains stdlib infrastructure imports (net/http, database/sql):"
+                echo "$STDLIB_INFRA"
+                VIOLATIONS=$((VIOLATIONS + 1))
+              fi
+            fi
+          done
+
+          # ── Rust service ──
+          DOMAIN_DIR="services/identity/src/domain"
+          if [ -d "$DOMAIN_DIR" ]; then
+            echo "Checking identity domain layer..."
+            INFRA_IMPORTS=$(rg -l \
+              --type rust \
+              '(sqlx|redis|kafka|reqwest|actix_web|axum|tonic|diesel|r2d2|aws_|gcp_)' \
+              "$DOMAIN_DIR" 2>/dev/null || true)
+            if [ -n "$INFRA_IMPORTS" ]; then
+              echo "::error::identity: Domain layer contains infrastructure imports:"
+              echo "$INFRA_IMPORTS"
+              VIOLATIONS=$((VIOLATIONS + 1))
+            fi
+          fi
+
+          # ── Kotlin service ──
+          DOMAIN_DIR="services/order/src/main/kotlin/com/platform/order/domain"
+          if [ -d "$DOMAIN_DIR" ]; then
+            echo "Checking order domain layer..."
+            INFRA_IMPORTS=$(rg -l \
+              --type kotlin \
+              '(javax\.sql|java\.sql|org\.springframework|redis\.clients|kafka|aws\.|software\.amazon)' \
+              "$DOMAIN_DIR" 2>/dev/null || true)
+            if [ -n "$INFRA_IMPORTS" ]; then
+              echo "::error::order: Domain layer contains infrastructure imports:"
+              echo "$INFRA_IMPORTS"
+              VIOLATIONS=$((VIOLATIONS + 1))
+            fi
+          fi
+
+          # ── TypeScript service ──
+          DOMAIN_DIR="services/catalog/src/domain"
+          if [ -d "$DOMAIN_DIR" ]; then
+            echo "Checking catalog domain layer..."
+            INFRA_IMPORTS=$(rg -l \
+              --type ts \
+              '(sequelize|typeorm|prisma|mongoose|kafkajs|ioredis|aws-sdk|@aws-sdk|pg|mysql2)' \
+              "$DOMAIN_DIR" 2>/dev/null || true)
+            if [ -n "$INFRA_IMPORTS" ]; then
+              echo "::error::catalog: Domain layer contains infrastructure imports:"
+              echo "$INFRA_IMPORTS"
+              VIOLATIONS=$((VIOLATIONS + 1))
+            fi
+          fi
+
+          # ── Python services ──
+          for svc in notification analytics rl-engine; do
+            DOMAIN_DIR="services/${svc}/src/domain"
+            if [ -d "$DOMAIN_DIR" ]; then
+              echo "Checking ${svc} domain layer..."
+              INFRA_IMPORTS=$(rg -l \
+                --type py \
+                '(sqlalchemy|django|redis|kafka|boto3|google\.cloud|azure|pymongo|psycopg)' \
+                "$DOMAIN_DIR" 2>/dev/null || true)
+              if [ -n "$INFRA_IMPORTS" ]; then
+                echo "::error::${svc}: Domain layer contains infrastructure imports:"
+                echo "$INFRA_IMPORTS"
+                VIOLATIONS=$((VIOLATIONS + 1))
+              fi
+            fi
+          done
+
+          echo ""
+          echo "### Hexagonal Boundary Report" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$VIOLATIONS" -gt 0 ]; then
+            echo "❌ **${VIOLATIONS} boundary violation(s) detected** — domain layers must not import infrastructure" >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::${VIOLATIONS} hexagonal boundary violation(s) found. Domain layer must have zero infrastructure imports."
+            exit 1
+          else
+            echo "✅ **All hexagonal boundaries respected** — no infrastructure imports in domain layers" >> "$GITHUB_STEP_SUMMARY"
+            echo "All hexagonal boundaries respected ✅"
+          fi

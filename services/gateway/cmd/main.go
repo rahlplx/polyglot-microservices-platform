@@ -11,8 +11,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/comprehensive-architecture/services/gateway/infrastructure/config"
-	"github.com/comprehensive-architecture/services/gateway/infrastructure/di"
+	"github.com/rahlplx/polyglot-microservices-platform/services/gateway/infrastructure/config"
+	"github.com/rahlplx/polyglot-microservices-platform/services/gateway/infrastructure/di"
 )
 
 func main() {

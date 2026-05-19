@@ -5,7 +5,7 @@ package outbound
 import (
 	"context"
 
-	"github.com/comprehensive-architecture/services/gateway/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/gateway/domain/models"
 )
 
 // RateLimiterPort defines the interface for rate limiting operations.

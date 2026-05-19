@@ -14,8 +14,8 @@ import (
         "log/slog"
         "time"
 
-        "github.com/gstack/payment-service/domain/models"
-        "github.com/gstack/payment-service/domain/ports/outbound"
+        "github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/models"
+        "github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/ports/outbound"
 )
 
 // RefundService implements the refund processing use case for the Payment

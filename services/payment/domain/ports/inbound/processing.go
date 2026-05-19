@@ -3,7 +3,7 @@ package inbound
 import (
 	"context"
 
-	"github.com/gstack/payment-service/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/models"
 )
 
 // ProcessPaymentUseCase handles the creation and authorization of new payments.

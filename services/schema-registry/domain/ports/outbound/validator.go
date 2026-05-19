@@ -5,7 +5,7 @@ package outbound
 import (
 	"context"
 
-	"github.com/gstack/schema-registry-service/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/domain/models"
 )
 
 // SchemaValidatorPort defines the interface for validating schema definitions

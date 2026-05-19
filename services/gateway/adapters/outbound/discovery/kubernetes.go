@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/comprehensive-architecture/services/gateway/domain/models"
-	"github.com/comprehensive-architecture/services/gateway/domain/ports/outbound"
+	"github.com/rahlplx/polyglot-microservices-platform/services/gateway/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/gateway/domain/ports/outbound"
 )
 
 // KubernetesConfig holds the configuration for the Kubernetes discovery adapter.

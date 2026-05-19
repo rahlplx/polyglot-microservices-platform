@@ -7,7 +7,7 @@ import (
         "sync"
         "time"
 
-        "github.com/gstack/payment-service/domain/models"
+        "github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/models"
 )
 
 // CircuitBreakerService implements a state machine for protecting external service calls.

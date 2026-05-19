@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/comprehensive-architecture/services/gateway/domain/models"
-	"github.com/comprehensive-architecture/services/gateway/domain/ports/outbound"
-	"github.com/comprehensive-architecture/services/gateway/domain/services"
+	"github.com/rahlplx/polyglot-microservices-platform/services/gateway/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/gateway/domain/ports/outbound"
+	"github.com/rahlplx/polyglot-microservices-platform/services/gateway/domain/services"
 )
 
 // --- Mock implementations for outbound ports ---

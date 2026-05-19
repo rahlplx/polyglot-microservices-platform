@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/gstack/payment-service/domain/models"
-	"github.com/gstack/payment-service/domain/ports/outbound"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/ports/outbound"
 )
 
 // PaymentService orchestrates the payment processing lifecycle, coordinating between

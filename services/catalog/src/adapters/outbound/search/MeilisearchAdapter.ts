@@ -289,11 +289,7 @@ export class MeilisearchAdapter implements SearchIndex {
       productId: hit.productId,
       name: hit.name,
       descriptionSnippet: hit.description?.slice(0, 200) ?? '',
-      price: {
-        currencyCode: hit.currencyCode,
-        units: hit.priceUnits,
-        nanos: hit.priceNanos,
-      },
+      price: Money.create(hit.currencyCode, hit.priceUnits, hit.priceNanos),
       relevanceScore: hit._rankingScore ?? 0,
     }));
 

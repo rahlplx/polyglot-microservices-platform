@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gstack/schema-registry-service/adapters/inbound/rest"
-	"github.com/gstack/schema-registry-service/adapters/outbound/persistence"
-	"github.com/gstack/schema-registry-service/domain/models"
-	"github.com/gstack/schema-registry-service/domain/services"
-	"github.com/gstack/schema-registry-service/infrastructure/config"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/adapters/inbound/rest"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/adapters/outbound/persistence"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/domain/services"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/infrastructure/config"
 )
 
 // --- Integration test helpers ---

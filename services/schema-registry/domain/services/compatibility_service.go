@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/gstack/schema-registry-service/domain/models"
-	"github.com/gstack/schema-registry-service/domain/ports/outbound"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/domain/ports/outbound"
 )
 
 // CompatibilityService handles schema compatibility checking. It supports

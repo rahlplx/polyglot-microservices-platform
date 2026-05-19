@@ -13,8 +13,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/gstack/schema-registry-service/infrastructure/config"
-	"github.com/gstack/schema-registry-service/infrastructure/di"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/infrastructure/config"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/infrastructure/di"
 )
 
 // Build-time variables injected via ldflags.

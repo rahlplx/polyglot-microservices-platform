@@ -8,16 +8,16 @@ import (
         "os"
         "time"
 
-        "github.com/comprehensive-architecture/services/gateway/adapters/inbound/grpc"
-        "github.com/comprehensive-architecture/services/gateway/adapters/inbound/rest"
-        "github.com/comprehensive-architecture/services/gateway/adapters/outbound/discovery"
-        "github.com/comprehensive-architecture/services/gateway/adapters/outbound/observability"
-        "github.com/comprehensive-architecture/services/gateway/adapters/outbound/ratelimit"
-        "github.com/comprehensive-architecture/services/gateway/domain/models"
-        "github.com/comprehensive-architecture/services/gateway/domain/services"
-        "github.com/comprehensive-architecture/services/gateway/infrastructure/config"
-        "github.com/comprehensive-architecture/services/gateway/infrastructure/identity"
-        "github.com/comprehensive-architecture/services/gateway/infrastructure/server"
+        "github.com/rahlplx/polyglot-microservices-platform/services/gateway/adapters/inbound/grpc"
+        "github.com/rahlplx/polyglot-microservices-platform/services/gateway/adapters/inbound/rest"
+        "github.com/rahlplx/polyglot-microservices-platform/services/gateway/adapters/outbound/discovery"
+        "github.com/rahlplx/polyglot-microservices-platform/services/gateway/adapters/outbound/observability"
+        "github.com/rahlplx/polyglot-microservices-platform/services/gateway/adapters/outbound/ratelimit"
+        "github.com/rahlplx/polyglot-microservices-platform/services/gateway/domain/models"
+        "github.com/rahlplx/polyglot-microservices-platform/services/gateway/domain/services"
+        "github.com/rahlplx/polyglot-microservices-platform/services/gateway/infrastructure/config"
+        "github.com/rahlplx/polyglot-microservices-platform/services/gateway/infrastructure/identity"
+        "github.com/rahlplx/polyglot-microservices-platform/services/gateway/infrastructure/server"
 )
 
 //go:generate wire

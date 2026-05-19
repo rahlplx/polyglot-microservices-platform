@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/gstack/payment-service/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/models"
 )
 
 // TestMoneyAdd verifies that adding two Money values with the same currency

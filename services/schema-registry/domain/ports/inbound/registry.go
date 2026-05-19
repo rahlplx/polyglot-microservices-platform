@@ -7,7 +7,7 @@ package inbound
 import (
 	"context"
 
-	"github.com/gstack/schema-registry-service/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/domain/models"
 )
 
 // RegisterSchemaUseCase defines the schema registration capability. Implementations

@@ -17,9 +17,9 @@ import (
 
 	"github.com/sony/gobreaker"
 
-	"github.com/gstack/payment-service/domain/models"
-	"github.com/gstack/payment-service/domain/ports/outbound"
-	"github.com/gstack/payment-service/domain/services"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/ports/outbound"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/services"
 )
 
 // CircuitBreakerAdapter implements the CircuitBreakerPort interface using

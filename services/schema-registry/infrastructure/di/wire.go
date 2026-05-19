@@ -8,16 +8,16 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/gstack/schema-registry-service/adapters/inbound/grpc"
-	"github.com/gstack/schema-registry-service/adapters/inbound/rest"
-	"github.com/gstack/schema-registry-service/adapters/outbound/compiler"
-	"github.com/gstack/schema-registry-service/adapters/outbound/observability"
-	"github.com/gstack/schema-registry-service/adapters/outbound/persistence"
-	"github.com/gstack/schema-registry-service/adapters/outbound/validation"
-	"github.com/gstack/schema-registry-service/domain/services"
-	"github.com/gstack/schema-registry-service/infrastructure/config"
-	"github.com/gstack/schema-registry-service/infrastructure/identity"
-	"github.com/gstack/schema-registry-service/infrastructure/server"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/adapters/inbound/grpc"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/adapters/inbound/rest"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/adapters/outbound/compiler"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/adapters/outbound/observability"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/adapters/outbound/persistence"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/adapters/outbound/validation"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/domain/services"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/infrastructure/config"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/infrastructure/identity"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/infrastructure/server"
 )
 
 //go:generate wire

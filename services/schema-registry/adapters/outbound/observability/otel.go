@@ -130,7 +130,7 @@ func (inst *OTelInstrumentation) initTracing(ctx context.Context, res *resource.
 
 	otel.SetTracerProvider(inst.tracerProvider)
 	inst.tracer = inst.tracerProvider.Tracer(
-		"github.com/gstack/schema-registry-service",
+		"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry",
 		trace.WithInstrumentationVersion(inst.config.ServiceVersion),
 	)
 
@@ -161,7 +161,7 @@ func (inst *OTelInstrumentation) initMetrics(ctx context.Context, res *resource.
 
 	otel.SetMeterProvider(inst.meterProvider)
 	inst.meter = inst.meterProvider.Meter(
-		"github.com/gstack/schema-registry-service",
+		"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry",
 		metric.WithInstrumentationVersion(inst.config.ServiceVersion),
 	)
 

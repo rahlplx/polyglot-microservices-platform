@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/gstack/schema-registry-service/domain/models"
-	"github.com/gstack/schema-registry-service/domain/services"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/domain/services"
 )
 
 // --- CompatibilityService Tests ---

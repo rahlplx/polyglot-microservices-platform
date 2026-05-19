@@ -4,13 +4,13 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/gstack/payment-service/adapters/inbound/grpc"
-	"github.com/gstack/payment-service/adapters/outbound/gateway"
-	"github.com/gstack/payment-service/adapters/outbound/messaging"
-	"github.com/gstack/payment-service/adapters/outbound/persistence"
-	"github.com/gstack/payment-service/domain/models"
-	"github.com/gstack/payment-service/domain/services"
-	"github.com/gstack/payment-service/infrastructure/config"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/adapters/inbound/grpc"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/adapters/outbound/gateway"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/adapters/outbound/messaging"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/adapters/outbound/persistence"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/services"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/infrastructure/config"
 )
 
 // Container holds all wired dependencies for the Payment service.

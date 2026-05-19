@@ -126,7 +126,7 @@ func (inst *OTelInstrumentation) initTracing(ctx context.Context, res *resource.
 
 	otel.SetTracerProvider(inst.tracerProvider)
 	inst.tracer = inst.tracerProvider.Tracer(
-		"github.com/comprehensive-architecture/services/gateway",
+		"github.com/rahlplx/polyglot-microservices-platform/services/gateway",
 		trace.WithInstrumentationVersion(inst.config.ServiceVersion),
 	)
 
@@ -157,7 +157,7 @@ func (inst *OTelInstrumentation) initMetrics(ctx context.Context, res *resource.
 
 	otel.SetMeterProvider(inst.meterProvider)
 	inst.meter = inst.meterProvider.Meter(
-		"github.com/comprehensive-architecture/services/gateway",
+		"github.com/rahlplx/polyglot-microservices-platform/services/gateway",
 		metric.WithInstrumentationVersion(inst.config.ServiceVersion),
 	)
 

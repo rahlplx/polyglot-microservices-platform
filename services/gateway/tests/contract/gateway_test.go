@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/comprehensive-architecture/services/gateway/domain/models"
-	"github.com/comprehensive-architecture/services/gateway/domain/services"
+	"github.com/rahlplx/polyglot-microservices-platform/services/gateway/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/gateway/domain/services"
 )
 
 // Contract tests verify the Gateway service's API contract.

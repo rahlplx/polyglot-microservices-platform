@@ -12,9 +12,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/comprehensive-architecture/services/gateway/domain/models"
-	"github.com/comprehensive-architecture/services/gateway/domain/ports/inbound"
-	"github.com/comprehensive-architecture/services/gateway/domain/services"
+	"github.com/rahlplx/polyglot-microservices-platform/services/gateway/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/gateway/domain/ports/inbound"
+	"github.com/rahlplx/polyglot-microservices-platform/services/gateway/domain/services"
 )
 
 // Controller implements the REST API for the Gateway service.

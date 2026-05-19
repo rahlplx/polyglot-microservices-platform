@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/gstack/payment-service/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/models"
 )
 
 // OtelAdapter provides OpenTelemetry instrumentation for the Payment service.

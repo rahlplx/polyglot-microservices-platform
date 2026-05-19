@@ -6,7 +6,7 @@ package inbound
 import (
 	"context"
 
-	"github.com/comprehensive-architecture/services/gateway/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/gateway/domain/models"
 )
 
 // RoutingUseCase defines the core routing capability of the Gateway.

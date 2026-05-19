@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/gstack/payment-service/infrastructure/config"
-	"github.com/gstack/payment-service/infrastructure/di"
-	"github.com/gstack/payment-service/infrastructure/server"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/infrastructure/config"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/infrastructure/di"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/infrastructure/server"
 )
 
 func main() {

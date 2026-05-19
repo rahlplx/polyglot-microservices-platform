@@ -48,7 +48,7 @@ export interface SearchResultItem {
   readonly productId: string;
   readonly name: string;
   readonly descriptionSnippet: string;
-  readonly price: { readonly currencyCode: string; readonly units: number; readonly nanos: number };
+  readonly price: Money;
   readonly relevanceScore: number;
 }
 

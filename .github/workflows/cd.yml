@@ -1,0 +1,278 @@
+name: CD Pipeline
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false  # Never cancel deployments
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+  ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+  ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
+
+jobs:
+  # ──────────────────────────────────────────────
+  # Build and push all Docker images
+  # ──────────────────────────────────────────────
+  build-and-push:
+    name: "Build & Push / ${{ matrix.service }}"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - gateway
+          - payment
+          - schema-registry
+          - identity
+          - order
+          - catalog
+          - notification
+          - analytics
+          - rl-engine
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
+          tags: |
+            type=sha,prefix=
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: services/${{ matrix.service }}
+          file: services/${{ matrix.service }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            GIT_REF=${{ github.ref }}
+
+      - name: Attest image provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  # ──────────────────────────────────────────────
+  # Deploy to staging (on push to main)
+  # ──────────────────────────────────────────────
+  deploy-staging:
+    name: "Deploy → Staging"
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [build-and-push]
+    environment:
+      name: staging
+      url: https://staging.example.com
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x /usr/local/bin/argocd
+
+      - name: Log in to ArgoCD
+        run: |
+          argocd login "${ARGOCD_SERVER}" \
+            --auth-token "${ARGOCD_TOKEN}" \
+            --grpc-web
+
+      - name: Update manifest images to staging
+        run: |
+          # Replace image tags in staging kustomization or Helm values
+          for svc in gateway payment schema-registry identity order catalog notification analytics rl-engine; do
+            yq -i ".images[] |= select(.name | test(\"${svc}\")) .newTag = \"${GITHUB_SHA}\"" \
+              deployments/staging/kustomization.yaml 2>/dev/null || true
+          done
+
+      - name: Sync staging environment
+        run: |
+          argocd app sync platform-staging \
+            --prune \
+            --timeout 300
+
+      - name: Wait for staging rollout
+        run: |
+          argocd app wait platform-staging \
+            --health \
+            --timeout 600
+
+      - name: Verify staging deployment
+        run: |
+          argocd app get platform-staging --output json | \
+            jq -r '.status.health.status' | \
+            grep -q "Healthy" || {
+              echo "::error::Staging deployment is not healthy"
+              exit 1
+            }
+
+      - name: Notify deployment status
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          echo "Staging deployment: ${STATUS}"
+
+  # ──────────────────────────────────────────────
+  # Deploy to production (on tag v*)
+  # ──────────────────────────────────────────────
+  deploy-production:
+    name: "Deploy → Production"
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-and-push]
+    environment:
+      name: production
+      url: https://app.example.com
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x /usr/local/bin/argocd
+
+      - name: Log in to ArgoCD
+        run: |
+          argocd login "${ARGOCD_SERVER}" \
+            --auth-token "${ARGOCD_TOKEN}" \
+            --grpc-web
+
+      - name: Update manifest images for production
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          for svc in gateway payment schema-registry identity order catalog notification analytics rl-engine; do
+            yq -i ".images[] |= select(.name | test(\"${svc}\")) .newTag = \"${VERSION}\"" \
+              deployments/production/kustomization.yaml 2>/dev/null || true
+          done
+
+      - name: Sync production environment
+        run: |
+          argocd app sync platform-production \
+            --prune \
+            --timeout 300
+
+      - name: Wait for production rollout
+        run: |
+          argocd app wait platform-production \
+            --health \
+            --timeout 900
+
+      - name: Verify production deployment
+        run: |
+          argocd app get platform-production --output json | \
+            jq -r '.status.health.status' | \
+            grep -q "Healthy" || {
+              echo "::error::Production deployment is not healthy — initiating rollback"
+              exit 1
+            }
+
+      - name: Production health gate — smoke tests
+        run: |
+          # Run basic smoke tests against production
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://app.example.com/healthz")
+          if [ "${HTTP_STATUS}" -ne 200 ]; then
+            echo "::error::Health check failed (HTTP ${HTTP_STATUS}) — initiating rollback"
+            exit 1
+          fi
+          echo "Production smoke tests passed"
+
+      - name: Notify deployment success
+        if: success()
+        run: |
+          echo "Production deployment ${{ steps.version.outputs.VERSION }} completed successfully"
+
+  # ──────────────────────────────────────────────
+  # Rollback (manual / failure-triggered)
+  # ──────────────────────────────────────────────
+  rollback:
+    name: "Rollback ${{ github.event.deployment.environment || 'staging' }}"
+    runs-on: ubuntu-latest
+    if: failure()
+    needs: [deploy-staging, deploy-production]
+    steps:
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x /usr/local/bin/argocd
+
+      - name: Log in to ArgoCD
+        run: |
+          argocd login "${ARGOCD_SERVER}" \
+            --auth-token "${ARGOCD_TOKEN}" \
+            --grpc-web
+
+      - name: Determine target environment
+        id: env
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "APP=platform-production" >> "$GITHUB_OUTPUT"
+            echo "ENVIRONMENT=production" >> "$GITHUB_OUTPUT"
+          else
+            echo "APP=platform-staging" >> "$GITHUB_OUTPUT"
+            echo "ENVIRONMENT=staging" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rollback to previous revision
+        run: |
+          argocd app rollback ${{ steps.env.outputs.APP }} \
+            --prune
+
+      - name: Wait for rollback to complete
+        run: |
+          argocd app wait ${{ steps.env.outputs.APP }} \
+            --health \
+            --timeout 600
+
+      - name: Verify rollback
+        run: |
+          argocd app get ${{ steps.env.outputs.APP }} --output json | \
+            jq -r '.status.health.status' | \
+            grep -q "Healthy" || {
+              echo "::error::Rollback verification failed — manual intervention required"
+              exit 1
+            }
+
+      - name: Notify rollback
+        if: always()
+        run: |
+          echo "Rollback of ${{ steps.env.outputs.ENVIRONMENT }} completed with status: ${{ job.status }}"

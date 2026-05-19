@@ -17,10 +17,10 @@ import (
         "google.golang.org/grpc/keepalive"
         "google.golang.org/grpc/reflection"
 
-        grpcHandler "github.com/gstack/schema-registry-service/adapters/inbound/grpc"
-        restController "github.com/gstack/schema-registry-service/adapters/inbound/rest"
-        "github.com/gstack/schema-registry-service/adapters/outbound/observability"
-        "github.com/gstack/schema-registry-service/infrastructure/identity"
+        grpcHandler "github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/adapters/inbound/grpc"
+        restController "github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/adapters/inbound/rest"
+        "github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/adapters/outbound/observability"
+        "github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/infrastructure/identity"
 
         "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
         "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"

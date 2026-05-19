@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 
-	"github.com/gstack/payment-service/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/models"
 )
 
 // KafkaEventPublisher implements the EventPublisher interface using Kafka.

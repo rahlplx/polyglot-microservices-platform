@@ -15,9 +15,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/gstack/schema-registry-service/domain/models"
-	"github.com/gstack/schema-registry-service/domain/ports/inbound"
-	"github.com/gstack/schema-registry-service/domain/services"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/domain/ports/inbound"
+	"github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/domain/services"
 )
 
 // Proto-generated types would normally come from the api/proto directory.

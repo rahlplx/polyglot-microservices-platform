@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gstack/payment-service/domain/models"
-	"github.com/gstack/payment-service/domain/services"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/models"
+	"github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/services"
 	"log/slog"
 	"os"
 )
