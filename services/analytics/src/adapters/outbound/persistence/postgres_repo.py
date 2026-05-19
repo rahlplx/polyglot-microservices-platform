@@ -176,8 +176,12 @@ class PostgresEventRepository:
             try:
                 self.store_event(event)
                 inserted += 1
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.error(
+                    "Failed to store event in batch (event_id=%s): %s",
+                    event.get("id", "unknown"),
+                    exc,
+                )
 
         return inserted
 

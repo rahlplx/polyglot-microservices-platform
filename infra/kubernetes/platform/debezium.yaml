@@ -62,6 +62,7 @@ spec:
         app.kubernetes.io/component: cdc
         app.kubernetes.io/part-of: polyglot-microservices
       annotations:
+        spiffe.io/inject: "true"
         prometheus.io/scrape: "true"
         prometheus.io/port: "9308"
     spec:

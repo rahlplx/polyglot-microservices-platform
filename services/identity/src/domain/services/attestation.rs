@@ -138,7 +138,7 @@ impl AttestationUseCase for AttestationService {
         if let Err(e) = self.store.update_workload(&attested_workload) {
             // Log the error but don't fail the attestation
             // The attestation itself is valid; only the persistence failed
-            let _ = e; // Suppress unused variable warning
+            tracing::warn!(error = %e, "Failed to persist attested workload state");
         }
 
         // Step 6: Return successful attestation result

@@ -79,7 +79,7 @@ impl Config {
 
             database_url: env_or(
                 "IDENTITY_DATABASE_URL",
-                "postgres://identity:identity@localhost:5432/identity",
+                "postgres://localhost:5432/identity",
             ),
             database_max_connections: env_or_parse("IDENTITY_DATABASE_MAX_CONNECTIONS", 10),
             database_min_connections: env_or_parse("IDENTITY_DATABASE_MIN_CONNECTIONS", 2),

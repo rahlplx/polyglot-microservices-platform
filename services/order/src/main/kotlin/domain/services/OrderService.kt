@@ -134,7 +134,7 @@ class OrderService(
 
         val order = findOrderOrThrow(orderId)
 
-        if (!order.isCancellable && order.status != OrderStatus.FULFILLING) {
+        if (order.status != OrderStatus.FULFILLING) {
             throw OrderNotCompletableException(
                 "Order $orderId cannot be completed from status ${order.status}",
                 order.status

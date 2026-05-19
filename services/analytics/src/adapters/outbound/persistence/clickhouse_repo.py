@@ -272,17 +272,17 @@ class ClickHouseTimeSeriesRepository:
             service,
             name,
             'avg' AS aggregation,
-            '{interval.value}' AS window,
+            %(window)s AS window,
             {agg_func}(value) AS value,
             count() AS sample_count,
             tags
         FROM metrics
-        WHERE name = '{metric_name}'
+        WHERE name = %(metric_name)s
         GROUP BY timestamp, service, name, tags
         """
 
         try:
-            self._client.command(create_view_sql)
+            self._client.command(create_view_sql, parameters={"metric_name": metric_name, "window": interval.value})
             logger.info("Created rollup view: %s", view_name)
         except Exception as exc:
             logger.error("Failed to create rollup view: %s", exc)
@@ -368,14 +368,25 @@ class ClickHouseTimeSeriesRepository:
         time_bucket = self._interval_sql(window)
 
         where_clauses = [
-            f"name = '{metric_name}'",
-            f"timestamp >= '{time_range.start.strftime('%Y-%m-%d %H:%M:%S')}'",
-            f"timestamp <= '{time_range.end.strftime('%Y-%m-%d %H:%M:%S')}'",
+            "name = %(metric_name)s",
+            "timestamp >= %(start_time)s",
+            "timestamp <= %(end_time)s",
         ]
+        query_params: dict[str, Any] = {
+            "metric_name": metric_name,
+            "start_time": time_range.start.strftime("%Y-%m-%d %H:%M:%S"),
+            "end_time": time_range.end.strftime("%Y-%m-%d %H:%M:%S"),
+            "aggregation": aggregation.value,
+            "window": window.value,
+        }
 
         if labels:
             for key, value in labels.items():
-                where_clauses.append(f"tags['{key}'] = '{value}'")
+                param_key = f"label_key_{key.replace('.', '_').replace('-', '_')}"
+                param_val = f"label_val_{key.replace('.', '_').replace('-', '_')}"
+                where_clauses.append(f"tags[%({param_key})s] = %({param_val})s")
+                query_params[param_key] = key
+                query_params[param_val] = value
 
         where = " AND ".join(where_clauses)
 
@@ -395,13 +406,13 @@ class ClickHouseTimeSeriesRepository:
                 toStartOfInterval(timestamp, INTERVAL {time_bucket}) AS bucket,
                 {agg_func}(value) AS agg_value
             FROM aggregated_metrics
-            WHERE {where} AND aggregation = '{aggregation.value}' AND window = '{window.value}'
+            WHERE {where} AND aggregation = %(aggregation)s AND window = %(window)s
             GROUP BY bucket
             ORDER BY bucket
             """
 
         try:
-            result = self._client.query(sql)
+            result = self._client.query(sql, parameters=query_params)
             points = [
                 DataPoint(timestamp=row[0].replace(tzinfo=timezone.utc) if isinstance(row[0], datetime) else datetime.now(tz=timezone.utc), value=float(row[1]))
                 for row in result.result_rows

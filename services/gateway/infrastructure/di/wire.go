@@ -188,8 +188,8 @@ func configToDomainPolicies(cfg *config.Config) map[string]models.RateLimitPolic
         return policies
 }
 
-// timeNow returns the current time. Can be overridden in tests for fixed time.
-var timeNow = time.Now
+// timeNow returns the current UTC time. Can be overridden in tests for fixed time.
+var timeNow = func() time.Time { return time.Now().UTC() }
 
 // WireInject is the Wire provider set. In production, `wire` tool would
 // generate wire_gen.go from this. For this implementation, InitializeApp

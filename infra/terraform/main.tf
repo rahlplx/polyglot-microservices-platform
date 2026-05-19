@@ -41,18 +41,20 @@ module "vpc" {
   region        = var.region
   vpc_cidr      = var.vpc_cidr
   project_name  = var.project_name
+  common_tags   = var.common_tags
 }
 
 module "kubernetes" {
   source = "./modules/kubernetes"
 
-  environment       = var.environment
-  region            = var.region
-  cluster_name      = var.cluster_name
-  node_count        = var.node_count
+  environment        = var.environment
+  region             = var.region
+  cluster_name       = var.cluster_name
+  node_count         = var.node_count
   node_instance_type = var.node_instance_type
-  vpc_id            = module.vpc.vpc_id
-  subnet_ids        = module.vpc.private_subnet_ids
+  vpc_id             = module.vpc.vpc_id
+  subnet_ids         = module.vpc.private_subnet_ids
+  common_tags        = var.common_tags
 
   depends_on = [module.vpc]
 }
@@ -60,14 +62,17 @@ module "kubernetes" {
 module "database" {
   source = "./modules/database"
 
-  environment            = var.environment
-  region                 = var.region
-  cluster_name           = var.cluster_name
+  environment             = var.environment
+  region                  = var.region
+  cluster_name            = var.cluster_name
   database_instance_class = var.database_instance_class
-  database_name          = var.database_name
-  database_username      = var.database_username
-  vpc_id                 = module.vpc.vpc_id
-  subnet_ids             = module.vpc.private_subnet_ids
+  database_name           = var.database_name
+  database_username       = var.database_username
+  database_password       = var.database_password
+  vpc_id                  = module.vpc.vpc_id
+  vpc_cidr                = module.vpc.vpc_cidr
+  subnet_ids              = module.vpc.private_subnet_ids
+  common_tags             = var.common_tags
 
   depends_on = [module.vpc]
 }

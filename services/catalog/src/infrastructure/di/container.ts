@@ -69,7 +69,7 @@ export async function createContainer(config: AppConfig): Promise<AppContainer> 
     max: config.database.maxPoolSize,
     idleTimeoutMillis: config.database.idleTimeoutMs,
     connectionTimeoutMillis: config.database.connectionTimeoutMs,
-    ssl: config.database.sslEnabled ? { rejectUnauthorized: false } : undefined,
+    ssl: config.database.sslEnabled ? { rejectUnauthorized: true } : undefined,
   });
 
   // Initialize database schema

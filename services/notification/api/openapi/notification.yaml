@@ -1,0 +1,265 @@
+openapi: 3.1.0
+info:
+  title: Notification Service API
+  description: >
+    Service-local OpenAPI spec for the Notification Service (Python).
+
+    Multi-channel notification delivery with ML optimization.
+    Handles email, SMS, push, and in-app notifications with
+    intelligent channel selection and delivery tracking.
+
+    NOTE: The centralized canonical spec is the source of truth and lives at
+    schemas/openapi/notification/notification.yaml. This service-local copy is provided for
+    service-level tooling (mock generation, gateway wiring, contract tests) and
+    must be kept in sync with the centralized version.
+  version: 1.0.0
+  contact:
+    name: Platform Team
+
+servers:
+  - url: https://notification.internal.example.com/v1
+    description: Internal gRPC-Gateway endpoint
+
+paths:
+  /notifications:
+    post:
+      operationId: sendNotification
+      summary: Send a notification through the optimal channel
+      tags: [Notifications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendNotificationRequest'
+      responses:
+        '200':
+          description: Notification sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendNotificationResponse'
+        '400':
+          description: Invalid notification request
+
+  /notifications/{notificationId}:
+    get:
+      operationId: getNotificationStatus
+      summary: Get notification delivery status
+      tags: [Notifications]
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Notification status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetNotificationStatusResponse'
+        '404':
+          description: Notification not found
+
+  /preferences/{userId}:
+    get:
+      operationId: getNotificationPreferences
+      summary: Get notification preferences for a user
+      tags: [Preferences]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Notification preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetNotificationPreferencesResponse'
+
+    put:
+      operationId: updateNotificationPreferences
+      summary: Update notification preferences
+      tags: [Preferences]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNotificationPreferencesRequest'
+      responses:
+        '200':
+          description: Preferences updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateNotificationPreferencesResponse'
+
+components:
+  schemas:
+    NotificationType:
+      type: string
+      enum:
+        - NOTIFICATION_TYPE_UNSPECIFIED
+        - NOTIFICATION_TYPE_ORDER_CONFIRMATION
+        - NOTIFICATION_TYPE_PAYMENT_RECEIVED
+        - NOTIFICATION_TYPE_SHIPPING_UPDATE
+        - NOTIFICATION_TYPE_PROMOTIONAL
+        - NOTIFICATION_TYPE_SYSTEM_ALERT
+
+    NotificationStatus:
+      type: string
+      enum:
+        - NOTIFICATION_STATUS_UNSPECIFIED
+        - NOTIFICATION_STATUS_QUEUED
+        - NOTIFICATION_STATUS_SENDING
+        - NOTIFICATION_STATUS_DELIVERED
+        - NOTIFICATION_STATUS_FAILED
+        - NOTIFICATION_STATUS_BOUNCED
+
+    Notification:
+      type: object
+      properties:
+        notification_id:
+          type: string
+        user_id:
+          type: string
+        channel:
+          type: string
+          description: "email, sms, push, in_app"
+        type:
+          $ref: '#/components/schemas/NotificationType'
+        subject:
+          type: string
+        body:
+          type: string
+        template_params:
+          type: object
+          additionalProperties:
+            type: string
+        status:
+          $ref: '#/components/schemas/NotificationStatus'
+        created_at:
+          type: string
+          format: date-time
+        delivered_at:
+          type: string
+          format: date-time
+
+    DeliveryAttempt:
+      type: object
+      properties:
+        channel:
+          type: string
+        success:
+          type: boolean
+        attempted_at:
+          type: string
+          format: date-time
+        error_message:
+          type: string
+
+    ChannelPreference:
+      type: object
+      properties:
+        channel:
+          type: string
+        enabled:
+          type: boolean
+        opted_in_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationType'
+
+    QuietHours:
+      type: object
+      properties:
+        start_time:
+          type: string
+          description: HH:MM in user's timezone
+        end_time:
+          type: string
+        timezone:
+          type: string
+
+    SendNotificationRequest:
+      type: object
+      required: [user_id, type]
+      properties:
+        user_id:
+          type: string
+        type:
+          $ref: '#/components/schemas/NotificationType'
+        channel_preference:
+          type: string
+          description: Preferred channel (empty = ML-optimized)
+        subject:
+          type: string
+        body:
+          type: string
+        template_params:
+          type: object
+          additionalProperties:
+            type: string
+
+    SendNotificationResponse:
+      type: object
+      properties:
+        notification:
+          $ref: '#/components/schemas/Notification'
+        recommended_channel:
+          type: string
+          description: ML-predicted optimal channel
+        channel_confidence:
+          type: number
+          format: double
+          description: Confidence score (0.0 - 1.0)
+
+    GetNotificationStatusResponse:
+      type: object
+      properties:
+        notification:
+          $ref: '#/components/schemas/Notification'
+        attempts:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryAttempt'
+
+    GetNotificationPreferencesResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChannelPreference'
+        quiet_hours:
+          $ref: '#/components/schemas/QuietHours'
+
+    UpdateNotificationPreferencesRequest:
+      type: object
+      properties:
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChannelPreference'
+        quiet_hours:
+          $ref: '#/components/schemas/QuietHours'
+
+    UpdateNotificationPreferencesResponse:
+      type: object
+      properties:
+        updated:
+          type: boolean

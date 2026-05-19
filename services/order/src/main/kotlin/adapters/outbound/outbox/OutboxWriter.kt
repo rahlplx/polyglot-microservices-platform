@@ -120,7 +120,7 @@ class OutboxWriter(
     /**
      * Get the count of unprocessed outbox entries (for monitoring).
      */
-    suspend fun getUnprocessedCount(): Long = orderRepository.readOutbox(0).size.toLong()
+    suspend fun getUnprocessedCount(): Long = orderRepository.countUnprocessed()
 
     /**
      * Get metrics about the outbox relay.

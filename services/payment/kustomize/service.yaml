@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment
+  labels:
+    app.kubernetes.io/name: payment
+    app.kubernetes.io/component: payment
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: payment
+  ports:
+    - name: grpc
+      port: 50055
+      targetPort: grpc
+      protocol: TCP

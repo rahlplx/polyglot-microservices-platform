@@ -122,6 +122,7 @@ spec:
         app.kubernetes.io/component: observability
         app.kubernetes.io/part-of: polyglot-microservices
       annotations:
+        spiffe.io/inject: "true"
         prometheus.io/scrape: "true"
         prometheus.io/port: "8889"
     spec:
