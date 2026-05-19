@@ -2,9 +2,9 @@
   "session_id": "",
   "started_at": "",
   "tasks_completed": 0,
-  "last_task_type": "",
-  "last_task_id": "",
-  "last_activity": "",
+  "last_task_type": "document",
+  "last_task_id": "7",
+  "last_activity": "2026-05-19T02:24:18Z",
   "gstack_version": "1.40.0.0",
   "freeze_state": false,
   "gstack_team_mode": true,
@@ -18,7 +18,7 @@
     "5": "pending",
     "6": "pending"
   },
-  "nlp_confidence": "",
-  "nlp_intent": "",
+  "nlp_confidence": "51.1%",
+  "nlp_intent": "Document Creation",
   "reliability_last_updated": ""
 }

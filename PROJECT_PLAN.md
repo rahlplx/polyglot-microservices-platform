@@ -44,22 +44,23 @@ session_start → check_core_files → verify_gstack → check_freeze → inject
 
 ## Phase 1: Discovery & Specification
 
-**Status:** PENDING
+**Status:** IN PROGRESS (7/8 spec items PASS)
 **Gate:** Specification document generated and reviewed via /office-hours
 **Duration target:** 1-2 sessions per feature
+**Canonical spec:** `/home/z/my-project/SPECIFICATION.md`
 
 ### Spec-Driven Requirements
 
 | ID | Requirement | Verification | Status |
 |----|-------------|-------------|--------|
-| 1.1 | Problem statement documented with premises | /office-hours output exists in worklog | PENDING |
-| 1.2 | Alternatives analyzed (min 3 options) | Documented in specification | PENDING |
-| 1.3 | Success criteria defined with measurable outcomes | Specific, quantifiable criteria | PENDING |
-| 1.4 | Task classification completed (Type 1-4) | Classification recorded in session state | PENDING |
-| 1.5 | Token budget estimated for implementation | Budget logged in TODO | PENDING |
-| 1.6 | Dependencies identified and ordered | Dependency map in specification | PENDING |
-| 1.7 | Risk assessment with mitigation strategies | Risk matrix documented | PENDING |
-| 1.8 | Review gauntlet passed (CEO + Eng + Design + DX) | /autoplan or individual reviews completed | PENDING |
+| 1.1 | Problem statement documented with premises | 4 premises in SPECIFICATION.md | PASS |
+| 1.2 | Alternatives analyzed (min 3 options) | 3 options in SPECIFICATION.md, Option C selected | PASS |
+| 1.3 | Success criteria defined with measurable outcomes | 9 criteria (SC-1 through SC-9) with targets | PASS |
+| 1.4 | Task classification completed (Type 1-4) | All 4 types mapped across phases | PASS |
+| 1.5 | Token budget estimated for implementation | 150K+ tokens across 6 phases | PASS |
+| 1.6 | Dependencies identified and ordered | 6-phase timeline + dependency chain | PASS |
+| 1.7 | Risk assessment with mitigation strategies | 8 risks with probability/impact/mitigation | PASS |
+| 1.8 | Review gauntlet passed (CEO + Eng + Design + DX) | Checklists defined, need execution | PENDING |
 
 ### Auto-Trigger Mapping
 
