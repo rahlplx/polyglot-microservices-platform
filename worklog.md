@@ -696,3 +696,37 @@ Stage Summary:
 - Overlays: 3 files (dev/staging/production)
 - CI/CD: 2 files (schema-ci, service-ci)
 - Commit: 31ad3cd infra(k8s): add Kubernetes infrastructure manifests [P3-3.1]
+
+---
+Task ID: P2-2.4-auth
+Agent: Orchestrator Agent (Schema Generation Track)
+Project Phase: 2 → 3 (Schema Track execution per Phase 2 parallel tracks)
+Task: Generate foundational API schemas for core user authentication service per Phase 2 Schema Generation Track
+
+Work Log:
+- Reviewed PHASE2_DESIGN_SPEC.md Section 2A (Service Registry) and 2B (API Schema Repository Structure)
+- Audited existing proto schemas: 17 files across 8 packages (common, gateway, identity, catalog, order, payment, notification, analytics)
+- Identified critical gap: Identity service handles SPIFFE/SPIRE workload identity (service-to-service mTLS) but NO schema for user-facing authentication (login, register, JWT tokens, sessions, RBAC)
+- Audited OpenAPI specs: all directories exist but 0 YAML files (empty)
+- Audited Pact contracts: all directories exist but 0 contract files (empty)
+- Created Git-Flow branch: schema/P2-2.4-auth-v1
+- Created auth/v1/auth.proto (580+ lines): AuthService with 13 RPCs (Register, Login, RefreshToken, Logout, ValidateToken, RequestPasswordReset, ResetPassword, ChangePassword, GetProfile, UpdateProfile, ListSessions, RevokeSession)
+- Created auth/v1/token.proto (200+ lines): TokenService with 6 RPCs (IntrospectToken, CreateApiKey, ListApiKeys, RevokeApiKey, GetPermissions, CheckPermission)
+- Created openapi/auth/v1.yaml (600+ lines): Full OpenAPI 3.1 spec for external auth REST API with 14 endpoints, security schemes (BearerAuth + ApiKeyAuth), RFC 7807 ProblemDetail errors
+- Created contracts/gateway-auth/gateway-auth.json: 3 Pact interactions (valid token, expired token, insufficient permissions)
+- Created contracts/auth-catalog/auth-catalog.json: 2 Pact interactions (check permission allowed, check permission denied for suspended user)
+- Created contracts/auth-order/auth-order.json: 2 Pact interactions (get effective permissions, check order:create permission)
+- Committed on branch schema/P2-2.4-auth-v1: d01cf5d
+
+Spec Items Verified:
+- 2.2 Design variants: PASS (auth extends Variant B with user identity layer)
+- 2.4 Component inventory: PASS (auth service ports + adapters defined in proto)
+
+Stage Summary:
+- User authentication Protobuf schemas: 2 files (auth.proto + token.proto) with 2 gRPC services, 19 RPCs
+- OpenAPI 3.1 spec: 14 REST endpoints with full schema definitions and security
+- Pact contracts: 3 consumer-provider pairs with 7 interactions total
+- Key design decision: AuthService (user-facing) separate from IdentityService (workload-facing) — same Rust binary, separate gRPC services, clean domain boundary
+- RBAC model: 5 roles (viewer, customer, operator, admin, super_admin) with resource-level permissions
+- Multi-method auth: email/password, OAuth2 (Google/GitHub/Microsoft), API keys, TOTP MFA
+- Branch: schema/P2-2.4-auth-v1

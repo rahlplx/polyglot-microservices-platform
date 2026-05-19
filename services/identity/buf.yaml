@@ -1,0 +1,23 @@
+# ===========================================================================
+# Identity Service - Buf Configuration
+# ===========================================================================
+# Buf lint and breaking change detection for the Identity service
+# proto schemas.
+# ===========================================================================
+
+version: v2
+modules:
+  - path: proto
+    name: buf.build/comprehensive-architecture/identity
+lint:
+  use:
+    - DEFAULT
+  enum_zero_value_suffix: _UNSPECIFIED
+  rpc_allow_same_request_response: false
+  service_suffix: Service
+  # Identity-specific lint rules
+  rpc_required_same_request_message_name: false
+breaking:
+  use:
+    - FILE
+  ignore_unstable_packages: true

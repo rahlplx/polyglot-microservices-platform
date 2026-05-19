@@ -1,0 +1,367 @@
+openapi: 3.1.0
+info:
+  title: Gateway Service API
+  description: |
+    The Gateway Service provides ingress routing, rate limiting,
+    health checking, and route configuration for the microservices
+    architecture. It is the single entry point for all external traffic.
+
+    ## Authentication
+    - **External clients:** API Key in `X-API-Key` header + OAuth2 Bearer token
+    - **Internal services:** SPIFFE/SPIRE mTLS with SVID validation
+    - **Health endpoint:** Unauthenticated (required by load balancers and K8s probes)
+
+    ## Error Format
+    All errors follow RFC 7807 Problem Details:
+    ```json
+    {
+      "error": "Not Found",
+      "code": "ROUTE_NOT_FOUND",
+      "message": "no route matches GET /unknown"
+    }
+    ```
+  version: 1.0.0
+  contact:
+    name: Platform Team
+  license:
+    name: Proprietary
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: https://api.example.com
+    description: Production
+
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: Rate Limiting
+    description: Rate limit status queries
+  - name: Routes
+    description: Route configuration queries
+  - name: Proxy
+    description: Request proxying
+
+paths:
+  /api/v1/gateway/health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Get gateway health status
+      description: |
+        Returns the current health status of the gateway and its
+        downstream dependencies. This endpoint is unauthenticated
+        and is used by Kubernetes liveness/readiness probes.
+      responses:
+        '200':
+          description: Health check response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+              example:
+                status: SERVING
+                uptime: "2h30m15s"
+                downstream:
+                  - service: catalog
+                    status: SERVING
+                  - service: order
+                    status: DEGRADED
+                    error: "2 of 5 endpoints unhealthy"
+
+  /api/v1/gateway/rate-limit/{clientID}:
+    get:
+      tags: [Rate Limiting]
+      operationId: getRateLimit
+      summary: Query rate limit status
+      description: |
+        Returns the current rate limit status for a given client and route
+        combination. Does not consume a token — safe for observability queries.
+      security:
+        - mtls: []
+        - apiKey: []
+      parameters:
+        - name: clientID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Client identifier
+        - name: route
+          in: query
+          schema:
+            type: string
+          description: Route pattern to check
+        - name: window
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Window duration in seconds (0 = use policy default)
+      responses:
+        '200':
+          description: Rate limit status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitResponse'
+              example:
+                allowed: true
+                remaining: 95
+                reset_at: "2024-01-15T10:01:00Z"
+                policy: default
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+
+  /api/v1/gateway/routes/{service}:
+    get:
+      tags: [Routes]
+      operationId: getRouteConfig
+      summary: Get route configuration
+      description: |
+        Returns the current routing configuration for a specific service
+        or all services.
+      security:
+        - mtls: []
+        - apiKey: []
+      parameters:
+        - name: service
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Service name to query
+      responses:
+        '200':
+          description: Route configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteConfigResponse'
+        '404':
+          description: Service not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /{path}:
+    parameters:
+      - name: path
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Request path to route
+    get:
+      tags: [Proxy]
+      operationId: routeGet
+      summary: Proxy GET request
+      description: Routes the request to the appropriate upstream service.
+      security:
+        - apiKey: []
+        - mtls: []
+      responses:
+        '200':
+          description: Successful upstream response
+        '429':
+          description: Rate limit exceeded
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds until retry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream unavailable
+    post:
+      tags: [Proxy]
+      operationId: routePost
+      summary: Proxy POST request
+      security:
+        - apiKey: []
+        - mtls: []
+      responses:
+        '200':
+          description: Successful upstream response
+        '429':
+          description: Rate limit exceeded
+        '502':
+          description: Upstream unavailable
+    put:
+      tags: [Proxy]
+      operationId: routePut
+      summary: Proxy PUT request
+      security:
+        - apiKey: []
+        - mtls: []
+      responses:
+        '200':
+          description: Successful upstream response
+    patch:
+      tags: [Proxy]
+      operationId: routePatch
+      summary: Proxy PATCH request
+      security:
+        - apiKey: []
+        - mtls: []
+      responses:
+        '200':
+          description: Successful upstream response
+    delete:
+      tags: [Proxy]
+      operationId: routeDelete
+      summary: Proxy DELETE request
+      security:
+        - apiKey: []
+        - mtls: []
+      responses:
+        '200':
+          description: Successful upstream response
+
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    mtls:
+      type: mutualTLS
+      description: SPIFFE/SPIRE mTLS with SVID validation
+
+  schemas:
+    HealthCheckResponse:
+      type: object
+      required: [status, uptime]
+      properties:
+        status:
+          type: string
+          enum: [UNKNOWN, SERVING, NOT_SERVING, DEGRADED]
+          description: Overall gateway health status
+        uptime:
+          type: string
+          description: Gateway uptime as duration string
+          example: "2h30m15s"
+        downstream:
+          type: array
+          items:
+            $ref: '#/components/schemas/DownstreamHealth'
+
+    DownstreamHealth:
+      type: object
+      required: [service, status]
+      properties:
+        service:
+          type: string
+          description: Service name
+        status:
+          type: string
+          enum: [UNKNOWN, SERVING, NOT_SERVING, DEGRADED]
+        latency:
+          type: string
+          description: Last measured latency
+        error:
+          type: string
+          description: Last error message (empty if healthy)
+
+    RateLimitResponse:
+      type: object
+      required: [allowed, remaining, policy]
+      properties:
+        allowed:
+          type: boolean
+          description: Whether the request would be allowed
+        remaining:
+          type: integer
+          format: int32
+          description: Remaining requests in the current window
+        reset_at:
+          type: string
+          format: date-time
+          description: When the rate limit window resets
+        policy:
+          type: string
+          description: Applied rate limit policy name
+        retry_after:
+          type: string
+          description: Duration to wait before retrying
+
+    RouteConfigResponse:
+      type: object
+      required: [routes, timeout_ms]
+      properties:
+        routes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Route'
+        middleware:
+          type: array
+          items:
+            type: string
+        timeout_ms:
+          type: integer
+          format: int32
+          description: Default timeout in milliseconds
+
+    Route:
+      type: object
+      required: [id, pattern, upstream_service]
+      properties:
+        id:
+          type: string
+          description: Unique route identifier
+        pattern:
+          type: string
+          description: Path pattern
+          example: "/api/v1/catalog/*"
+        methods:
+          type: array
+          items:
+            type: string
+          description: Allowed HTTP methods (empty = all)
+        upstream_service:
+          type: string
+          description: Target service name
+        upstream_path:
+          type: string
+          description: Rewritten upstream path
+        timeout:
+          type: string
+          description: Request timeout
+        retry_count:
+          type: integer
+          format: int32
+        rate_limit_policy:
+          type: string
+        require_auth:
+          type: boolean
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
+    ErrorResponse:
+      type: object
+      required: [error, code, message]
+      properties:
+        error:
+          type: string
+          description: HTTP status text
+          example: "Not Found"
+        code:
+          type: string
+          description: Machine-readable error code
+          example: "ROUTE_NOT_FOUND"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "no route matches GET /unknown"

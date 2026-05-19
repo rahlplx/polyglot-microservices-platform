@@ -1,0 +1,300 @@
+/**
+ * Meilisearch Search Index Adapter
+ *
+ * Implements the SearchIndex outbound port using the Meilisearch client.
+ * Handles product indexing, full-text search with filters, faceting,
+ * and autocomplete suggestions.
+ */
+import { MeiliSearch, type Index, type SearchResponse } from 'meilisearch';
+import type {
+  SearchIndex,
+  SearchDocument,
+  SearchQuery,
+  SearchResultItem,
+  SearchIndexResult,
+} from '../../../domain/ports/outbound/SearchIndex';
+import type { Product } from '../../../domain/models';
+import { ProductStatus, SearchIndexUnavailableError } from '../../../domain/models';
+import { SortBy } from '../../../domain/ports/inbound/SearchCatalog';
+import type { FacetValue } from '../../../domain/ports/inbound/SearchCatalog';
+
+// ---------------------------------------------------------------------------
+// Configuration
+// ---------------------------------------------------------------------------
+
+export interface MeilisearchConfig {
+  readonly host: string;
+  readonly apiKey: string;
+  readonly indexName: string;
+}
+
+// ---------------------------------------------------------------------------
+// Adapter Implementation
+// ---------------------------------------------------------------------------
+
+export class MeilisearchAdapter implements SearchIndex {
+  private readonly client: MeiliSearch;
+  private readonly indexName: string;
+  private indexInitialized = false;
+
+  constructor(config: MeilisearchConfig) {
+    this.client = new MeiliSearch({
+      host: config.host,
+      apiKey: config.apiKey,
+    });
+    this.indexName = config.indexName;
+  }
+
+  // -------------------------------------------------------------------------
+  // Public API
+  // -------------------------------------------------------------------------
+
+  async index(product: Product): Promise<void> {
+    const idx = await this.getIndex();
+    const doc = this.toDocument(product);
+    await idx.addDocuments([doc], { primaryKey: 'productId' });
+  }
+
+  async bulkIndex(products: Product[]): Promise<void> {
+    if (products.length === 0) {
+      return;
+    }
+    const idx = await this.getIndex();
+    const docs = products.map((p) => this.toDocument(p));
+    // Batch in groups of 500 for balanced indexing
+    const batchSize = 500;
+    for (let i = 0; i < docs.length; i += batchSize) {
+      const batch = docs.slice(i, i + batchSize);
+      await idx.addDocuments(batch, { primaryKey: 'productId' });
+    }
+  }
+
+  async search(query: SearchQuery): Promise<SearchIndexResult> {
+    try {
+      const idx = await this.getIndex();
+
+      // Build Meilisearch filter expressions
+      const filters = this.buildFilters(query.filters);
+      const sort = this.buildSort(query.sortBy);
+
+      const searchParams: Record<string, unknown> = {
+        q: query.query,
+        filter: filters.length > 0 ? filters : undefined,
+        sort: sort.length > 0 ? sort : undefined,
+        hitsPerPage: query.pageSize,
+        page: query.pageToken ? this.decodePageToken(query.pageToken) : 1,
+        attributesToRetrieve: [
+          'productId', 'name', 'description', 'category', 'tags',
+          'priceUnits', 'priceNanos', 'currencyCode', 'availableQuantity', 'status',
+        ],
+        attributesToCrop: ['description'],
+        cropLength: 200,
+        facets: query.facetFields.length > 0 ? query.facetFields : undefined,
+      };
+
+      const response: SearchResponse<SearchDocument> = await idx.search(
+        query.query,
+        searchParams
+      );
+
+      return this.toSearchResult(response, query.facetFields);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown search error';
+      throw new SearchIndexUnavailableError(
+        `Meilisearch search failed: ${message}`
+      );
+    }
+  }
+
+  async delete(productId: string): Promise<void> {
+    const idx = await this.getIndex();
+    await idx.deleteDocument(productId);
+  }
+
+  async refresh(): Promise<void> {
+    // Meilisearch auto-refreshes; this is a no-op for API compatibility
+  }
+
+  async suggest(prefix: string, maxSuggestions: number): Promise<string[]> {
+    try {
+      const idx = await this.getIndex();
+      const response = await idx.search(prefix, {
+        limit: maxSuggestions,
+        attributesToRetrieve: ['name'],
+      });
+      return response.hits.map((hit) => hit.name);
+    } catch {
+      return [];
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Connection Management
+  // -------------------------------------------------------------------------
+
+  async ping(): Promise<boolean> {
+    try {
+      await this.client.health();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Private Helpers
+  // -------------------------------------------------------------------------
+
+  private async getIndex(): Promise<Index<SearchDocument>> {
+    if (!this.indexInitialized) {
+      const task = await this.client.createIndex(this.indexName, {
+        primaryKey: 'productId',
+      });
+      await this.client.waitForTask(task.taskUid);
+
+      const idx = this.client.index<SearchDocument>(this.indexName);
+
+      // Configure filterable and sortable attributes
+      await idx.updateFilterableAttributes([
+        'category', 'tags', 'status', 'currencyCode', 'availableQuantity',
+      ]);
+      await idx.updateSortableAttributes([
+        'priceUnits', 'createdAt', 'name',
+      ]);
+      await idx.updateSearchableAttributes([
+        'name', 'description', 'category', 'tags',
+      ]);
+
+      this.indexInitialized = true;
+    }
+
+    return this.client.index<SearchDocument>(this.indexName);
+  }
+
+  private buildFilters(filters: SearchQuery['filters']): string[] {
+    const conditions: string[] = [];
+
+    // Only show active products
+    conditions.push(`status = "${ProductStatus.ACTIVE}"`);
+
+    if (filters.categories && filters.categories.length > 0) {
+      const categoryFilters = filters.categories.map(
+        (c) => `category = "${c}"`
+      );
+      conditions.push(`(${categoryFilters.join(' OR ')})`);
+    }
+
+    if (filters.tags && filters.tags.length > 0) {
+      const tagFilters = filters.tags.map((t) => `tags = "${t}"`);
+      conditions.push(`(${tagFilters.join(' OR ')})`);
+    }
+
+    if (filters.priceRange) {
+      conditions.push(
+        `priceUnits >= ${filters.priceRange.min.units}`
+      );
+      conditions.push(
+        `priceUnits <= ${filters.priceRange.max.units}`
+      );
+    }
+
+    if (filters.inStockOnly) {
+      conditions.push('availableQuantity > 0');
+    }
+
+    return conditions;
+  }
+
+  private buildSort(sortBy: SortBy): string[] {
+    switch (sortBy) {
+      case SortBy.PRICE_ASC:
+        return ['priceUnits:asc'];
+      case SortBy.PRICE_DESC:
+        return ['priceUnits:desc'];
+      case SortBy.CREATED_AT:
+        return ['createdAt:desc'];
+      case SortBy.POPULARITY:
+        // Popularity not directly supported; fall back to relevance
+        return [];
+      case SortBy.RELEVANCE:
+      default:
+        return [];
+    }
+  }
+
+  private toDocument(product: Product): SearchDocument {
+    return {
+      productId: product.productId,
+      name: product.name,
+      description: product.description,
+      category: product.category,
+      tags: [...product.tags],
+      priceUnits: product.price.units,
+      priceNanos: product.price.nanos,
+      currencyCode: product.price.currencyCode,
+      availableQuantity: product.availableQuantity,
+      status: product.status,
+      createdAt: product.createdAt.toISOString(),
+    };
+  }
+
+  private toSearchResult(
+    response: SearchResponse<SearchDocument>,
+    facetFields: string[]
+  ): SearchIndexResult {
+    const results: SearchResultItem[] = response.hits.map((hit) => ({
+      productId: hit.productId,
+      name: hit.name,
+      descriptionSnippet: hit.description?.slice(0, 200) ?? '',
+      price: {
+        currencyCode: hit.currencyCode,
+        units: hit.priceUnits,
+        nanos: hit.priceNanos,
+      },
+      relevanceScore: hit._rankingScore ?? 0,
+    }));
+
+    // Extract facets from Meilisearch facetDistribution
+    const facets: Record<string, FacetValue[]> = {};
+    if (response.facetDistribution && facetFields.length > 0) {
+      for (const field of facetFields) {
+        const distribution = response.facetDistribution[field];
+        if (distribution) {
+          facets[field] = Object.entries(distribution).map(
+            ([value, count]) => ({
+              value,
+              count: count as number,
+            })
+          );
+        }
+      }
+    }
+
+    const page = response.page ?? 1;
+    const totalPages = response.totalPages ?? 1;
+    const nextPageToken = page < totalPages
+      ? this.encodePageToken(page + 1)
+      : '';
+
+    return {
+      results,
+      totalCount: response.totalHits ?? 0,
+      nextPageToken,
+      facets,
+      suggestions: [],
+    };
+  }
+
+  private encodePageToken(page: number): string {
+    return Buffer.from(JSON.stringify({ page })).toString('base64');
+  }
+
+  private decodePageToken(token: string): number {
+    try {
+      const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
+      return typeof decoded.page === 'number' ? decoded.page : 1;
+    } catch {
+      return 1;
+    }
+  }
+}
