@@ -36,6 +36,7 @@ interface MeilisearchDocument {
   readonly availableQuantity: number;
   readonly status: string;
   readonly createdAt: string;
+  readonly _rankingScore?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -294,8 +295,7 @@ export class MeilisearchAdapter implements SearchIndex {
         name: doc.name,
         descriptionSnippet: doc.description?.slice(0, 200) ?? '',
         price: doc.price,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        relevanceScore: (hit as any)._rankingScore ?? 0,
+        relevanceScore: hit._rankingScore ?? 0,
       };
     });
 
