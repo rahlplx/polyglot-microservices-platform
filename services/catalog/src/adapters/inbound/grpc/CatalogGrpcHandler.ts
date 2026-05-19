@@ -18,7 +18,7 @@ import {
 } from '@grpc/grpc-js';
 import { loadSync } from '@grpc/proto-loader';
 import type { CatalogService } from '../../../domain/services/CatalogService';
-import { OtelAdapter } from '../../outbound/observability/OtelAdapter';
+import type { OtelAdapter } from '../../outbound/observability/OtelAdapter';
 import { ProductStatus, DeleteReason } from '../../../domain/models';
 import { SortBy } from '../../../domain/ports/inbound/SearchCatalog';
 import type { Product } from '../../../domain/models';

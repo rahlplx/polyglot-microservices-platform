@@ -16,7 +16,7 @@ import cors from '@fastify/cors';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import type { CatalogService } from '../../../domain/services/CatalogService';
-import { OtelAdapter } from '../../outbound/observability/OtelAdapter';
+import type { OtelAdapter } from '../../outbound/observability/OtelAdapter';
 import {
   Money,
   ProductNotFoundError,

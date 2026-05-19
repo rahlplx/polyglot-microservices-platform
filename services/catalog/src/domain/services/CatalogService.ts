@@ -65,16 +65,16 @@ export class CatalogService implements CreateProduct, GetProduct, SearchCatalog,
   async execute(request: DeleteProductRequest): Promise<DeleteProductResponse>;
   async execute(request: CreateProductRequest | GetProductRequest | SearchCatalogRequest | DeleteProductRequest): Promise<CreateProductResponse | GetProductResponse | SearchCatalogResponse | DeleteProductResponse> {
     if ('name' in request && 'price' in request && 'initialQuantity' in request) {
-      return this.createProduct(request as CreateProductRequest);
+      return this.createProduct(request);
     }
     if ('productId' in request && !('filters' in request) && !('reason' in request) && !('hardDelete' in request)) {
-      return this.getProduct(request as GetProductRequest);
+      return this.getProduct(request);
     }
     if ('filters' in request) {
       return this.searchCatalog(request as SearchCatalogRequest);
     }
     if ('reason' in request && 'hardDelete' in request) {
-      return this.deleteProduct(request as DeleteProductRequest);
+      return this.deleteProduct(request);
     }
     throw new Error('Unknown request type');
   }
@@ -291,7 +291,7 @@ export class CatalogService implements CreateProduct, GetProduct, SearchCatalog,
       Object.entries(updateInput).filter(([, v]) => v !== undefined)
     );
 
-    product.update(filteredInput as Parameters<typeof product.update>[0]);
+    product.update(filteredInput);
 
     const saved = await this.repository.save(product);
 

@@ -114,10 +114,10 @@ export class OtelAdapter {
       if (metricReader) {
         // Type assertion needed due to conflicting @opentelemetry/sdk-metrics versions
         // between @opentelemetry/sdk-node and direct dependency
-        sdkConfig.metricReader = metricReader as unknown as import('@opentelemetry/sdk-metrics').MetricReader;
+        sdkConfig.metricReader = metricReader;
       }
 
-      this.sdk = new NodeSDK(sdkConfig as ConstructorParameters<typeof NodeSDK>[0]);
+      this.sdk = new NodeSDK(sdkConfig);
 
       this.sdk.start();
       this.logger.info({ otlpEndpoint: config.otlpEndpoint }, 'OpenTelemetry SDK initialized');

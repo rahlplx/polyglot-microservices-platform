@@ -6,7 +6,7 @@
  *
  * Domain core has ZERO external dependencies.
  */
-import { Money } from './Money';
+import type { Money } from './Money';
 
 // ---------------------------------------------------------------------------
 // Enums
