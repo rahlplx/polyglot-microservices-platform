@@ -1,0 +1,289 @@
+# Prometheus StatefulSet — 2 replicas, HA with anti-affinity
+# Scrapes OTel Gateway Prometheus exporter and all services via K8s SD
+# 15-day retention, 50Gi PVC per replica
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: production
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: polyglot-microservices
+data:
+  prometheus.yml: |
+    global:
+      evaluation_interval: 30s
+      scrape_interval: 15s
+      scrape_timeout: 10s
+      external_labels:
+        cluster: polyglot-production
+        replica: "$(HOSTNAME)"
+
+    scrape_configs:
+      # --- OTel Gateway Prometheus exporter ---
+      - job_name: otel-gateway
+        scrape_interval: 15s
+        static_configs:
+          - targets:
+              - localhost:8889
+            labels:
+              service_name: otel-gateway
+
+      # --- All 9 polyglot services via Kubernetes service discovery ---
+      - job_name: polyglot-services
+        scrape_interval: 15s
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - production
+        relabel_configs:
+          # Only scrape pods with the prometheus.io/scrape annotation
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            target_label: __address__
+            regex: (.+)
+            replacement: ${1}
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: service
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+          # Filter to only polyglot-microservices pods
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_part_of]
+            action: keep
+            regex: polyglot-microservices
+
+    rule_files:
+      - /etc/prometheus/rules/*.yml
+
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: []
+          # Uncomment when Alertmanager is deployed:
+          # - targets:
+          #     - alertmanager.production.svc.cluster.local:9093
+
+  # SLO alerting rules
+  slo-alerts.yml: |
+    groups:
+      - name: slo-alerts
+        rules:
+          - alert: HighErrorRate
+            expr: |
+              (
+                sum(rate(http_server_duration_count{http.status_code =~ "5.."}[5m])) by (service.name)
+                /
+                sum(rate(http_server_duration_count[5m])) by (service.name)
+              ) > 0.05
+            for: 5m
+            labels:
+              severity: critical
+              slo: error-rate
+            annotations:
+              summary: "High error rate for {{ $labels.service.name }}"
+              description: "Error rate is {{ $value | humanizePercentage }} (threshold 5%)"
+
+          - alert: ElevatedErrorRate
+            expr: |
+              (
+                sum(rate(http_server_duration_count{http.status_code =~ "5.."}[5m])) by (service.name)
+                /
+                sum(rate(http_server_duration_count[5m])) by (service.name)
+              ) > 0.01
+            for: 10m
+            labels:
+              severity: warning
+              slo: error-rate
+            annotations:
+              summary: "Elevated error rate for {{ $labels.service.name }}"
+              description: "Error rate is {{ $value | humanizePercentage }} (threshold 1%)"
+
+          - alert: HighLatencyP99
+            expr: |
+              histogram_quantile(0.99,
+                sum(rate(http_server_duration_bucket[5m])) by (le, service.name)
+              ) > 2000
+            for: 5m
+            labels:
+              severity: warning
+              slo: latency
+            annotations:
+              summary: "High p99 latency for {{ $labels.service.name }}"
+              description: "p99 latency is {{ $value }}ms (threshold 2000ms)"
+
+          - alert: SVIDExpirySoon
+            expr: spire_agent_svid_expiry_seconds < 3600
+            for: 5m
+            labels:
+              severity: warning
+              slo: identity
+            annotations:
+              summary: "SVID expiring soon on {{ $labels.pod }}"
+              description: "SVID expires in {{ $value }}s"
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: prometheus
+  namespace: production
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: argocd
+spec:
+  replicas: 2
+  serviceName: prometheus
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: prometheus
+        app.kubernetes.io/component: observability
+        app.kubernetes.io/part-of: polyglot-microservices
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      serviceAccountName: prometheus
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values:
+                        - prometheus
+                topologyKey: topology.kubernetes.io/zone
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values:
+                      - prometheus
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.51.0
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time=15d
+            - --storage.tsdb.retention.size=40GB
+            - --web.enable-remote-write-receiver
+            - --web.enable-lifecycle
+            - --web.console.templates=/usr/share/prometheus/consoles
+            - --web.console.libraries=/usr/share/prometheus/console_libraries
+          ports:
+            - name: http
+              containerPort: 9090
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          env:
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: rules
+              mountPath: /etc/prometheus/rules
+            - name: data
+              mountPath: /prometheus
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      securityContext:
+        fsGroup: 65534
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: rules
+          configMap:
+            name: prometheus-config
+            items:
+              - key: slo-alerts.yml
+                path: slo-alerts.yml
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: standard
+        resources:
+          requests:
+            storage: 50Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: production
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: polyglot-microservices
+  annotations:
+    spiffe.io/spiffe-id: spiffe://trust.example.org/ns/production/sa/prometheus
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: production
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+      protocol: TCP

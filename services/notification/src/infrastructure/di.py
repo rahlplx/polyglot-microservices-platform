@@ -54,7 +54,17 @@ class DIContainer:
     provides access to all components through typed properties.
     Components are created lazily on first access to support
     testing scenarios where only specific components are needed.
+
+    The gRPC server includes reflection support via grpc_reflection.v1alpha
+    for service discovery tools like grpcurl. Enable it with:
+        from grpc_reflection.v1alpha import reflection
+        reflection.enable_server(grpc_server, SERVICE_NAMES)
     """
+
+    # gRPC service names for reflection registration
+    SERVICE_NAMES = (
+        "notification.v1.NotificationService",
+    )
 
     def __init__(self, config: Optional[NotificationServiceConfig] = None) -> None:
         """Initialize the DI container with configuration.

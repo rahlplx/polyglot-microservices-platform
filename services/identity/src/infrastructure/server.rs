@@ -74,6 +74,13 @@ impl IdentityServer {
         // 3. Register the MTLSService handler
         // 4. Add the health check service
         // 5. Set up graceful shutdown via tokio::signal
+        // 6. Register gRPC reflection via tonic-reflection crate:
+        //    use tonic_reflection::server::Builder;
+        //    let reflection_service = Builder::configure()
+        //        .register_encoded_file_descriptor_set(proto::FILE_DESCRIPTOR_SET)
+        //        .build()?;
+        //    server.add_service(reflection_service);
+        //    Note: requires adding `tonic-reflection` dependency to Cargo.toml
 
         // For now, we set up a basic server structure
         let handler = self.handler.clone();

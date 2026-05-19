@@ -23,6 +23,13 @@ import { ProductStatus, DeleteReason } from '../../../domain/models';
 import { SortBy } from '../../../domain/ports/inbound/SearchCatalog';
 import type { Product } from '../../../domain/models';
 
+// gRPC reflection support
+// To enable reflection, install grpc-reflection package and add:
+//   import { addReflection } from 'grpc-reflection';
+// Then after server.addService(), call:
+//   addReflection(this.server);
+// This requires the compiled proto file descriptors to be available.
+
 // ---------------------------------------------------------------------------
 // Proto Package Loading
 // ---------------------------------------------------------------------------
@@ -137,6 +144,18 @@ export class CatalogGrpcHandler {
             this.otel.getLogger().error({ error: error.message }, 'gRPC server bind failed');
             throw error;
           }
+
+          // Enable gRPC reflection for service discovery (e.g., grpcurl)
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const { addReflection } = require('grpc-reflection') as { addReflection: (server: Server) => void };
+            addReflection(this.server);
+            this.otel.getLogger().info('gRPC reflection enabled');
+          } catch {
+            // grpc-reflection package not installed; reflection disabled
+            this.otel.getLogger().warn('grpc-reflection package not installed; gRPC reflection disabled');
+          }
+
           this.server.start();
           this.otel.getLogger().info({ port: this.grpcPort }, 'gRPC server started');
           resolve();

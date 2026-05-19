@@ -1,5 +1,10 @@
 """
 Infrastructure and adapters for the RL Engine service.
+
+The gRPC server includes reflection support via grpc_reflection.v1alpha
+for service discovery tools like grpcurl. Enable it with:
+    from grpc_reflection.v1alpha import reflection
+    reflection.enable_server(grpc_server, SERVICE_NAMES)
 """
 
 from __future__ import annotations
@@ -14,6 +19,12 @@ from ..domain.models import (
 )
 from ..domain.ports import EnvironmentPort, ModelRepositoryPort, TrainingEnginePort
 from ..domain.services import InferenceService, MetaLearningService, PolicyService, TrainingService
+
+
+# gRPC service names for reflection registration
+SERVICE_NAMES = (
+    "rl_engine.v1.RLEngineService",
+)
 
 
 @dataclass

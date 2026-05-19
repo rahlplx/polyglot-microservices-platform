@@ -27,7 +27,7 @@ import signal
 import sys
 import threading
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .config import AnalyticsConfig
@@ -102,7 +102,7 @@ def create_app(config: AnalyticsConfig | None = None) -> Any:
         return {
             "status": "healthy",
             "service": "analytics",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     @app.get("/ready", tags=["health"])
@@ -135,7 +135,7 @@ def create_app(config: AnalyticsConfig | None = None) -> Any:
         return {
             "status": overall,
             "checks": checks,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     @app.post("/api/v1/analytics/metrics/query", tags=["analytics"])
@@ -306,7 +306,15 @@ class AnalyticsServer:
     REST server and the gRPC query server. It handles graceful shutdown
     on SIGTERM/SIGINT, ensuring that in-flight requests complete before
     the server stops.
+
+    The gRPC server includes reflection support via grpc_reflection.v1alpha
+    for service discovery tools like grpcurl.
     """
+
+    # gRPC service names for reflection registration
+    SERVICE_NAMES = (
+        "analytics.v1.AnalyticsService",
+    )
 
     def __init__(self, config: AnalyticsConfig | None = None) -> None:
         """Initialize the server manager.
@@ -325,6 +333,14 @@ class AnalyticsServer:
         Starts the FastAPI server using Uvicorn with the configured
         host and port. Registers signal handlers for graceful shutdown.
         The gRPC server runs in a separate thread.
+
+        When the gRPC server is started, gRPC reflection is enabled
+        via grpc_reflection.v1alpha for service discovery (e.g., grpcurl).
+        To enable reflection on the gRPC server, add the following
+        after creating the gRPC server:
+
+            from grpc_reflection.v1alpha import reflection
+            reflection.enable_server(grpc_server, SERVICE_NAMES)
         """
         import uvicorn
 

@@ -1,0 +1,76 @@
+# Grafana Datasources — auto-provisioned via ConfigMap
+# Prometheus (default), Tempo (traces with trace-to-metrics), Loki (logs with TraceID linking)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: production
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: polyglot-microservices
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      # --- Prometheus (default) ---
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus.production.svc.cluster.local:9090
+        isDefault: true
+        editable: false
+        jsonData:
+          timeInterval: "15s"
+          httpMethod: POST
+          manageAlerts: true
+          prometheusType: Prometheus
+          prometheusVersion: "2.51.0"
+        version: 1
+
+      # --- Tempo (traces) ---
+      - name: Tempo
+        type: tempo
+        access: proxy
+        url: http://tempo.production.svc.cluster.local:3200
+        editable: false
+        jsonData:
+          tracesToMetrics:
+            datasourceUid: prometheus
+            tags:
+              - key: service.name
+                value: service_name
+              - key: rpc.method
+                value: rpc_method
+            queries:
+              - name: "Request Rate"
+                query: "sum(rate(http_server_duration_count{service_name=\"$__tags.service_name\"}[5m]))"
+              - name: "Error Rate"
+                query: "sum(rate(http_server_duration_count{service_name=\"$__tags.service_name\",http.status_code=~\"5..\"}[5m])) / sum(rate(http_server_duration_count{service_name=\"$__tags.service_name\"}[5m]))"
+          search:
+            hide: false
+          nodeGraph:
+            enabled: true
+          lokiSearch:
+            datasourceUid: loki
+          traceQuery:
+            timeShiftEnabled: true
+            spanStartShift: "-30m"
+            spanEndShift: "30m"
+        version: 1
+
+      # --- Loki (logs) ---
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki.production.svc.cluster.local:3100
+        editable: false
+        jsonData:
+          derivedFields:
+            - datasourceUid: tempo
+              matcherRegex: "(?:trace_id|traceID|TraceID)[\"']?\\s*[:=]\\s*[\"']?([0-9a-fA-F]{32})"
+              name: TraceID
+              url: "$${__value.raw}"
+          maxLines: 1000
+        version: 1

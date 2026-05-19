@@ -247,9 +247,10 @@ At `skill_invoke` trigger:
 
 ## Phase 4: Testing & Validation
 
-**Status:** PENDING
+**Status:** IN PROGRESS
 **Gate:** All test suites pass, benchmarks green, security scan clean
 **Duration target:** 1-2 sessions per feature
+**Phase 4 Init Plan:** /download/PHASE4_INITIALIZATION_PLAN.md
 
 ### Spec-Driven Requirements
 
@@ -439,7 +440,7 @@ Current phase is stored in session state:
     "1": "complete",
     "2": "complete",
     "3": "complete",
-    "4": "pending",
+    "4": "in_progress",
     "5": "pending",
     "6": "pending"
   }

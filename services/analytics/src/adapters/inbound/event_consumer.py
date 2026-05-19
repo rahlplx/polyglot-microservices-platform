@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from ...domain.models.metric import DataPoint, Metric, MetricType
@@ -144,7 +144,7 @@ class EventTransformer:
         Returns:
             Metrics for order count and order value.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         service = data.get("source_service", "order")
         return [
             Metric(
@@ -174,7 +174,7 @@ class EventTransformer:
         Returns:
             Metric for completed order count.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         return [
             Metric(
                 name="order.completed",
@@ -195,7 +195,7 @@ class EventTransformer:
         Returns:
             Metric for cancelled order count.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         return [
             Metric(
                 name="order.cancelled",
@@ -216,7 +216,7 @@ class EventTransformer:
         Returns:
             Metrics for payment count and revenue.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         return [
             Metric(
                 name="payment.count",
@@ -245,7 +245,7 @@ class EventTransformer:
         Returns:
             Metrics for refund count and refund amount.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         return [
             Metric(
                 name="refund.count",
@@ -274,7 +274,7 @@ class EventTransformer:
         Returns:
             Metric for inventory change.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         return [
             Metric(
                 name="inventory.stock_level",

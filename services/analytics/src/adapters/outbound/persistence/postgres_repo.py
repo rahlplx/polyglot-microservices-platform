@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from ...domain.ports.outbound.event_store import EventRepository
@@ -145,7 +145,7 @@ class PostgresEventRepository:
                     "id": event.get("id", ""),
                     "type": event.get("type", ""),
                     "source": event.get("source", ""),
-                    "time": event.get("time", datetime.utcnow().isoformat()),
+                    "time": event.get("time", datetime.now(timezone.utc).isoformat()),
                     "data": json.dumps(event.get("data", {})),
                     "datacontenttype": event.get("datacontenttype", "application/json"),
                 },
