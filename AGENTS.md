@@ -356,6 +356,196 @@ On any trigger failure:
 
 ---
 
+## Phase 2 Worker Agent Instructions — Design & Polyglot Architecture Mapping
+
+> **ACTIVE PHASE:** Phase 2 (current project phase)
+> **Design spec:** `/home/z/my-project/PHASE2_DESIGN_SPEC.md`
+> **Canonical spec:** `/home/z/my-project/SPECIFICATION.md`
+> All worker agents operating in Phase 2 MUST follow these instructions precisely.
+
+### Worker Agent Roles
+
+Phase 2 assigns specialized worker agents to specific design tracks. Each agent is responsible for one track and one track only.
+
+| Agent Role | Spec Items | Deliverables | gstack Skill |
+|------------|-----------|--------------|--------------|
+| **Design Lead** | 2.1, 2.2, 2.5 | Design system, variants, design review | `/design-consultation`, `/design-shotgun`, `/design-review` |
+| **Architecture Artist** | 2.3 | Architecture diagrams (PNG/SVG) | `charts` skill |
+| **Component Architect** | 2.4, 2.10 | Component inventory, port/adapter templates, AGENTS.md Phase 2 section | Direct execution |
+| **Security Architect** | 2.8 | STRIDE threat model, SPIFFE/SPIRE design | `/cso` |
+| **Performance Lead** | 2.6, 2.7 | A11y criteria, performance budget, Core Web Vitals | Direct execution |
+| **GitOps Lead** | 2.9 | Git-Flow strategy, branch protection rules | Direct execution |
+
+### Phase 2 Execution Protocol
+
+```
+SESSION START
+  ↓
+[READ] session-state.json → current_phase == 2? → YES: continue
+  ↓
+[READ] PHASE2_DESIGN_SPEC.md → understand current spec items
+  ↓
+[READ] worklog.md → check previous agent progress
+  ↓
+[ASSIGN] Pick unassigned spec item from PHASE2_DESIGN_SPEC.md
+  ↓
+[BRANCH] Create feature branch: feature/P2-<spec-id>-<service>-<desc>
+  ↓
+[EXECUTE] Follow role-specific instructions below
+  ↓
+[COMMIT] git commit -m "<type>(<scope>): <desc> [P2-<spec-id>]"
+  ↓
+[REVIEW] Invoke /design-review or /cso as appropriate
+  ↓
+[MERGE] Merge to develop if review passes
+  ↓
+[UPDATE] Update PHASE2_DESIGN_SPEC.md spec item status → PASS
+  ↓
+[LOG] Append to worklog.md with spec item verification
+  ↓
+[HANDOFF] Report results, identify next unassigned spec item
+```
+
+### Design Lead Instructions (Spec 2.1, 2.2, 2.5)
+
+**Spec 2.1 — Design System:**
+1. Invoke `/design-consultation` to create the design system
+2. Define design tokens: colors (from architecture palette), typography, spacing, borders
+3. Define component patterns: cards, tables, callout boxes, navigation
+4. Document in `/home/z/my-project/download/design-system.md`
+5. Save design token files to `/home/z/my-project/design-tokens/`
+
+**Spec 2.2 — Design Variants (3+):**
+1. Invoke `/design-shotgun` to generate 3+ architecture variants
+2. Variant A: Centralized Gateway + Mesh
+3. Variant B: Gateway + SPIFFE/SPIRE (SELECTED — from PHASE2_DESIGN_SPEC.md)
+4. Variant C: Federated Gateways + mTLS
+5. For each variant: document pros, cons, technology dependencies, vendor lock-in score
+6. Save trade-off analysis to `/home/z/my-project/download/design-variants-analysis.md`
+
+**Spec 2.5 — Design Review:**
+1. Invoke `/design-review` after variants are documented
+2. Fix any issues identified in the review
+3. Re-review until no blocking issues remain
+4. Mark spec 2.5 as PASS
+
+### Architecture Artist Instructions (Spec 2.3)
+
+**Spec 2.3 — Architecture Diagrams:**
+1. Generate the following diagrams using the `charts` skill:
+   - **System Context Diagram:** Shows all services, their languages, and communication patterns
+   - **Container Diagram:** Shows each service's internal hexagonal structure (ports/adapters)
+   - **Deployment Diagram:** Shows K8s namespaces, OTel Collectors, SPIRE agents, ArgoCD
+   - **Data Flow Diagram:** Shows CDC pipeline (Debezium → Kafka → Consumers)
+   - **Security Diagram:** Shows SPIFFE/SPIRE identity flow, mTLS, ACL sidecars
+2. Use Mermaid for diagram source (version-controlled) + PNG render for review
+3. Save diagrams to `/home/z/my-project/download/architecture/`
+4. Diagram source files go to `/home/z/my-project/docs/diagrams/`
+5. Each diagram MUST reference SPECIFICATION.md success criteria where applicable
+
+### Component Architect Instructions (Spec 2.4, 2.10)
+
+**Spec 2.4 — Component Inventory:**
+1. For each service in the Service Registry (PHASE2_DESIGN_SPEC.md Section 2A):
+   - Define all inbound ports (use case interfaces)
+   - Define all outbound ports (infrastructure interfaces)
+   - Define all adapters (inbound: gRPC/REST/Event, outbound: DB/Messaging/External)
+   - Define API contracts (Protobuf service + OpenAPI path mappings)
+2. Create `/home/z/my-project/services/<service-name>/` directory for each service
+3. Each service directory contains:
+   - `ports.md` — Defined port interfaces
+   - `adapters.md` — Defined adapter implementations
+   - `contracts.md` — gRPC + OpenAPI contract references
+4. Create ACL sidecar template at `/home/z/my-project/templates/acl-sidecar/`
+
+**Spec 2.10 — Worker Agent Instructions (this document):**
+1. Ensure AGENTS.md Phase 2 section is complete (this section)
+2. Verify all 6 worker agent roles have clear instructions
+3. Verify Git-Flow protocol is documented
+4. Mark spec 2.10 as PASS
+
+### Security Architect Instructions (Spec 2.8)
+
+**Spec 2.8 — Security Design:**
+1. Invoke `/cso` for OWASP Top 10 + STRIDE threat model
+2. Document threat model covering:
+   - Service-to-service authentication (SPIFFE/SPIRE)
+   - Ingress security (API Gateway + rate limiting + WAF)
+   - Data-in-transit encryption (mTLS everywhere)
+   - Data-at-rest encryption (per-service key management)
+   - Supply chain security (SLSA + SBOM + Buf breaking checks)
+   - ACL enforcement (pre-commit hooks + runtime validation)
+3. Document SPIFFE/SPIRE identity design:
+   - Trust domain per environment (dev/staging/production)
+   - Workload registration entries per service
+   - mTLS certificate rotation strategy
+4. Save to `/home/z/my-project/download/security-design.md`
+
+### Performance Lead Instructions (Spec 2.6, 2.7)
+
+**Spec 2.6 — Accessibility Requirements:**
+1. Define a11y criteria for any user-facing API documentation or dashboards
+2. WCAG 2.1 AA compliance for any web interfaces
+3. API documentation must be machine-readable (OpenAPI spec)
+4. Save criteria to `/home/z/my-project/docs/accessibility-criteria.md`
+
+**Spec 2.7 — Performance Budget:**
+1. Define API latency targets per service:
+   - Gateway: p99 < 50ms (proxy overhead)
+   - Catalog: p99 < 200ms (search queries)
+   - Order: p99 < 300ms (saga orchestration)
+   - Payment: p99 < 500ms (external payment gateway)
+2. Define Core Web Vitals for any web dashboards:
+   - LCP < 2.5s, FID < 100ms, CLS < 0.1
+3. Define OTel metric collection budgets:
+   - Metrics: 100% collection (cheap)
+   - Traces: tail-sampled (10% default, 100% on errors)
+   - Logs: structured JSON, sampled by severity
+4. Save to `/home/z/my-project/docs/performance-budget.md`
+
+### GitOps Lead Instructions (Spec 2.9)
+
+**Spec 2.9 — Git-Flow Strategy:**
+1. Document the branching strategy (already in PHASE2_DESIGN_SPEC.md Section 2C)
+2. Create branch protection rules:
+   - `main`: no direct push, require PR + review + CI pass
+   - `develop`: no direct push, require PR + review
+3. Create `.gitignore` for `schemas/generated/` (generated code is never committed)
+4. Create `CONTRIBUTING.md` with commit message conventions
+5. Verify branch naming convention is consistent across all worker agent instructions
+6. Save to `/home/z/my-project/CONTRIBUTING.md`
+
+### Phase 2 Parallelization Strategy
+
+The following spec items can be worked on in parallel (no dependencies):
+
+```
+Parallel Track 1:  Spec 2.1 + 2.2 (Design Lead — design system + variants)
+Parallel Track 2:  Spec 2.3 (Architecture Artist — diagrams)
+Parallel Track 3:  Spec 2.4 (Component Architect — inventory + templates)
+Parallel Track 4:  Spec 2.8 (Security Architect — threat model)
+Parallel Track 5:  Spec 2.6 + 2.7 (Performance Lead — a11y + performance)
+Parallel Track 6:  Spec 2.9 (GitOps Lead — branching strategy)
+
+Sequential After All:
+  Spec 2.5 (Design Review — requires all design artifacts)
+  Spec 2.10 (Worker Agent Instructions — final documentation pass)
+```
+
+### Phase 2 Gate Assessment Protocol
+
+Before declaring Phase 2 COMPLETE:
+1. Verify ALL 10 spec items (2.1-2.10) are PASS
+2. Run `/design-review` on the complete design artifact set
+3. Run `/cso` security audit on the security design
+4. Verify all architecture diagrams render correctly
+5. Verify all service directories have complete port/adapter/contract definitions
+6. Verify Git-Flow strategy is documented and CONTRIBUTING.md exists
+7. Update session-state.json: current_phase = 3
+8. Append Phase 2 → Phase 3 transition to worklog.md
+
+---
+
 ## Anti-Patterns (NEVER Do These)
 
 1. **Never build a web page when a document was requested** — Type 1 tasks use skills, not Next.js

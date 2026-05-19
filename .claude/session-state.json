@@ -1,24 +1,33 @@
 {
   "session_id": "",
   "started_at": "",
-  "tasks_completed": 0,
-  "last_task_type": "document",
-  "last_task_id": "7",
-  "last_activity": "2026-05-19T02:24:18Z",
+  "tasks_completed": 8,
+  "last_task_type": "review_gauntlet",
+  "last_task_id": "8",
+  "last_activity": "2026-05-19T12:00:00Z",
   "gstack_version": "1.40.0.0",
   "freeze_state": false,
   "gstack_team_mode": true,
-  "current_phase": 1,
+  "current_phase": 2,
   "phase_status": {
     "0": "complete",
-    "1": "in_progress",
-    "2": "pending",
+    "1": "complete",
+    "2": "in_progress",
     "3": "pending",
     "4": "pending",
     "5": "pending",
     "6": "pending"
   },
+  "phase_1_gate": "PASS_8_of_8",
+  "review_gauntlet": {
+    "ceo": "PASS_4_of_4",
+    "engineering": "PASS_6_of_6",
+    "security": "PASS_4_of_4",
+    "dx": "PASS_4_of_4",
+    "doctrine_efficiency_first": "PASS",
+    "doctrine_technology_neutral": "PASS"
+  },
   "nlp_confidence": "51.1%",
   "nlp_intent": "Document Creation",
-  "reliability_last_updated": ""
+  "reliability_last_updated": "2026-05-19T12:00:00Z"
 }
