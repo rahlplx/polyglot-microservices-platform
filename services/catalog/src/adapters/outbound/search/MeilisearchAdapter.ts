@@ -294,6 +294,7 @@ export class MeilisearchAdapter implements SearchIndex {
         name: doc.name,
         descriptionSnippet: doc.description?.slice(0, 200) ?? '',
         price: doc.price,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         relevanceScore: (hit as any)._rankingScore ?? 0,
       };
     });
@@ -335,7 +336,7 @@ export class MeilisearchAdapter implements SearchIndex {
 
   private decodePageToken(token: string): number {
     try {
-      const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
+      const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf-8')) as Record<string, unknown>;
       return typeof decoded.page === 'number' ? decoded.page : 1;
     } catch {
       return 1;

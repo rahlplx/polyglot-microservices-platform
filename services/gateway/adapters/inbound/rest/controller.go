@@ -148,7 +148,7 @@ func (c *Controller) handleGetRateLimit(w http.ResponseWriter, r *http.Request) 
 			slog.String("client_id", clientID),
 			slog.String("error", err.Error()),
 		)
-		c.writeError(w, http.StatusInternalServerError, "RATE_LIMIT_ERROR", "failed to query rate limit status")
+		c.writeError(w, http.StatusInternalServerError, "RATE_LIMIT_ERROR", err.Error())
 		return
 	}
 
@@ -193,9 +193,7 @@ func (c *Controller) handleGetRouteConfig(w http.ResponseWriter, r *http.Request
 			slog.String("service", service),
 			slog.String("error", err.Error()),
 		)
-		// Mask internal error details for security
-		message := "service not found or configuration unavailable"
-		c.writeError(w, http.StatusNotFound, "SERVICE_NOT_FOUND", message)
+		c.writeError(w, http.StatusNotFound, "SERVICE_NOT_FOUND", err.Error())
 		return
 	}
 
