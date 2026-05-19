@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package gateway.v1;
+
+option go_package = "github.com/comprehensive-architecture/services/gen/go/gateway/v1";
+
+import "common/v1/types.proto";
+import "common/v1/errors.proto";
+
+// Gateway service handles all external ingress routing, rate limiting, and auth
+service GatewayService {
+  // Proxy a request to the appropriate internal service
+  rpc ProxyRequest(ProxyRequestRequest) returns (ProxyRequestResponse);
+  // Check gateway health and upstream connectivity
+  rpc HealthCheck(common.v1.HealthCheckResponse) returns (common.v1.HealthCheckResponse);
+  // Get current rate limit status for a client
+  rpc GetRateLimitStatus(GetRateLimitStatusRequest) returns (GetRateLimitStatusResponse);
+}
+
+// Request to proxy through the gateway
+message ProxyRequestRequest {
+  // Target service name (e.g., "catalog", "order", "payment")
+  string service_name = 1;
+  // Target RPC method path (e.g., "/catalog.v1.CatalogService/GetProduct")
+  string method_path = 2;
+  // Request payload as protobuf-encoded bytes
+  bytes payload = 3;
+  // W3C Trace Context headers for distributed tracing
+  string trace_parent = 4;
+  // Client identity (SPIFFE ID from mTLS)
+  string client_identity = 5;
+  // Request metadata
+  map<string, string> metadata = 6;
+}
+
+// Proxied response from the target service
+message ProxyRequestResponse {
+  // Response payload as protobuf-encoded bytes
+  bytes payload = 1;
+  // HTTP-style status code
+  int32 status_code = 2;
+  // Error details if the request failed
+  common.v1.ProblemDetail error = 3;
+  // Response metadata
+  map<string, string> metadata = 4;
+}
+
+// Rate limit status query
+message GetRateLimitStatusRequest {
+  // Client identifier (SPIFFE ID or API key)
+  string client_id = 1;
+  // Service being accessed
+  string service_name = 2;
+}
+
+// Rate limit status response
+message GetRateLimitStatusResponse {
+  // Maximum requests allowed in the window
+  int64 limit = 1;
+  // Remaining requests in the current window
+  int64 remaining = 2;
+  // Seconds until the window resets
+  int64 reset_after_seconds = 3;
+  // Whether the client is currently rate-limited
+  bool is_limited = 4;
+}

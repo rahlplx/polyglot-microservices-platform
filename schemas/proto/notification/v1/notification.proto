@@ -1,0 +1,118 @@
+syntax = "proto3";
+
+package notification.v1;
+
+option go_package = "github.com/comprehensive-architecture/services/gen/go/notification/v1";
+
+import "common/v1/types.proto";
+import "google/protobuf/timestamp.proto";
+
+// Notification service handles multi-channel notification delivery with ML optimization
+service NotificationService {
+  // Send a notification through the optimal channel
+  rpc SendNotification(SendNotificationRequest) returns (SendNotificationResponse);
+  // Get notification delivery status
+  rpc GetNotificationStatus(GetNotificationStatusRequest) returns (GetNotificationStatusResponse);
+  // Get notification preferences for a user
+  rpc GetNotificationPreferences(GetNotificationPreferencesRequest) returns (GetNotificationPreferencesResponse);
+  // Update notification preferences
+  rpc UpdateNotificationPreferences(UpdateNotificationPreferencesRequest) returns (UpdateNotificationPreferencesResponse);
+}
+
+// Notification entity
+message Notification {
+  string notification_id = 1;
+  string user_id = 2;
+  string channel = 3; // "email", "sms", "push", "in_app"
+  NotificationType type = 4;
+  string subject = 5;
+  string body = 6;
+  map<string, string> template_params = 7;
+  NotificationStatus status = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp delivered_at = 10;
+}
+
+enum NotificationType {
+  NOTIFICATION_TYPE_UNSPECIFIED = 0;
+  NOTIFICATION_TYPE_ORDER_CONFIRMATION = 1;
+  NOTIFICATION_TYPE_PAYMENT_RECEIVED = 2;
+  NOTIFICATION_TYPE_SHIPPING_UPDATE = 3;
+  NOTIFICATION_TYPE_PROMOTIONAL = 4;
+  NOTIFICATION_TYPE_SYSTEM_ALERT = 5;
+}
+
+enum NotificationStatus {
+  NOTIFICATION_STATUS_UNSPECIFIED = 0;
+  NOTIFICATION_STATUS_QUEUED = 1;
+  NOTIFICATION_STATUS_SENDING = 2;
+  NOTIFICATION_STATUS_DELIVERED = 3;
+  NOTIFICATION_STATUS_FAILED = 4;
+  NOTIFICATION_STATUS_BOUNCED = 5;
+}
+
+message SendNotificationRequest {
+  string user_id = 1;
+  NotificationType type = 2;
+  string channel_preference = 3; // Preferred channel (empty = ML-optimized)
+  string subject = 4;
+  string body = 5;
+  map<string, string> template_params = 6;
+}
+
+message SendNotificationResponse {
+  Notification notification = 1;
+  // ML-predicted optimal channel (may differ from preference)
+  string recommended_channel = 2;
+  // Confidence score of channel recommendation (0.0 - 1.0)
+  double channel_confidence = 3;
+}
+
+message GetNotificationStatusRequest {
+  string notification_id = 1;
+}
+
+message GetNotificationStatusResponse {
+  Notification notification = 1;
+  // Delivery attempts with timestamps
+  repeated DeliveryAttempt attempts = 2;
+}
+
+message DeliveryAttempt {
+  string channel = 1;
+  bool success = 2;
+  google.protobuf.Timestamp attempted_at = 3;
+  string error_message = 4;
+}
+
+message GetNotificationPreferencesRequest {
+  string user_id = 1;
+}
+
+message GetNotificationPreferencesResponse {
+  string user_id = 1;
+  repeated ChannelPreference channels = 2;
+  QuietHours quiet_hours = 3;
+}
+
+message ChannelPreference {
+  string channel = 1;
+  bool enabled = 2;
+  repeated NotificationType opted_in_types = 3;
+}
+
+message QuietHours {
+  string start_time = 1; // HH:MM in user's timezone
+  string end_time = 2;
+  string timezone = 3;
+}
+
+message UpdateNotificationPreferencesRequest {
+  string user_id = 1;
+  repeated ChannelPreference channels = 2;
+  QuietHours quiet_hours = 3;
+}
+
+message UpdateNotificationPreferencesResponse {
+  bool updated = 1;
+}

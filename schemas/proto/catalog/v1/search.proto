@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package catalog.v1;
+
+option go_package = "github.com/comprehensive-architecture/services/gen/go/catalog/v1";
+
+import "common/v1/types.proto";
+
+// Catalog search with advanced filtering capabilities
+service CatalogSearchService {
+  // Full-text search across products
+  rpc Search(SearchRequest) returns (SearchResponse);
+  // Get search suggestions (autocomplete)
+  rpc Suggest(SuggestRequest) returns (SuggestResponse);
+}
+
+message SearchRequest {
+  string query = 1;
+  common.v1.PaginationRequest pagination = 2;
+  SearchFilters filters = 3;
+  SearchSort sort = 4;
+}
+
+message SearchFilters {
+  repeated string categories = 1;
+  repeated string tags = 2;
+  PriceRange price_range = 3;
+  bool in_stock_only = 4;
+}
+
+message PriceRange {
+  common.v1.Money min = 1;
+  common.v1.Money max = 2;
+}
+
+message SearchSort {
+  string field = 1; // "relevance", "price", "name", "created_at"
+  string direction = 2; // "asc", "desc"
+}
+
+message SearchResponse {
+  repeated SearchResult results = 1;
+  common.v1.PaginationResponse pagination = 2;
+  repeated string facets = 3; // Available filter categories
+}
+
+message SearchResult {
+  string product_id = 1;
+  string name = 2;
+  string description_snippet = 3;
+  common.v1.Money price = 4;
+  double relevance_score = 5;
+}
+
+message SuggestRequest {
+  string prefix = 1;
+  int32 max_suggestions = 2;
+}
+
+message SuggestResponse {
+  repeated string suggestions = 1;
+}

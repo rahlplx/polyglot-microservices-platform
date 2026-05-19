@@ -1,0 +1,29 @@
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/comprehensive-architecture/services/gen/go
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: generated/go
+    opt: paths=source_relative
+  - remote: buf.build/grpc/go
+    out: generated/go
+    opt: paths=source_relative
+  - remote: buf.build/protocolbuffers/java
+    out: generated/java
+  - remote: buf.build/grpc/java
+    out: generated/java
+  - remote: buf.build/protocolbuffers/pyi
+    out: generated/python
+  - remote: buf.build/protocolbuffers/py
+    out: generated/python
+  - remote: buf.build/grpc/python
+    out: generated/python
+  - plugin: rust
+    out: generated/rust
+    opt:
+      - no_client
+  - plugin: typescript
+    out: generated/typescript

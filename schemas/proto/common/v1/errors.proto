@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "github.com/comprehensive-architecture/services/gen/go/common/v1";
+
+// Standardized error codes used across all services
+// Maps to HTTP status codes for REST and gRPC status codes for gRPC
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  // Client errors (4xx equivalent)
+  ERROR_CODE_BAD_REQUEST = 400;
+  ERROR_CODE_UNAUTHORIZED = 401;
+  ERROR_CODE_FORBIDDEN = 403;
+  ERROR_CODE_NOT_FOUND = 404;
+  ERROR_CODE_CONFLICT = 409;
+  ERROR_CODE_GONE = 410;
+  ERROR_CODE_UNPROCESSABLE = 422;
+  ERROR_CODE_TOO_MANY_REQUESTS = 429;
+  // Server errors (5xx equivalent)
+  ERROR_CODE_INTERNAL = 500;
+  ERROR_CODE_NOT_IMPLEMENTED = 501;
+  ERROR_CODE_SERVICE_UNAVAILABLE = 503;
+  ERROR_CODE_GATEWAY_TIMEOUT = 504;
+  // Business logic errors
+  ERROR_CODE_INVALID_STATE = 600;
+  ERROR_CODE_SAGA_COMPENSATION = 601;
+  ERROR_CODE_CIRCUIT_OPEN = 602;
+  ERROR_CODE_RATE_LIMITED = 603;
+  ERROR_CODE_SCHEMA_VALIDATION = 604;
+  ERROR_CODE_IDENTITY_VERIFICATION = 605;
+}
+
+// Detailed error response following RFC 7807 Problem Details
+message ProblemDetail {
+  // Error URI reference (RFC 7807 "type")
+  string type = 1;
+  // Human-readable title (RFC 7807 "title")
+  string title = 2;
+  // HTTP status code (RFC 7807 "status")
+  int32 status = 3;
+  // Detailed error description (RFC 7807 "detail")
+  string detail = 4;
+  // Request-specific instance URI (RFC 7807 "instance")
+  string instance = 5;
+  // Machine-readable error code from ErrorCode enum
+  ErrorCode error_code = 6;
+  // Suggested remediation action for the client
+  string remediation = 7;
+  // Additional context as key-value pairs
+  map<string, string> extensions = 8;
+  // Trace ID for debugging (from W3C Trace Context)
+  string trace_id = 9;
+}

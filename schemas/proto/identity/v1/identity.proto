@@ -1,0 +1,134 @@
+syntax = "proto3";
+
+package identity.v1;
+
+option go_package = "github.com/comprehensive-architecture/services/gen/go/identity/v1";
+
+import "google/protobuf/timestamp.proto";
+
+// Identity service manages SPIFFE/SPIRE workload attestation and SVID lifecycle
+service IdentityService {
+  // Attest a workload and verify its identity
+  rpc AttestWorkload(AttestWorkloadRequest) returns (AttestWorkloadResponse);
+  // Issue a new SVID for an attested workload
+  rpc IssueSVID(IssueSVIDRequest) returns (IssueSVIDResponse);
+  // Revoke an SVID (e.g., on compromise detection)
+  rpc RevokeSVID(RevokeSVIDRequest) returns (RevokeSVIDResponse);
+  // Get the current trust bundle for a trust domain
+  rpc GetTrustBundle(GetTrustBundleRequest) returns (GetTrustBundleResponse);
+  // List all registered workloads in a trust domain
+  rpc ListWorkloads(ListWorkloadsRequest) returns (ListWorkloadsResponse);
+}
+
+// Workload attestation request
+message AttestWorkloadRequest {
+  // SPIFFE ID of the workload to attest
+  string spiffe_id = 1;
+  // Attestation data (K8s pod labels, Unix UID, etc.)
+  map<string, string> selectors = 2;
+  // Trust domain (e.g., "example.com")
+  string trust_domain = 3;
+}
+
+// Attestation response
+message AttestWorkloadResponse {
+  // Whether attestation succeeded
+  bool attested = 1;
+  // Verified SPIFFE ID
+  string spiffe_id = 2;
+  // Attestation expiry timestamp
+  google.protobuf.Timestamp expires_at = 3;
+  // Failure reason if attestation failed
+  string failure_reason = 4;
+}
+
+// SVID issuance request
+message IssueSVIDRequest {
+  // SPIFFE ID for the SVID
+  string spiffe_id = 1;
+  // Requested TTL in seconds
+  int64 ttl_seconds = 2;
+  // CSR (Certificate Signing Request) in DER format
+  bytes csr = 3;
+  // Trust domain
+  string trust_domain = 4;
+}
+
+// SVID issuance response
+message IssueSVIDResponse {
+  // X.509 SVID certificate chain in PEM format
+  string certificate_chain = 1;
+  // Private key (handled by SPIRE Agent, not returned in production)
+  // This field is for testing/mock purposes only
+  string private_key = 2;
+  // SVID expiry timestamp
+  google.protobuf.Timestamp expires_at = 3;
+  // SPIFFE ID embedded in the SVID
+  string spiffe_id = 4;
+}
+
+// SVID revocation request
+message RevokeSVIDRequest {
+  // SPIFFE ID to revoke
+  string spiffe_id = 1;
+  // Reason for revocation
+  string reason = 2;
+  // Trust domain
+  string trust_domain = 3;
+}
+
+// SVID revocation response
+message RevokeSVIDResponse {
+  // Whether revocation succeeded
+  bool revoked = 1;
+  // Timestamp of revocation
+  google.protobuf.Timestamp revoked_at = 2;
+}
+
+// Trust bundle request
+message GetTrustBundleRequest {
+  // Trust domain
+  string trust_domain = 1;
+}
+
+// Trust bundle response
+message GetTrustBundleResponse {
+  // X.509 root certificates in PEM format
+  repeated string root_certificates = 1;
+  // Bundle expiry timestamp
+  google.protobuf.Timestamp expires_at = 2;
+  // Sequence number for bundle rotation tracking
+  uint64 sequence_number = 3;
+}
+
+// List workloads request
+message ListWorkloadsRequest {
+  // Trust domain to list workloads for
+  string trust_domain = 1;
+  // Pagination cursor
+  string cursor = 2;
+  // Page size
+  int32 page_size = 3;
+}
+
+// List workloads response
+message ListWorkloadsResponse {
+  // Registered workloads
+  repeated WorkloadEntry workloads = 1;
+  // Next page cursor
+  string next_cursor = 2;
+}
+
+// A registered workload entry
+message WorkloadEntry {
+  // SPIFFE ID
+  string spiffe_id = 1;
+  // Parent SPIFFE ID
+  string parent_id = 2;
+  // Selectors for workload attestation
+  map<string, string> selectors = 3;
+  // SVID TTL in seconds
+  int64 ttl_seconds = 4;
+  // Whether the workload is currently attested
+  bool attested = 5;
+}

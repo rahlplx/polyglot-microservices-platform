@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package identity.v1;
+
+option go_package = "github.com/comprehensive-architecture/services/gen/go/identity/v1";
+
+import "google/protobuf/timestamp.proto";
+
+// mTLS certificate rotation events and configuration
+service MTLSService {
+  // Get rotation status for a workload's SVID
+  rpc GetRotationStatus(GetRotationStatusRequest) returns (GetRotationStatusResponse);
+  // Force rotation of a workload's SVID (admin operation)
+  rpc ForceRotation(ForceRotationRequest) returns (ForceRotationResponse);
+}
+
+message GetRotationStatusRequest {
+  string spiffe_id = 1;
+  string trust_domain = 2;
+}
+
+message GetRotationStatusResponse {
+  string spiffe_id = 1;
+  // Current SVID expiry
+  google.protobuf.Timestamp current_expires_at = 2;
+  // Next scheduled rotation time
+  google.protobuf.Timestamp next_rotation_at = 3;
+  // Rotation strategy: "timed" or "on-expiry"
+  string rotation_strategy = 4;
+  // Grace period in seconds before expiry
+  int64 grace_period_seconds = 5;
+}
+
+message ForceRotationRequest {
+  string spiffe_id = 1;
+  string trust_domain = 2;
+  string reason = 3;
+}
+
+message ForceRotationResponse {
+  bool rotation_initiated = 1;
+  google.protobuf.Timestamp new_expiry = 2;
+}

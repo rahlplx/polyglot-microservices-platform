@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package gateway.v1;
+
+option go_package = "github.com/comprehensive-architecture/services/gen/go/gateway/v1";
+
+// Rate limiting configuration, managed by Gateway and consumed by rate limiter adapter
+message RateLimitRule {
+  // Unique rule identifier
+  string rule_id = 1;
+  // Client identity pattern (SPIFFE ID glob, e.g., "spiffe://example.com/ns/*/sa/*")
+  string client_pattern = 2;
+  // Service this rule applies to (empty = all services)
+  string service_name = 3;
+  // Maximum requests per window
+  int64 max_requests = 4;
+  // Window duration in seconds
+  int64 window_seconds = 5;
+  // Action when limit is exceeded: "reject" or "queue"
+  string exceeded_action = 6;
+  // Priority (higher = evaluated first)
+  int32 priority = 7;
+}
+
+// Batch of rate limit rules for bulk updates
+message RateLimitRuleBatch {
+  repeated RateLimitRule rules = 1;
+}

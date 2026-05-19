@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package payment.v1;
+
+option go_package = "github.com/comprehensive-architecture/services/gen/go/payment/v1";
+
+// Circuit breaker state management (used by the resilience adapter)
+service CircuitBreakerService {
+  // Update circuit breaker state (called by the resilience adapter)
+  rpc UpdateCircuitState(UpdateCircuitStateRequest) returns (UpdateCircuitStateResponse);
+  // Reset a circuit breaker to closed state (admin operation)
+  rpc ResetCircuit(ResetCircuitRequest) returns (ResetCircuitResponse);
+}
+
+message UpdateCircuitStateRequest {
+  string circuit_id = 1;
+  bool success = 2;
+  int64 latency_ms = 3;
+  string error_type = 4; // "timeout", "connection_reset", "5xx", "429"
+}
+
+message UpdateCircuitStateResponse {
+  CircuitState new_state = 1;
+}
+
+message ResetCircuitRequest {
+  string circuit_id = 1;
+  string reason = 2;
+}
+
+message ResetCircuitResponse {
+  bool reset = 1;
+}

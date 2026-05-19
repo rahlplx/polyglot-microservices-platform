@@ -1,0 +1,119 @@
+syntax = "proto3";
+
+package payment.v1;
+
+option go_package = "github.com/comprehensive-architecture/services/gen/go/payment/v1";
+
+import "common/v1/types.proto";
+import "google/protobuf/timestamp.proto";
+
+// Payment service handles payment processing with circuit breaker integration
+service PaymentService {
+  // Initiate a payment for an order
+  rpc ProcessPayment(ProcessPaymentRequest) returns (ProcessPaymentResponse);
+  // Get payment status
+  rpc GetPayment(GetPaymentRequest) returns (GetPaymentResponse);
+  // Refund a completed payment
+  rpc RefundPayment(RefundPaymentRequest) returns (RefundPaymentResponse);
+  // List transactions for reconciliation
+  rpc ListTransactions(ListTransactionsRequest) returns (ListTransactionsResponse);
+  // Get circuit breaker status for the payment gateway
+  rpc GetCircuitBreakerStatus(GetCircuitBreakerStatusRequest) returns (GetCircuitBreakerStatusResponse);
+}
+
+// Payment entity
+message Payment {
+  string payment_id = 1;
+  string order_id = 2;
+  common.v1.Money amount = 3;
+  PaymentStatus status = 4;
+  string payment_method = 5; // "card", "bank_transfer", "wallet"
+  string gateway_reference = 6; // External payment gateway reference
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp completed_at = 8;
+}
+
+enum PaymentStatus {
+  PAYMENT_STATUS_UNSPECIFIED = 0;
+  PAYMENT_STATUS_PENDING = 1;
+  PAYMENT_STATUS_PROCESSING = 2;
+  PAYMENT_STATUS_COMPLETED = 3;
+  PAYMENT_STATUS_FAILED = 4;
+  PAYMENT_STATUS_REFUNDED = 5;
+  PAYMENT_STATUS_PARTIALLY_REFUNDED = 6;
+}
+
+message ProcessPaymentRequest {
+  string order_id = 1;
+  common.v1.Money amount = 2;
+  string payment_method = 3;
+  map<string, string> payment_details = 4; // Gateway-specific details (behind ACL)
+}
+
+message ProcessPaymentResponse {
+  Payment payment = 1;
+}
+
+message GetPaymentRequest {
+  string payment_id = 1;
+}
+
+message GetPaymentResponse {
+  Payment payment = 1;
+}
+
+message RefundPaymentRequest {
+  string payment_id = 1;
+  common.v1.Money amount = 2; // If partial refund, amount < original
+  string reason = 3;
+}
+
+message RefundPaymentResponse {
+  Payment payment = 1;
+  common.v1.Money refunded_amount = 2;
+}
+
+message ListTransactionsRequest {
+  common.v1.TimeRange time_range = 1;
+  PaymentStatus status_filter = 2;
+  string payment_method_filter = 3;
+  common.v1.PaginationRequest pagination = 4;
+}
+
+message ListTransactionsResponse {
+  repeated Payment payments = 1;
+  common.v1.PaginationResponse pagination = 2;
+}
+
+// Circuit breaker state for the payment gateway connection
+message CircuitBreakerState {
+  string circuit_id = 1;
+  CircuitState state = 2;
+  int32 failure_count = 3;
+  int32 success_count = 4;
+  google.protobuf.Timestamp last_failure_at = 5;
+  google.protobuf.Timestamp last_state_change_at = 6;
+  CircuitBreakerConfig config = 7;
+}
+
+enum CircuitState {
+  CIRCUIT_STATE_UNSPECIFIED = 0;
+  CIRCUIT_STATE_CLOSED = 1;   // Normal operation
+  CIRCUIT_STATE_OPEN = 2;     // Failing, requests rejected
+  CIRCUIT_STATE_HALF_OPEN = 3; // Testing recovery
+}
+
+message CircuitBreakerConfig {
+  int32 failure_threshold = 1;
+  int32 success_threshold = 2;
+  int64 timeout_seconds = 3;
+  int64 half_open_max_requests = 4;
+}
+
+message GetCircuitBreakerStatusRequest {
+  string gateway_id = 1; // e.g., "stripe", "adyen"
+}
+
+message GetCircuitBreakerStatusResponse {
+  CircuitBreakerState state = 1;
+}

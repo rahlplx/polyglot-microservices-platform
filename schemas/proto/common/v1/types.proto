@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "github.com/comprehensive-architecture/services/gen/go/common/v1";
+
+// Monetary value with currency support, precision-safe representation
+message Money {
+  // ISO 4217 currency code (e.g., "USD", "EUR", "GBP")
+  string currency_code = 1;
+  // Whole units (e.g., dollars). Negative indicates debit.
+  int64 units = 2;
+  // Nano units (10^-9). Must be same sign as units. 0 <= nanos < 1,000,000,000.
+  int32 nanos = 3;
+}
+
+// Physical or digital address
+message Address {
+  string street_line_1 = 1;
+  string street_line_2 = 2;
+  string city = 3;
+  string state_province = 4;
+  string postal_code = 5;
+  string country_code = 6; // ISO 3166-1 alpha-2
+}
+
+// Contact information for a person or organization
+message ContactInfo {
+  string email = 1;
+  string phone = 2;
+  string display_name = 3;
+}
+
+// Pagination request using opaque cursor tokens
+message PaginationRequest {
+  // Opaque cursor from previous response. Empty for first page.
+  string cursor = 1;
+  // Maximum items to return. Server may return fewer.
+  int32 page_size = 2;
+}
+
+// Pagination response with next-page cursor
+message PaginationResponse {
+  // Opaque cursor for the next page. Empty if no more results.
+  string next_cursor = 1;
+  // Total items available (may be estimate for large datasets)
+  int64 total_count = 2;
+  // Whether more results exist beyond this page
+  bool has_more = 3;
+}
+
+// Time range for queries
+message TimeRange {
+  // Start of range (RFC 3339 format, e.g., "2024-01-01T00:00:00Z")
+  string start_time = 1;
+  // End of range (RFC 3339 format)
+  string end_time = 2;
+}
+
+// Standard error detail following google.rpc.Status convention
+message ErrorDetail {
+  // Machine-readable error code (e.g., "ORDER_NOT_FOUND")
+  string error_code = 1;
+  // Human-readable error message
+  string message = 2;
+  // Additional key-value metadata for debugging
+  map<string, string> metadata = 3;
+  // Suggested remediation action
+  string remediation = 4;
+}
+
+// Health check status for individual service
+message HealthCheckResponse {
+  enum ServingStatus {
+    SERVING_STATUS_UNSPECIFIED = 0;
+    SERVING = 1;
+    NOT_SERVING = 2;
+    DEGRADED = 3;
+  }
+  ServingStatus status = 1;
+  string message = 2;
+  map<string, string> details = 3;
+}

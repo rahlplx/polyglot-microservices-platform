@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package catalog.v1;
+
+option go_package = "github.com/comprehensive-architecture/services/gen/go/catalog/v1";
+
+import "common/v1/types.proto";
+import "google/protobuf/timestamp.proto";
+
+// Catalog service manages product listings, inventory, and search
+service CatalogService {
+  // Create a new product
+  rpc CreateProduct(CreateProductRequest) returns (CreateProductResponse);
+  // Get product by ID
+  rpc GetProduct(GetProductRequest) returns (GetProductResponse);
+  // Update an existing product
+  rpc UpdateProduct(UpdateProductRequest) returns (UpdateProductResponse);
+  // Soft-delete a product
+  rpc DeleteProduct(DeleteProductRequest) returns (DeleteProductResponse);
+  // Search products with filtering and pagination
+  rpc SearchProducts(SearchProductsRequest) returns (SearchProductsResponse);
+  // List all products with pagination
+  rpc ListProducts(ListProductsRequest) returns (ListProductsResponse);
+}
+
+// Product entity
+message Product {
+  string product_id = 1;
+  string name = 2;
+  string description = 3;
+  common.v1.Money price = 4;
+  string category = 5;
+  repeated string tags = 6;
+  int32 available_quantity = 7;
+  ProductStatus status = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+enum ProductStatus {
+  PRODUCT_STATUS_UNSPECIFIED = 0;
+  PRODUCT_STATUS_ACTIVE = 1;
+  PRODUCT_STATUS_INACTIVE = 2;
+  PRODUCT_STATUS_DISCONTINUED = 3;
+}
+
+message CreateProductRequest {
+  string name = 1;
+  string description = 2;
+  common.v1.Money price = 3;
+  string category = 4;
+  repeated string tags = 5;
+  int32 initial_quantity = 6;
+}
+
+message CreateProductResponse {
+  Product product = 1;
+}
+
+message GetProductRequest {
+  string product_id = 1;
+}
+
+message GetProductResponse {
+  Product product = 1;
+}
+
+message UpdateProductRequest {
+  string product_id = 1;
+  optional string name = 2;
+  optional string description = 3;
+  optional common.v1.Money price = 4;
+  optional string category = 5;
+  repeated string tags = 6;
+  optional int32 quantity_adjustment = 7; // positive = add, negative = subtract
+}
+
+message UpdateProductResponse {
+  Product product = 1;
+}
+
+message DeleteProductRequest {
+  string product_id = 1;
+  bool hard_delete = 2; // If true, permanently remove (dangerous)
+  string replacement_product_id = 3; // Optional redirect for soft-deleted products
+}
+
+message DeleteProductResponse {
+  bool deleted = 1;
+  string replacement_product_id = 2; // Echoed if provided
+}
+
+message SearchProductsRequest {
+  string query = 1;
+  repeated string category_filters = 2;
+  repeated string tag_filters = 3;
+  common.v1.Money min_price = 4;
+  common.v1.Money max_price = 5;
+  bool in_stock_only = 6;
+  common.v1.PaginationRequest pagination = 7;
+  string sort_field = 8; // "name", "price", "created_at"
+  string sort_order = 9; // "asc", "desc"
+}
+
+message SearchProductsResponse {
+  repeated Product products = 1;
+  common.v1.PaginationResponse pagination = 2;
+  int32 total_matches = 3;
+}
+
+message ListProductsRequest {
+  common.v1.PaginationRequest pagination = 1;
+  string category_filter = 2;
+  ProductStatus status_filter = 3;
+}
+
+message ListProductsResponse {
+  repeated Product products = 1;
+  common.v1.PaginationResponse pagination = 2;
+}

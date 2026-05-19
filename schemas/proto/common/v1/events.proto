@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "github.com/comprehensive-architecture/services/gen/go/common/v1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/any.proto";
+
+// CloudEvent envelope following CNCF CloudEvents spec v1.0
+// All cross-service events use this standard wrapper
+message CloudEvent {
+  // Unique identifier for this event (UUID v4 recommended)
+  string id = 1;
+  // Event source identifier (e.g., "comprehensive-architecture/order")
+  string source = 2;
+  // Event type (e.g., "comprehensive-architecture.order.created.v1")
+  string type = 3;
+  // Version of the CloudEvents spec (always "1.0")
+  string spec_version = 4;
+  // Timestamp when the event occurred
+  google.protobuf.Timestamp time = 5;
+  // Content type of the data field (e.g., "application/protobuf")
+  string data_content_type = 6;
+  // Event payload (service-specific proto message)
+  google.protobuf.Any data = 7;
+  // W3C Trace Context traceparent for distributed tracing
+  string trace_parent = 8;
+  // W3C Trace Context tracestate for vendor-specific trace data
+  string trace_state = 9;
+}
+
+// Common event types used across the architecture
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  // Order lifecycle events
+  EVENT_TYPE_ORDER_CREATED = 100;
+  EVENT_TYPE_ORDER_COMPLETED = 101;
+  EVENT_TYPE_ORDER_CANCELLED = 102;
+  EVENT_TYPE_ORDER_FAILED = 103;
+  // Payment events
+  EVENT_TYPE_PAYMENT_INITIATED = 200;
+  EVENT_TYPE_PAYMENT_COMPLETED = 201;
+  EVENT_TYPE_PAYMENT_FAILED = 202;
+  EVENT_TYPE_PAYMENT_REFUNDED = 203;
+  // Catalog events
+  EVENT_TYPE_PRODUCT_CREATED = 300;
+  EVENT_TYPE_PRODUCT_UPDATED = 301;
+  EVENT_TYPE_PRODUCT_DELETED = 302;
+  EVENT_TYPE_INVENTORY_CHANGED = 303;
+  // Notification events
+  EVENT_TYPE_NOTIFICATION_SENT = 400;
+  EVENT_TYPE_NOTIFICATION_FAILED = 401;
+}
+
+// Outbox event entry for Transactional Outbox pattern
+message OutboxEvent {
+  // Unique event ID
+  string event_id = 1;
+  // Aggregate root ID (e.g., order_id, payment_id)
+  string aggregate_id = 2;
+  // Aggregate type (e.g., "Order", "Payment")
+  string aggregate_type = 3;
+  // Event type from EventType enum
+  EventType event_type = 4;
+  // Event payload as protobuf-encoded bytes
+  bytes payload = 5;
+  // Timestamp when the event was written to outbox
+  google.protobuf.Timestamp created_at = 6;
+  // Whether the event has been published to the message broker
+  bool published = 7;
+  // Timestamp when published (zero if not yet published)
+  google.protobuf.Timestamp published_at = 8;
+}
