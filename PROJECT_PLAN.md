@@ -247,7 +247,7 @@ At `skill_invoke` trigger:
 
 ## Phase 4: Testing & Validation
 
-**Status:** IN PROGRESS
+**Status:** COMPLETE (8/8 spec items PASS — Gate cleared)
 **Gate:** All test suites pass, benchmarks green, security scan clean
 **Duration target:** 1-2 sessions per feature
 **Phase 4 Init Plan:** /download/PHASE4_INITIALIZATION_PLAN.md
@@ -256,14 +256,14 @@ At `skill_invoke` trigger:
 
 | ID | Requirement | Verification | Status |
 |----|-------------|-------------|--------|
-| 4.1 | Unit tests cover critical paths | Coverage > 80% for new code | PENDING |
-| 4.2 | Integration tests cover user flows | End-to-end scenarios pass | PENDING |
-| 4.3 | /qa full pass with zero open P0/P1 bugs | QA report shows no critical issues | PENDING |
-| 4.4 | /benchmark performance regression check | No regression from baseline | PENDING |
-| 4.5 | /cso security audit clean (if applicable) | No high/critical findings | PENDING |
-| 4.6 | Cross-browser/device testing (Type 3) | 3 breakpoints pass | PENDING |
-| 4.7 | Accessibility testing (WCAG 2.1 AA) | Automated + manual a11y check | PENDING |
-| 4.8 | Document quality gates passed (Type 1) | Page count, fonts, TOC verified | PENDING |
+| 4.1 | Unit tests cover critical paths | Coverage > 80% for new code | PASS |
+| 4.2 | Integration tests cover user flows | End-to-end scenarios pass | PASS |
+| 4.3 | /qa full pass with zero open P0/P1 bugs | QA report shows no critical issues | PASS |
+| 4.4 | /benchmark performance regression check | No regression from baseline | PASS |
+| 4.5 | /cso security audit clean (if applicable) | No high/critical findings | PASS |
+| 4.6 | Cross-browser/device testing (Type 3) | 3 breakpoints pass | PASS |
+| 4.7 | Accessibility testing (WCAG 2.1 AA) | Automated + manual a11y check | PASS |
+| 4.8 | Document quality gates passed (Type 1) | Page count, fonts, TOC verified | PASS |
 
 ### Auto-Trigger Mapping
 
@@ -440,7 +440,7 @@ Current phase is stored in session state:
     "1": "complete",
     "2": "complete",
     "3": "complete",
-    "4": "in_progress",
+    "4": "complete",
     "5": "pending",
     "6": "pending"
   }
