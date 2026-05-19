@@ -8,10 +8,10 @@
   "gstack_version": "1.40.0.0",
   "freeze_state": false,
   "gstack_team_mode": true,
-  "current_phase": 0,
+  "current_phase": 1,
   "phase_status": {
     "0": "complete",
-    "1": "pending",
+    "1": "in_progress",
     "2": "pending",
     "3": "pending",
     "4": "pending",
