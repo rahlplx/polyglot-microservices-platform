@@ -133,6 +133,8 @@ trigger_session_start() {
 # TRIGGER: task_receive
 # ═══════════════════════════════════════════════════════════
 trigger_task_receive() {
+  # Shift past the trigger name to get the full query
+  local query="$*"
   log_trigger "TASK_RECEIVE → Classifying and routing..."
 
   # Action 1: Check freeze
@@ -141,12 +143,37 @@ trigger_task_receive() {
   # Action 2: Verify output dir
   check_output_dir
 
-  # Action 3: Update session state
-  update_session_state "last_task_type" "pending_classification"
+  # Action 3: NLP Intelligent Routing (if query provided)
+  if [ -n "$query" ] && [ -f "$ENGINE_DIR/nlp_router.py" ]; then
+    log_trigger "NLP-ROUTER → Running embeddings-based intent classification..."
+    local nlp_result=$(python3 "$ENGINE_DIR/nlp_router.py" "$query" 2>/dev/null || echo '{}')
+    if [ "$nlp_result" != "{}" ]; then
+      local status=$(echo "$nlp_result" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status','unknown'))" 2>/dev/null || echo "error")
+      local intent=$(echo "$nlp_result" | python3 -c "import json,sys; d=json.load(sys.stdin); p=d.get('primary',{}); print(p.get('name','unknown'))" 2>/dev/null || echo "unknown")
+      local confidence=$(echo "$nlp_result" | python3 -c "import json,sys; d=json.load(sys.stdin); p=d.get('primary',{}); print(f\"{p.get('confidence',0):.1%}\")" 2>/dev/null || echo "0%")
+      local task_type=$(echo "$nlp_result" | python3 -c "import json,sys; d=json.load(sys.stdin); p=d.get('primary',{}); print(p.get('task_type','unknown'))" 2>/dev/null || echo "unknown")
+      local skill=$(echo "$nlp_result" | python3 -c "import json,sys; d=json.load(sys.stdin); p=d.get('primary',{}); print(p.get('system_skill','') or p.get('gstack_skills',[''])[0])" 2>/dev/null || echo "")
+      local action=$(echo "$nlp_result" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('action','unknown'))" 2>/dev/null || echo "unknown")
+
+      log_pass "NLP Classification: $intent ($confidence) → $task_type"
+      log_pass "Recommended skill: $skill | Action: $action"
+      update_session_state "last_task_type" "$task_type"
+      update_session_state "nlp_confidence" "$confidence"
+      update_session_state "nlp_intent" "$intent"
+    else
+      log_warn "NLP router returned empty. Falling back to keyword classification."
+      update_session_state "last_task_type" "pending_classification"
+    fi
+  else
+    log_pass "No query for NLP routing. AI agent should classify manually."
+    update_session_state "last_task_type" "pending_classification"
+  fi
+
+  # Action 4: Update session state
   update_session_state "last_task_id" "pending"
 
   log_pass "Task received. AI agent should now:"
-  log_pass "  1. Classify task type (Type 1-4)"
+  log_pass "  1. Use NLP result above OR classify task type (Type 1-4)"
   log_pass "  2. Create TODO list via TodoWrite"
   log_pass "  3. Estimate token budget"
   log_pass "  4. Inject context template from $CONTEXT_DIR/task_context.md"
@@ -302,7 +329,7 @@ echo ""
 
 case "$TRIGGER" in
   session_start)     trigger_session_start ;;
-  task_receive)      trigger_task_receive ;;
+  task_receive)      shift; trigger_task_receive "$@" ;;
   pre_execution)     trigger_pre_execution ;;
   skill_invoke)      trigger_skill_invoke "$@" ;;
   subagent_dispatch) trigger_subagent_dispatch "$@" ;;
