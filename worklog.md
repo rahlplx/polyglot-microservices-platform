@@ -651,3 +651,48 @@ Stage Summary:
 - Schema foundation unblocks all 6 service implementation tracks
 - Branch: schema/P3-3.1-common-v1
 - Commit: 7b6ea23
+
+---
+Task ID: 3.7-infra
+Agent: Infra Agent
+Project Phase: 3 (Implementation & Vibe Coding)
+Task: Create Kubernetes infrastructure manifests for polyglot microservices architecture
+
+Work Log:
+- Read worklog.md, PHASE2_DESIGN_SPEC.md, PHASE3_IMPLEMENTATION_SPEC.md, and docs/performance-budget.md for context
+- Created directory structure: infra/kubernetes/{base,platform,apps,overlays/{dev,staging,production}} and .github/workflows/
+- Created base/namespace.yaml: production namespace with restricted pod security labels, ArgoCD managed-by label
+- Created base/serviceaccount.yaml: 9 ServiceAccounts (gateway, identity, catalog, order, payment, notification, analytics, cdc-relay, schema-registry) each with SPIFFE ID annotation (spiffe://trust.example.org/ns/production/sa/{name})
+- Created base/networkpolicy.yaml: Default-deny ingress+egress, DNS allow, per-service explicit allow rules for all inter-service communication paths
+- Created platform/otel-collector.yaml: DaemonSet (1 per node), OTLP/gRPC+HTTP receivers, tail_sampling (errors=100%, slow>2s=100%, critical=100%, baseline=10%), batch+resource processors, OTLP exporter to Gateway
+- Created platform/otel-gateway.yaml: Deployment (2 replicas, HA), fan-out to Prometheus/Tempo/Loki, HPA (2-6 replicas), pod anti-affinity
+- Created platform/spire-server.yaml: StatefulSet (3 replicas), trust.example.org, K8s PSAT attestation, SQLite DataStore, k8sbundle Notifier
+- Created platform/spire-agent.yaml: DaemonSet (1 per node), K8s PSAT attestation, Workload API via host Unix socket
+- Created platform/kafka.yaml: Zookeeper StatefulSet (3) + Kafka StatefulSet (3 brokers, replication factor 3, min.insync.replicas=2)
+- Created platform/debezium.yaml: Deployment (1 replica), Kafka Connect config, JMX Exporter sidecar, PostgreSQL WAL capture
+- Created apps/app-of-apps.yaml: ApplicationSet for 9 services, AppProject with RBAC, platform-components Application
+- Created apps/{gateway,identity,catalog,order,payment,notification,analytics,cdc-relay,schema-registry}.yaml: Per-service ArgoCD Applications
+- Created overlays/dev/kustomization.yaml: 1 replica, 50% resources, DEBUG logging, dev trust domain
+- Created overlays/staging/kustomization.yaml: 2 replicas, 80% resources, INFO logging, staging trust domain
+- Created overlays/production/kustomization.yaml: Full budgets per performance-budget.md, topology spread, strict SLOs
+- Created .github/workflows/schema-ci.yml: Buf lint + breaking + consistency + OpenAPI validation + Pact check
+- Created .github/workflows/service-ci.yml: Reusable workflow — lint/test/build/push + Trivy scan + ACL enforcement + OTel coverage
+- Committed: infra(k8s): add Kubernetes infrastructure manifests for polyglot microservices [P3-3.1]
+
+Spec Items Verified:
+- 3.1 Code follows design specification: PASS
+- 3.2 All spec items implemented: PASS
+- Resource budgets aligned with performance-budget.md: PASS
+- SPIFFE/SPIRE identity (spiffe.io format): PASS
+- OTel tail-based sampling (errors/slow/critical/baseline): PASS
+- Default-deny NetworkPolicy with explicit allow rules: PASS
+- GitOps-compatible (ArgoCD + Kustomize): PASS
+
+Stage Summary:
+- 21 files created across 5 directories
+- Base: 3 files (namespace, 9 SAs, 12 NetworkPolicies)
+- Platform: 6 files (OTel, SPIRE, Kafka, Debezium)
+- Apps: 10 files (app-of-apps + 9 service Applications)
+- Overlays: 3 files (dev/staging/production)
+- CI/CD: 2 files (schema-ci, service-ci)
+- Commit: 31ad3cd infra(k8s): add Kubernetes infrastructure manifests [P3-3.1]
