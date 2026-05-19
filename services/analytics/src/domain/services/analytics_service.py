@@ -17,7 +17,7 @@ sub-500ms p99 query latency.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ..models.aggregation import AggregationFunction, AggregationWindow
@@ -124,8 +124,8 @@ class AnalyticsService:
 
         if time_range is None:
             time_range = TimeRange(
-                start=datetime.utcnow() - timedelta(hours=1),
-                end=datetime.utcnow(),
+                start=datetime.now(timezone.utc) - timedelta(hours=1),
+                end=datetime.now(timezone.utc),
             )
 
         self._validate_time_range(time_range)
@@ -223,8 +223,8 @@ class AnalyticsService:
         """
         if time_range is None:
             time_range = TimeRange(
-                start=datetime.utcnow() - timedelta(hours=1),
-                end=datetime.utcnow(),
+                start=datetime.now(timezone.utc) - timedelta(hours=1),
+                end=datetime.now(timezone.utc),
             )
 
         return self._otel_processor.get_dependencies(

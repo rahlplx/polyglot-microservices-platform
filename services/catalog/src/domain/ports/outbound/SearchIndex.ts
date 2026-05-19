@@ -8,6 +8,7 @@
  * Domain core has ZERO external dependencies.
  */
 import type { Product } from '../../models';
+import type { Money } from '../../models';
 import type { SearchFilters, SortBy, FacetValue } from '../inbound/SearchCatalog';
 
 // ---------------------------------------------------------------------------
@@ -20,9 +21,7 @@ export interface SearchDocument {
   readonly description: string;
   readonly category: string;
   readonly tags: string[];
-  readonly priceUnits: number;
-  readonly priceNanos: number;
-  readonly currencyCode: string;
+  readonly price: Money;
   readonly availableQuantity: number;
   readonly status: string;
   readonly createdAt: string;

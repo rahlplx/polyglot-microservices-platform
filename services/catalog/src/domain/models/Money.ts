@@ -40,9 +40,9 @@ export class Money {
       );
     }
 
-    if (nanos < 0 || nanos >= 1_000_000_000) {
+    if (nanos <= -1_000_000_000 || nanos >= 1_000_000_000) {
       throw new MoneyValidationError(
-        `Nanos must be in range [0, 1_000_000_000), got: ${nanos}`
+        `Nanos must be in range [-999999999, 999999999], got: ${nanos}`
       );
     }
 

@@ -21,7 +21,7 @@ receiver runs on port 4317 for OpenTelemetry SDK telemetry ingestion.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from ...domain.models.aggregation import AggregationFunction, AggregationWindow
@@ -229,8 +229,8 @@ class GrpcHandler:
         """
         if start_time and end_time:
             try:
-                start = datetime.fromtimestamp(start_time.seconds + start_time.nanos / 1e9)
-                end = datetime.fromtimestamp(end_time.seconds + end_time.nanos / 1e9)
+                start = datetime.fromtimestamp(start_time.seconds + start_time.nanos / 1e9, tz=timezone.utc)
+                end = datetime.fromtimestamp(end_time.seconds + end_time.nanos / 1e9, tz=timezone.utc)
                 return TimeRange(start=start, end=end)
             except (AttributeError, ValueError):
                 return None

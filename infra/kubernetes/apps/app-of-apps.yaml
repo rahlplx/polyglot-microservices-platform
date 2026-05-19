@@ -44,7 +44,7 @@ spec:
     spec:
       project: polyglot-microservices
       source:
-        repoURL: https://github.com/example/polyglot-microservices.git
+        repoURL: https://github.com/rahlplx/polyglot-microservices-platform.git
         targetRevision: main
         path: "{{path}}"
       destination:
@@ -77,7 +77,7 @@ metadata:
 spec:
   description: "Polyglot Microservices Platform — 9 services + platform components"
   sourceRepos:
-    - "https://github.com/example/polyglot-microservices.git"
+    - "https://github.com/rahlplx/polyglot-microservices-platform.git"
   destinations:
     - namespace: production
       server: https://kubernetes.default.svc
@@ -126,7 +126,7 @@ metadata:
 spec:
   project: polyglot-microservices
   source:
-    repoURL: https://github.com/example/polyglot-microservices.git
+    repoURL: https://github.com/rahlplx/polyglot-microservices-platform.git
     targetRevision: main
     directory:
       recurse: true

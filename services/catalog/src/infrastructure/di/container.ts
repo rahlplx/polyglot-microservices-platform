@@ -111,9 +111,7 @@ export async function createContainer(config: AppConfig): Promise<AppContainer> 
   // 5. Initialize inbound adapters (driving ports)
   logger.info('Initializing inbound adapters...');
 
-  const protoPath = config.env === 'development'
-    ? 'catalog/v1/catalog.proto'
-    : 'catalog/v1/catalog.proto';
+  const protoPath = 'catalog/v1/catalog.proto';
 
   const grpcHandler = new CatalogGrpcHandler(
     catalogService,

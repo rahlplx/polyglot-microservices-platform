@@ -196,6 +196,7 @@ spec:
           protocol: TCP
   egress:
     - to:
+        # TODO: Narrow 10.0.0.0/8 to the specific database subnet in production
         - ipBlock:
             cidr: 10.0.0.0/8
       ports:
@@ -262,6 +263,7 @@ spec:
         - port: 9092
           protocol: TCP
     - to:
+        # TODO: Narrow 10.0.0.0/8 to the specific database subnet in production
         - ipBlock:
             cidr: 10.0.0.0/8
       ports:
@@ -308,6 +310,7 @@ spec:
         - port: 443
           protocol: TCP
     - to:
+        # TODO: Narrow 10.0.0.0/8 to the specific database subnet in production
         - ipBlock:
             cidr: 10.0.0.0/8
       ports:
@@ -355,6 +358,7 @@ spec:
         - port: 587
           protocol: TCP
     - to:
+        # TODO: Narrow 10.0.0.0/8 to the specific database subnet in production
         - ipBlock:
             cidr: 10.0.0.0/8
       ports:
@@ -424,6 +428,7 @@ spec:
           protocol: TCP
   egress:
     - to:
+        # TODO: Narrow 10.0.0.0/8 to the specific database subnet in production
         - ipBlock:
             cidr: 10.0.0.0/8
       ports:

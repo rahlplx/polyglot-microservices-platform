@@ -92,6 +92,9 @@ patches:
         name: gateway
       spec:
         template:
+          metadata:
+            annotations:
+              spiffe.io/inject: "true"
           spec:
             containers:
               - name: gateway
@@ -120,6 +123,9 @@ patches:
         name: identity
       spec:
         template:
+          metadata:
+            annotations:
+              spiffe.io/inject: "true"
           spec:
             containers:
               - name: identity
@@ -148,6 +154,9 @@ patches:
         name: catalog
       spec:
         template:
+          metadata:
+            annotations:
+              spiffe.io/inject: "true"
           spec:
             containers:
               - name: catalog
@@ -176,6 +185,9 @@ patches:
         name: order
       spec:
         template:
+          metadata:
+            annotations:
+              spiffe.io/inject: "true"
           spec:
             containers:
               - name: order
@@ -204,6 +216,9 @@ patches:
         name: payment
       spec:
         template:
+          metadata:
+            annotations:
+              spiffe.io/inject: "true"
           spec:
             containers:
               - name: payment
@@ -232,6 +247,9 @@ patches:
         name: notification
       spec:
         template:
+          metadata:
+            annotations:
+              spiffe.io/inject: "true"
           spec:
             containers:
               - name: notification
@@ -260,6 +278,9 @@ patches:
         name: analytics
       spec:
         template:
+          metadata:
+            annotations:
+              spiffe.io/inject: "true"
           spec:
             containers:
               - name: analytics
@@ -288,6 +309,9 @@ patches:
         name: cdc-relay
       spec:
         template:
+          metadata:
+            annotations:
+              spiffe.io/inject: "true"
           spec:
             containers:
               - name: cdc-relay
@@ -309,6 +333,9 @@ patches:
         name: schema-registry
       spec:
         template:
+          metadata:
+            annotations:
+              spiffe.io/inject: "true"
           spec:
             containers:
               - name: schema-registry

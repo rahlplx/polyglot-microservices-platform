@@ -23,7 +23,7 @@ import io
 import json
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ..models.aggregation import AggregationFunction, AggregationWindow
@@ -128,8 +128,8 @@ class ReportService:
         """
         if time_range is None:
             time_range = TimeRange(
-                start=datetime.utcnow() - timedelta(days=7),
-                end=datetime.utcnow(),
+                start=datetime.now(timezone.utc) - timedelta(days=7),
+                end=datetime.now(timezone.utc),
             )
 
         cache_key = self._build_cache_key(report_type, parameters, time_range, format, granularity)
@@ -168,7 +168,7 @@ class ReportService:
             report_type=report_type,
             time_range=time_range,
             format=format,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
             data=formatted_data,
             parameters=parameters or {},
             granularity=granularity,
@@ -375,7 +375,7 @@ class ReportService:
             return None
 
         cached_at, report = entry
-        if (datetime.utcnow() - cached_at).total_seconds() > self._cache_ttl:
+        if (datetime.now(timezone.utc) - cached_at).total_seconds() > self._cache_ttl:
             del self._cache[cache_key]
             return None
 
@@ -388,4 +388,4 @@ class ReportService:
             cache_key: The cache key for the report.
             report: The report to cache.
         """
-        self._cache[cache_key] = (datetime.utcnow(), report)
+        self._cache[cache_key] = (datetime.now(timezone.utc), report)

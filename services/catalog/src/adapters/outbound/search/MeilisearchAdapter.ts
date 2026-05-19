@@ -14,9 +14,29 @@ import type {
   SearchIndexResult,
 } from '../../../domain/ports/outbound/SearchIndex';
 import type { Product } from '../../../domain/models';
-import { ProductStatus, SearchIndexUnavailableError } from '../../../domain/models';
+import { Money, ProductStatus, SearchIndexUnavailableError } from '../../../domain/models';
 import { SortBy } from '../../../domain/ports/inbound/SearchCatalog';
 import type { FacetValue } from '../../../domain/ports/inbound/SearchCatalog';
+
+// ---------------------------------------------------------------------------
+// Flattened document shape stored in Meilisearch
+// (Money is denormalized into priceUnits/priceNanos/currencyCode for
+//  filterable/sortable attribute support)
+// ---------------------------------------------------------------------------
+
+interface MeilisearchDocument {
+  readonly productId: string;
+  readonly name: string;
+  readonly description: string;
+  readonly category: string;
+  readonly tags: string[];
+  readonly priceUnits: number;
+  readonly priceNanos: number;
+  readonly currencyCode: string;
+  readonly availableQuantity: number;
+  readonly status: string;
+  readonly createdAt: string;
+}
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -51,7 +71,7 @@ export class MeilisearchAdapter implements SearchIndex {
 
   async index(product: Product): Promise<void> {
     const idx = await this.getIndex();
-    const doc = this.toDocument(product);
+    const doc = this.toMeilisearchDocument(product);
     await idx.addDocuments([doc], { primaryKey: 'productId' });
   }
 
@@ -60,7 +80,7 @@ export class MeilisearchAdapter implements SearchIndex {
       return;
     }
     const idx = await this.getIndex();
-    const docs = products.map((p) => this.toDocument(p));
+    const docs = products.map((p) => this.toMeilisearchDocument(p));
     // Batch in groups of 500 for balanced indexing
     const batchSize = 500;
     for (let i = 0; i < docs.length; i += batchSize) {
@@ -92,7 +112,7 @@ export class MeilisearchAdapter implements SearchIndex {
         facets: query.facetFields.length > 0 ? query.facetFields : undefined,
       };
 
-      const response: SearchResponse<SearchDocument> = await idx.search(
+      const response: SearchResponse<MeilisearchDocument> = await idx.search(
         query.query,
         searchParams
       );
@@ -145,14 +165,14 @@ export class MeilisearchAdapter implements SearchIndex {
   // Private Helpers
   // -------------------------------------------------------------------------
 
-  private async getIndex(): Promise<Index<SearchDocument>> {
+  private async getIndex(): Promise<Index<MeilisearchDocument>> {
     if (!this.indexInitialized) {
       const task = await this.client.createIndex(this.indexName, {
         primaryKey: 'productId',
       });
       await this.client.waitForTask(task.taskUid);
 
-      const idx = this.client.index<SearchDocument>(this.indexName);
+      const idx = this.client.index<MeilisearchDocument>(this.indexName);
 
       // Configure filterable and sortable attributes
       await idx.updateFilterableAttributes([
@@ -168,7 +188,7 @@ export class MeilisearchAdapter implements SearchIndex {
       this.indexInitialized = true;
     }
 
-    return this.client.index<SearchDocument>(this.indexName);
+    return this.client.index<MeilisearchDocument>(this.indexName);
   }
 
   private buildFilters(filters: SearchQuery['filters']): string[] {
@@ -222,7 +242,12 @@ export class MeilisearchAdapter implements SearchIndex {
     }
   }
 
-  private toDocument(product: Product): SearchDocument {
+  /**
+   * Convert a Product domain entity to a flattened Meilisearch document.
+   * The Money value object is denormalized into separate fields so that
+   * Meilisearch can filter/sort on priceUnits and currencyCode independently.
+   */
+  private toMeilisearchDocument(product: Product): MeilisearchDocument {
     return {
       productId: product.productId,
       name: product.name,
@@ -238,8 +263,26 @@ export class MeilisearchAdapter implements SearchIndex {
     };
   }
 
+  /**
+   * Reconstruct a SearchDocument from a flattened Meilisearch hit,
+   * reassembling the Money value object from the denormalized fields.
+   */
+  private toSearchDocument(hit: MeilisearchDocument): SearchDocument {
+    return {
+      productId: hit.productId,
+      name: hit.name,
+      description: hit.description,
+      category: hit.category,
+      tags: hit.tags,
+      price: Money.create(hit.currencyCode, hit.priceUnits, hit.priceNanos),
+      availableQuantity: hit.availableQuantity,
+      status: hit.status,
+      createdAt: hit.createdAt,
+    };
+  }
+
   private toSearchResult(
-    response: SearchResponse<SearchDocument>,
+    response: SearchResponse<MeilisearchDocument>,
     facetFields: string[]
   ): SearchIndexResult {
     const results: SearchResultItem[] = response.hits.map((hit) => ({

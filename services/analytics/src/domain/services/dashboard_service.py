@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ..models.aggregation import AggregationFunction, AggregationWindow
@@ -114,8 +114,8 @@ class DashboardService:
 
         if time_range is None:
             time_range = TimeRange(
-                start=datetime.utcnow() - timedelta(hours=1),
-                end=datetime.utcnow(),
+                start=datetime.now(timezone.utc) - timedelta(hours=1),
+                end=datetime.now(timezone.utc),
             )
 
         if variables:
@@ -139,7 +139,7 @@ class DashboardService:
             "description": config.get("description", ""),
             "panels": panels,
             "data": panel_data,
-            "rendered_at": datetime.utcnow().isoformat(),
+            "rendered_at": datetime.now(timezone.utc).isoformat(),
             "time_range": time_range.to_dict(),
         }
 
@@ -371,7 +371,7 @@ class DashboardService:
             return None
 
         cached_at, data = entry
-        if (datetime.utcnow() - cached_at).total_seconds() > self._cache_ttl:
+        if (datetime.now(timezone.utc) - cached_at).total_seconds() > self._cache_ttl:
             del self._cache[cache_key]
             return None
 
@@ -384,7 +384,7 @@ class DashboardService:
             cache_key: The cache key for the dashboard.
             data: The rendered dashboard data.
         """
-        self._cache[cache_key] = (datetime.utcnow(), data)
+        self._cache[cache_key] = (datetime.now(timezone.utc), data)
 
     def _invalidate_cache(self, dashboard_id: str) -> None:
         """Invalidate all cached entries for a specific dashboard.

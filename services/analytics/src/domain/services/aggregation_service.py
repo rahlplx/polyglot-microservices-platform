@@ -208,9 +208,9 @@ class AggregationService:
         """Apply an aggregation function to a list of data points.
 
         Computes the specified statistical function over the values in the
-        window. For percentile calculations, uses the nearest-rank method
-        which provides a good balance between accuracy and performance for
-        streaming aggregation scenarios.
+        window. For percentile calculations, uses linear interpolation between
+        the two closest ranks to provide a more accurate estimate than the
+        nearest-rank method.
 
         Args:
             points: The data points within the window.
@@ -278,11 +278,10 @@ class AggregationService:
             raise ValueError(f"Unsupported aggregation function: {func}")
 
     def _percentile(self, sorted_values: list[float], count: int, percentile: int) -> float:
-        """Compute a percentile using the nearest-rank method.
+        """Compute a percentile using linear interpolation.
 
-        The nearest-rank method selects the value at the index closest to
-        the rank computed from the percentile. For example, the 95th
-        percentile of 100 values is the value at index 94 (0-indexed).
+        The method uses linear interpolation between the two closest ranks
+        to provide a more accurate estimate than the nearest-rank method.
 
         Args:
             sorted_values: Values sorted in ascending order.

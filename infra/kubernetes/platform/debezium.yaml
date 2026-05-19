@@ -48,7 +48,10 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: debezium
@@ -121,11 +124,14 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 1001
-            readOnlyRootFilesystem: false
+            readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
         # JMX Exporter sidecar for OTel metrics
         - name: jmx-exporter
           image: bitnami/jmx-exporter:0.20.0
@@ -155,6 +161,8 @@ spec:
         - name: jmx-config
           configMap:
             name: debezium-jmx-config
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: ConfigMap

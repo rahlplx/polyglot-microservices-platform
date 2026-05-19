@@ -1,0 +1,132 @@
+openapi: 3.1.0
+info:
+  title: RL Engine Service
+  description: >
+    Rate Limiting Engine for the API Gateway.
+    Manages rate limit rules, evaluates request quotas per client and service,
+    and enforces throttling policies with configurable windows and actions.
+  version: 1.0.0
+  contact:
+    name: Platform Team
+
+servers:
+  - url: https://gateway.internal.example.com/v1
+    description: Internal gRPC-Gateway endpoint
+
+paths:
+  /rate-limits/status:
+    get:
+      operationId: getRateLimitStatus
+      summary: Get current rate limit status for a client
+      tags: [RateLimits]
+      parameters:
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Client identifier (SPIFFE ID or API key)
+        - name: service_name
+          in: query
+          schema:
+            type: string
+          description: Service being accessed
+      responses:
+        '200':
+          description: Rate limit status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetRateLimitStatusResponse'
+
+  /rate-limits/rules:
+    get:
+      operationId: listRateLimitRules
+      summary: List all rate limit rules
+      tags: [RateLimits]
+      responses:
+        '200':
+          description: Rate limit rules
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitRuleBatch'
+
+    post:
+      operationId: upsertRateLimitRules
+      summary: Create or update rate limit rules in batch
+      tags: [RateLimits]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RateLimitRuleBatch'
+      responses:
+        '200':
+          description: Rules updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitRuleBatch'
+        '400':
+          description: Invalid rule configuration
+
+components:
+  schemas:
+    RateLimitRule:
+      type: object
+      required: [rule_id, client_pattern, max_requests, window_seconds]
+      properties:
+        rule_id:
+          type: string
+          description: Unique rule identifier
+        client_pattern:
+          type: string
+          description: Client identity pattern (SPIFFE ID glob)
+        service_name:
+          type: string
+          description: Service this rule applies to (empty = all services)
+        max_requests:
+          type: integer
+          format: int64
+          description: Maximum requests per window
+        window_seconds:
+          type: integer
+          format: int64
+          description: Window duration in seconds
+        exceeded_action:
+          type: string
+          description: Action when limit exceeded ("reject" or "queue")
+          enum: [reject, queue]
+        priority:
+          type: integer
+          format: int32
+          description: Priority (higher = evaluated first)
+
+    RateLimitRuleBatch:
+      type: object
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RateLimitRule'
+
+    GetRateLimitStatusResponse:
+      type: object
+      properties:
+        limit:
+          type: integer
+          format: int64
+          description: Maximum requests allowed in the window
+        remaining:
+          type: integer
+          format: int64
+          description: Remaining requests in the current window
+        reset_after_seconds:
+          type: integer
+          format: int64
+          description: Seconds until the window resets
+        is_limited:
+          type: boolean
+          description: Whether the client is currently rate-limited

@@ -18,6 +18,7 @@ import swaggerUi from '@fastify/swagger-ui';
 import type { CatalogService } from '../../../domain/services/CatalogService';
 import { OtelAdapter } from '../../outbound/observability/OtelAdapter';
 import {
+  Money,
   ProductNotFoundError,
   DuplicateSKUError,
   InsufficientStockError,
@@ -40,7 +41,7 @@ const MoneySchema = {
   properties: {
     currency_code: { type: 'string', minLength: 3, maxLength: 3, description: 'ISO 4217 currency code' },
     units: { type: 'integer', description: 'Whole units (e.g., dollars)' },
-    nanos: { type: 'integer', minimum: 0, maximum: 999999999, description: 'Nano units (10^-9)' },
+    nanos: { type: 'integer', minimum: -999999999, maximum: 999999999, description: 'Nano units (10^-9). Same sign as units.' },
   },
 };
 
@@ -339,8 +340,8 @@ export class CatalogController {
             : undefined,
           tags: query.tag ? [query.tag as string] : undefined,
           priceRange: query.min_price && query.max_price ? {
-            min: { currencyCode: 'USD', units: Math.floor((query.min_price as number) * 100), nanos: 0 },
-            max: { currencyCode: 'USD', units: Math.floor((query.max_price as number) * 100), nanos: 0 },
+            min: { currencyCode: 'USD', units: Money.fromDecimal('USD', String(query.min_price)).units, nanos: Money.fromDecimal('USD', String(query.min_price)).nanos },
+            max: { currencyCode: 'USD', units: Money.fromDecimal('USD', String(query.max_price)).units, nanos: Money.fromDecimal('USD', String(query.max_price)).nanos },
           } : undefined,
           inStockOnly: (query.in_stock as boolean) ?? false,
         },
