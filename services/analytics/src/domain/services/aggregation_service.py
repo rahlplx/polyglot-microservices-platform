@@ -248,7 +248,7 @@ class AggregationService:
 
         Each function has specific semantics: sum and count are straightforward
         accumulations; avg divides sum by count; min and max select the
-        extremes; percentiles use the nearest-rank interpolation method.
+        extremes; percentiles use linear interpolation between the two closest ranks.
 
         Args:
             sorted_values: Values sorted in ascending order.

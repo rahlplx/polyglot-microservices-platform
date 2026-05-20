@@ -72,7 +72,7 @@ class PostgresEventRepository:
 
     def __init__(
         self,
-        connection_string: str = "postgresql://analytics:analytics@localhost:5432/analytics",
+        connection_string: str = "",
         pool_size: int = 5,
         max_overflow: int = 10,
     ) -> None:
@@ -80,6 +80,8 @@ class PostgresEventRepository:
 
         Args:
             connection_string: SQLAlchemy-compatible connection string.
+                Must be provided via environment variable ANALYTICS_DB_CONNECTION_STRING
+                or infrastructure config. Never hardcode credentials.
             pool_size: Number of permanent connections in the pool.
             max_overflow: Maximum number of connections beyond pool_size.
         """

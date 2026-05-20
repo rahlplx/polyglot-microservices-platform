@@ -55,8 +55,8 @@ class Container:
         self.aggregation_service = AggregationService(self.ts_repo)
         self.analytics_service = AnalyticsService(self.ts_repo, self.event_repo, self.aggregation_service)
         self.report_service = ReportService(self.ts_repo)
-        self.dashboard_service = DashboardService(self.dashboard_repo)
+        self.dashboard_service = DashboardService(self.ts_repo, self.event_repo)
 
         # Inbound adapters.
-        self.grpc_handler = GrpcHandler(self.analytics_service, self.report_service)
+        self.grpc_handler = GrpcHandler(self.analytics_service, self.dashboard_service, self.report_service)
         self.kafka_consumer = KafkaEventConsumer(self.analytics_service)

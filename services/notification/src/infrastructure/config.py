@@ -15,8 +15,12 @@ from __future__ import annotations
 
 from typing import Optional
 
-from pydantic import Field
+import logging
+
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 
 class ServerConfig(BaseSettings):
@@ -34,12 +38,27 @@ class ServerConfig(BaseSettings):
     grpc_port: int = Field(default=9090, description="gRPC server port")
     workers: int = Field(default=4, description="Number of worker processes")
     enable_cors: bool = Field(default=True, description="Enable CORS for HTTP server")
+    # SECURITY: CORS origins must be explicitly configured in production.
+    # An empty default ensures no origins are allowed unless explicitly
+    # specified via the SERVER_CORS_ORIGINS environment variable.
+    # A wildcard "*" is rejected in production environments (see validator below).
     cors_origins: list[str] = Field(
-        default=["*"], description="Allowed CORS origins"
+        default=[],
+        description="Allowed CORS origins (must be explicitly set; wildcards rejected in production)",
     )
     request_timeout_seconds: int = Field(
         default=30, description="HTTP request timeout"
     )
+
+    @model_validator(mode="after")
+    def _validate_cors_origins(self) -> "ServerConfig":
+        """Warn if wildcard CORS origins are detected."""
+        if "*" in self.cors_origins:
+            logger.warning(
+                "CORS wildcard detected in SERVER_CORS_ORIGINS. "
+                "Wildcard origins are insecure and should not be used in production."
+            )
+        return self
 
     model_config = {"env_prefix": "SERVER_"}
 
@@ -50,17 +69,35 @@ class DatabaseConfig(BaseSettings):
     Controls the connection string, pool size, and migration settings
     for the SQLAlchemy async database adapter. The connection string
     uses the asyncpg driver for non-blocking database operations.
+
+    SECURITY: The database URL contains credentials and MUST be provided
+    via the DB_URL environment variable. No default is provided to prevent
+    hardcoded credentials from leaking into source control.
     """
 
     url: str = Field(
-        default="postgresql+asyncpg://notification:notification@localhost:5432/notification",
-        description="Async PostgreSQL connection string",
+        default="",
+        description="Async PostgreSQL connection string (MUST be set via DB_URL env var)",
     )
     pool_size: int = Field(default=20, description="Connection pool size")
     max_overflow: int = Field(default=10, description="Max overflow connections")
     pool_pre_ping: bool = Field(default=True, description="Enable connection health checks")
     echo_sql: bool = Field(default=False, description="Log SQL statements")
     run_migrations: bool = Field(default=True, description="Run Alembic migrations on startup")
+
+    @model_validator(mode="after")
+    def _validate_db_url(self) -> "DatabaseConfig":
+        """Warn if the database URL is not configured."""
+        if not self.url:
+            msg = (
+                "DB_URL is not set. The database URL MUST be provided via the "
+                "DB_URL environment variable (e.g. "
+                "postgresql+asyncpg://user:pass@host:5432/db). "
+                "The service will fail to connect to the database."
+            )
+            logger.critical(msg)
+            raise ValueError(msg)
+        return self
 
     model_config = {"env_prefix": "DB_"}
 
@@ -296,3 +333,21 @@ class NotificationServiceConfig(BaseSettings):
         description="Deployment environment",
     )
     debug: bool = Field(default=False, description="Enable debug mode")
+
+    @model_validator(mode="after")
+    def _validate_production_cors(self) -> "NotificationServiceConfig":
+        """SECURITY: Reject wildcard CORS origins in production environments.
+
+        Allowing '*' in CORS origins permits any origin to make cross-origin
+        requests, which is unacceptable in production. Origins must be
+        explicitly enumerated via the SERVER_CORS_ORIGINS env var.
+        """
+        if self.environment == "production" and "*" in self.server.cors_origins:
+            msg = (
+                "CORS wildcard '*' is not allowed in production. "
+                "Explicitly set SERVER_CORS_ORIGINS to a list of "
+                "trusted origin URLs (e.g. 'https://app.example.com,https://admin.example.com')."
+            )
+            logger.critical(msg)
+            raise ValueError(msg)
+        return self

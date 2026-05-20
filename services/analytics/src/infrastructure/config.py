@@ -19,8 +19,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import Field
+import logging
+
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 
 class ServerSettings(BaseSettings):
@@ -38,11 +42,25 @@ class ServerSettings(BaseSettings):
     grpc_port: int = Field(default=50057, description="gRPC server port")
     otlp_port: int = Field(default=4317, description="OTLP receiver port")
     workers: int = Field(default=4, description="Number of worker processes")
+    # SECURITY: CORS origins must be explicitly configured in production.
+    # An empty default ensures no origins are allowed unless explicitly
+    # specified via the ANALYTICS_SERVER_CORS_ORIGINS environment variable.
+    # A wildcard "*" is rejected in production environments (see validator below).
     cors_origins: list[str] = Field(
-        default=["*"],
-        description="Allowed CORS origins for the REST API",
+        default=[],
+        description="Allowed CORS origins for the REST API (must be explicitly set; wildcards rejected in production)",
     )
     request_timeout_seconds: int = Field(default=30, description="Request timeout in seconds")
+
+    @model_validator(mode="after")
+    def _validate_cors_origins(self) -> "ServerSettings":
+        """Reject wildcard CORS origins in production environments."""
+        if "*" in self.cors_origins:
+            logger.warning(
+                "CORS wildcard detected in ANALYTICS_SERVER_CORS_ORIGINS. "
+                "Wildcard origins are insecure and should not be used in production."
+            )
+        return self
 
     model_config = {"env_prefix": "ANALYTICS_SERVER_"}
 
@@ -73,15 +91,35 @@ class PostgresSettings(BaseSettings):
     These settings control the connection to the PostgreSQL instance
     that stores dashboard configurations, event metadata, alert rules,
     and transformer registry configurations.
+
+    SECURITY: The database password MUST be provided via the
+    ANALYTICS_POSTGRES_PASSWORD environment variable. No default is
+    provided to prevent hardcoded credentials from leaking into source
+    control.
     """
 
     host: str = Field(default="localhost", description="PostgreSQL hostname")
     port: int = Field(default=5432, description="PostgreSQL port")
     database: str = Field(default="analytics", description="Database name")
     username: str = Field(default="analytics", description="Authentication username")
-    password: str = Field(default="analytics", description="Authentication password")
+    # SECURITY: Password MUST be set via ANALYTICS_POSTGRES_PASSWORD env var.
+    # No default is provided to prevent hardcoded credentials in source control.
+    password: str = Field(default="", description="Authentication password (MUST be set via ANALYTICS_POSTGRES_PASSWORD env var)")
     pool_size: int = Field(default=5, description="Connection pool size")
     max_overflow: int = Field(default=10, description="Max overflow connections")
+
+    @model_validator(mode="after")
+    def _validate_password(self) -> "PostgresSettings":
+        """Fail fast if the PostgreSQL password is not configured."""
+        if not self.password:
+            msg = (
+                "ANALYTICS_POSTGRES_PASSWORD is not set. The database password "
+                "MUST be provided via the ANALYTICS_POSTGRES_PASSWORD "
+                "environment variable. The service will fail to connect to the database."
+            )
+            logger.critical(msg)
+            raise ValueError(msg)
+        return self
 
     @property
     def connection_string(self) -> str:
@@ -178,5 +216,23 @@ class AnalyticsConfig(BaseSettings):
     max_query_range_days: int = Field(default=90, description="Maximum query range in days")
     dashboard_cache_ttl: int = Field(default=30, description="Dashboard cache TTL in seconds")
     report_cache_ttl: int = Field(default=300, description="Report cache TTL in seconds")
+
+    @model_validator(mode="after")
+    def _validate_production_cors(self) -> "AnalyticsConfig":
+        """SECURITY: Reject wildcard CORS origins in production environments.
+
+        Allowing '*' in CORS origins permits any origin to make cross-origin
+        requests, which is unacceptable in production. Origins must be
+        explicitly enumerated via the ANALYTICS_SERVER_CORS_ORIGINS env var.
+        """
+        if self.environment == "production" and "*" in self.server.cors_origins:
+            msg = (
+                "CORS wildcard '*' is not allowed in production. "
+                "Explicitly set ANALYTICS_SERVER_CORS_ORIGINS to a list of "
+                "trusted origin URLs (e.g. 'https://app.example.com,https://admin.example.com')."
+            )
+            logger.critical(msg)
+            raise ValueError(msg)
+        return self
 
     model_config = {"env_prefix": "ANALYTICS_"}

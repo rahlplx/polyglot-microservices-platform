@@ -74,10 +74,10 @@ class TemplateService:
                         autoescape=True,
                         keep_trailing_newline=True,
                     )
-                except ImportError:
-                    logger.warning(
-                        "Jinja2 not available, template rendering will be passthrough"
-                    )
+                except ImportError as exc:
+                    raise RuntimeError(
+                        "Jinja2 is required for template rendering but is not installed"
+                    ) from exc
             self._env_initialized = True
         return self._jinja_env
 
@@ -235,31 +235,20 @@ class TemplateService:
     def _render_string(self, template_str: Optional[str], variables: dict[str, str]) -> Optional[str]:
         """Render a Jinja2 template string with the given variables.
 
-        If the Jinja2 library is not available, the template string is
-        returned as-is with simple string formatting applied. This fallback
-        ensures that the service degrades gracefully in environments where
-        Jinja2 is not installed.
+        Uses the Jinja2 environment's ``from_string`` method so that the
+        configured autoescape and sandbox settings are always enforced.
+        Jinja2 is a hard requirement; a RuntimeError is raised if it is
+        not available, because falling back to ``str.format()`` would open
+        a Server-Side Template Injection (SSTI) vulnerability.
         """
         if template_str is None:
             return None
 
         env = self._get_jinja_env()
-        if env is not None:
-            try:
-                from jinja2 import Template as JinjaTemplate
-                jinja_template = JinjaTemplate(template_str)
-                return jinja_template.render(**variables)
-            except Exception as e:
-                logger.error(
-                    "Template rendering failed: %s", e, exc_info=True
-                )
-                raise
-        else:
-            # Fallback: simple string formatting
-            try:
-                return template_str.format(**variables)
-            except KeyError:
-                logger.warning(
-                    "Fallback formatting failed for template, returning raw"
-                )
-                return template_str
+        try:
+            return env.from_string(template_str).render(**variables)
+        except Exception as e:
+            logger.error(
+                "Template rendering failed: %s", e, exc_info=True
+            )
+            raise

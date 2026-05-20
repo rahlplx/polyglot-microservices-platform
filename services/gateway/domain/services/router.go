@@ -85,9 +85,17 @@ func (s *RouterService) Route(ctx context.Context, req models.RouteRequest) (mod
                 return models.RouteResponse{}, fmt.Errorf("route not found for %s %s: %w", req.Method, req.Path, err)
         }
 
-        // Step 2: Apply rate limiting if a policy is configured
+        // Step 2: Snapshot policies under read lock for consistent access
+        s.mu.RLock()
+        policiesSnapshot := make(map[string]models.RateLimitPolicy, len(s.policies))
+        for k, v := range s.policies {
+                policiesSnapshot[k] = v
+        }
+        s.mu.RUnlock()
+
+        // Apply rate limiting if a policy is configured
         if route.RateLimitPolicy != "" {
-                policy, ok := s.policies[route.RateLimitPolicy]
+                policy, ok := policiesSnapshot[route.RateLimitPolicy]
                 if !ok {
                         s.logger.Error("rate limit policy not found",
                                 slog.String("policy", route.RateLimitPolicy),

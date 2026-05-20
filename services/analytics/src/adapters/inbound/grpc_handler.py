@@ -24,6 +24,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+import grpc
+
 from ...domain.models.aggregation import AggregationFunction, AggregationWindow
 from ...domain.models.report import Granularity, ReportFormat, ReportType, TimeRange
 from ...domain.services.analytics_service import AnalyticsService
@@ -95,7 +97,7 @@ class GrpcHandler:
             )
         except Exception as exc:
             logger.error("GetMetrics failed: %s", exc)
-            await context.abort(code=500, details=str(exc))
+            await context.abort(code=grpc.StatusCode.INTERNAL, details=str(exc))
 
         total_points = sum(s.total_points for s in series_list)
         return self._build_metrics_response(series_list, total_points)
@@ -136,7 +138,7 @@ class GrpcHandler:
             )
         except Exception as exc:
             logger.error("Query traces failed: %s", exc)
-            await context.abort(code=500, details=str(exc))
+            await context.abort(code=grpc.StatusCode.INTERNAL, details=str(exc))
 
         return {
             "traces": traces,
@@ -168,7 +170,7 @@ class GrpcHandler:
             )
         except Exception as exc:
             logger.error("GetDashboard failed: %s", exc)
-            await context.abort(code=500, details=str(exc))
+            await context.abort(code=grpc.StatusCode.INTERNAL, details=str(exc))
 
         return result
 
@@ -192,7 +194,7 @@ class GrpcHandler:
         try:
             report_type = ReportType(request.report_type)
         except ValueError:
-            await context.abort(code=400, details=f"Unknown report type: {request.report_type}")
+            await context.abort(code=grpc.StatusCode.INVALID_ARGUMENT, details=f"Unknown report type: {request.report_type}")
             return
 
         try:
@@ -210,7 +212,7 @@ class GrpcHandler:
             )
         except Exception as exc:
             logger.error("GetReport failed: %s", exc)
-            await context.abort(code=500, details=str(exc))
+            await context.abort(code=grpc.StatusCode.INTERNAL, details=str(exc))
 
         return report.to_dict()
 

@@ -48,10 +48,12 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
+    type: Recreate
+    # Debezium Connect maintains connector task assignments in Kafka.
+    # Running two instances simultaneously (RollingUpdate with maxSurge>0)
+    # can cause duplicate connector tasks, split-brain consumer group
+    # assignments, and data duplication. Recreate ensures the old pod
+    # terminates before the new one starts.
   selector:
     matchLabels:
       app.kubernetes.io/name: debezium

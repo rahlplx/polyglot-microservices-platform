@@ -23,7 +23,10 @@ const DatabaseConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(5432),
   database: z.string().min(1).default('catalog'),
   user: z.string().min(1).default('catalog'),
-  password: z.string().min(1).default('catalog'), // FIXME: SECURITY — no default password in production
+  // SECURITY: The database password MUST be provided via the CATALOG_DB_PASSWORD
+  // environment variable. No default is provided to prevent hardcoded credentials
+  // from leaking into source control.
+  password: z.string().min(1),
   maxPoolSize: z.number().int().positive().default(20),
   idleTimeoutMs: z.number().int().positive().default(30000),
   connectionTimeoutMs: z.number().int().positive().default(5000),
@@ -32,7 +35,10 @@ const DatabaseConfigSchema = z.object({
 
 const MeilisearchConfigSchema = z.object({
   host: z.string().min(1).default('http://localhost:7700'),
-  apiKey: z.string().min(1).default('catalog-key'), // FIXME: SECURITY — no default API key in production
+  // SECURITY: The Meilisearch API key MUST be provided via the CATALOG_MEILISEARCH_API_KEY
+  // environment variable. No default is provided to prevent hardcoded secrets
+  // from leaking into source control.
+  apiKey: z.string().min(1),
   indexName: z.string().min(1).default('products'),
 });
 
@@ -140,7 +146,8 @@ export function loadConfig(): AppConfig {
       port: envInt('CATALOG_DB_PORT', 5432),
       database: envString('CATALOG_DB_NAME', 'catalog'),
       user: envString('CATALOG_DB_USER', 'catalog'),
-      password: envString('CATALOG_DB_PASSWORD', 'catalog'),
+      // SECURITY: No default password — must be set via CATALOG_DB_PASSWORD env var
+      password: envString('CATALOG_DB_PASSWORD', ''),
       maxPoolSize: envInt('CATALOG_DB_POOL_SIZE', 20),
       idleTimeoutMs: envInt('CATALOG_DB_IDLE_TIMEOUT_MS', 30000),
       connectionTimeoutMs: envInt('CATALOG_DB_CONNECT_TIMEOUT_MS', 5000),
@@ -148,7 +155,8 @@ export function loadConfig(): AppConfig {
     },
     meilisearch: {
       host: envString('CATALOG_MEILISEARCH_HOST', 'http://localhost:7700'),
-      apiKey: envString('CATALOG_MEILISEARCH_API_KEY', 'catalog-key'),
+      // SECURITY: No default API key — must be set via CATALOG_MEILISEARCH_API_KEY env var
+      apiKey: envString('CATALOG_MEILISEARCH_API_KEY', ''),
       indexName: envString('CATALOG_MEILISEARCH_INDEX', 'products'),
     },
     otel: {
@@ -180,6 +188,25 @@ export function loadConfig(): AppConfig {
 }
 
 function validateConfig(config: AppConfig): AppConfig {
+  // SECURITY: Check for missing credentials before schema validation so we can
+  // produce a clear, actionable error message instead of a generic Zod error.
+  const missingCredentials: string[] = [];
+  if (!config.database.password) {
+    missingCredentials.push(
+      'database.password — set CATALOG_DB_PASSWORD environment variable'
+    );
+  }
+  if (!config.meilisearch.apiKey) {
+    missingCredentials.push(
+      'meilisearch.apiKey — set CATALOG_MEILISEARCH_API_KEY environment variable'
+    );
+  }
+  if (missingCredentials.length > 0) {
+    throw new Error(
+      `Missing required credentials. The following MUST be provided via environment variables:\n${missingCredentials.map((m) => `  - ${m}`).join('\n')}`
+    );
+  }
+
   try {
     return AppConfigSchema.parse(config);
   } catch (error) {

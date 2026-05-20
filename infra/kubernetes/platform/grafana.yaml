@@ -14,7 +14,10 @@ metadata:
 type: Opaque
 stringData:
   admin-user: admin
-  admin-password: CHANGE-ME-ON-DEPLOY
+  # SECURITY: This placeholder MUST be overridden via external secret management
+  # (e.g., Vault, AWS Secrets Manager, or K8s ExternalSecrets operator) before deployment.
+  # Never deploy to production with this default value.
+  admin-password: ${GRAFANA_ADMIN_PASSWORD}
 ---
 apiVersion: apps/v1
 kind: Deployment

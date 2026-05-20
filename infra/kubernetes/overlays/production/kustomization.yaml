@@ -366,12 +366,101 @@ configMapGenerator:
     behavior: create
 
 # Pod disruption budgets for production
+# Inject environment-config ConfigMap into ALL service deployments
 patchesJson6902:
   - target:
       group: apps
       version: v1
       kind: Deployment
       name: gateway
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom
+        value:
+          - configMapRef:
+              name: environment-config
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: identity
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom
+        value:
+          - configMapRef:
+              name: environment-config
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: catalog
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom
+        value:
+          - configMapRef:
+              name: environment-config
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: order
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom
+        value:
+          - configMapRef:
+              name: environment-config
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: payment
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom
+        value:
+          - configMapRef:
+              name: environment-config
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: notification
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom
+        value:
+          - configMapRef:
+              name: environment-config
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: analytics
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom
+        value:
+          - configMapRef:
+              name: environment-config
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: cdc-relay
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom
+        value:
+          - configMapRef:
+              name: environment-config
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: schema-registry
     patch: |
       - op: add
         path: /spec/template/spec/containers/0/envFrom

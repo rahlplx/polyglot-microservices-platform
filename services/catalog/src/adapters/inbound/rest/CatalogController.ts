@@ -340,8 +340,8 @@ export class CatalogController {
             : undefined,
           tags: query.tag ? [query.tag as string] : undefined,
           priceRange: query.min_price && query.max_price ? {
-            min: { currencyCode: 'USD', units: Money.fromDecimal('USD', String(query.min_price)).units, nanos: Money.fromDecimal('USD', String(query.min_price)).nanos },
-            max: { currencyCode: 'USD', units: Money.fromDecimal('USD', String(query.max_price)).units, nanos: Money.fromDecimal('USD', String(query.max_price)).nanos },
+            min: Money.fromDecimal('USD', String(query.min_price)),
+            max: Money.fromDecimal('USD', String(query.max_price)),
           } : undefined,
           inStockOnly: (query.in_stock as boolean) ?? false,
         },

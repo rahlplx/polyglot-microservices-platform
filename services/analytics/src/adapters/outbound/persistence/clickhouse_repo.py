@@ -23,12 +23,48 @@ for 30 days, 1-hour rollups for 90 days, and 1-day rollups for 1 year.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any
 
 from ...domain.models.aggregation import AggregatedDataPoint, AggregationFunction, AggregationWindow
 from ...domain.models.metric import DataPoint, TimeSeries
 from ...domain.models.report import TimeRange
+
+# Strict allowlist pattern for SQL identifiers (table names, view names, metric names).
+# Only alphanumeric characters, underscores, and hyphens are permitted.
+# This prevents SQL injection via f-string interpolation in DDL and query construction.
+_IDENTIFIER_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+class InvalidIdentifierError(ValueError):
+    """Raised when a SQL identifier fails allowlist validation."""
+
+
+def _validate_identifier(value: str, field_name: str = "identifier") -> str:
+    """Validate that *value* contains only safe identifier characters.
+
+    ClickHouse DDL statements (CREATE MATERIALIZED VIEW, etc.) cannot use
+    parameterized queries, so identifiers are interpolated via f-strings.
+    This function ensures that only alphanumeric characters, underscores,
+    and hyphens are present — blocking any SQL metacharacters.
+
+    Args:
+        value: The identifier string to validate.
+        field_name: Human-readable name for error messages.
+
+    Returns:
+        The validated value (unchanged).
+
+    Raises:
+        InvalidIdentifierError: If *value* contains disallowed characters.
+    """
+    if not _IDENTIFIER_RE.match(value):
+        raise InvalidIdentifierError(
+            f"Invalid {field_name}: {value!r}. "
+            f"Only alphanumeric characters, underscores, and hyphens are allowed."
+        )
+    return value
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +191,11 @@ class ClickHouseTimeSeriesRepository:
             series: List of DataPoint objects to persist.
             metric_name: The name of the metric.
             labels: Dimensional labels for filtering and grouping.
+
+        Raises:
+            InvalidIdentifierError: If *metric_name* fails allowlist validation.
         """
+        _validate_identifier(metric_name, "metric_name")
         for point in series:
             self._write_buffer.append({
                 "timestamp": point.timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
@@ -217,7 +257,11 @@ class ClickHouseTimeSeriesRepository:
             points: List of AggregatedDataPoint objects to persist.
             metric_name: The name of the metric.
             labels: Dimensional labels.
+
+        Raises:
+            InvalidIdentifierError: If *metric_name* fails allowlist validation.
         """
+        _validate_identifier(metric_name, "metric_name")
         if self._client is None:
             logger.error("ClickHouse client not connected")
             return
@@ -256,12 +300,21 @@ class ClickHouseTimeSeriesRepository:
         Args:
             metric_name: The metric to create a rollup for.
             interval: The aggregation interval.
+
+        Raises:
+            InvalidIdentifierError: If *metric_name* or the derived *view_name*
+                fails allowlist validation.
         """
         if self._client is None:
             logger.error("ClickHouse client not connected")
             return
 
+        # Validate metric_name before it is interpolated into DDL SQL.
+        _validate_identifier(metric_name, "metric_name")
+
         view_name = f"mv_{metric_name.replace('.', '_')}_{interval.value}"
+        # Validate the derived view_name before it is interpolated into DDL SQL.
+        _validate_identifier(view_name, "view_name")
         agg_func = self._clickhouse_agg_func(AggregationFunction.AVG)
 
         create_view_sql = f"""
@@ -362,7 +415,15 @@ class ClickHouseTimeSeriesRepository:
 
         Returns:
             A TimeSeries object with the queried data points.
+
+        Raises:
+            InvalidIdentifierError: If *metric_name* or any label key fails
+                allowlist validation.
         """
+        # Validate metric_name — used in parameterized queries here, but
+        # defense-in-depth ensures no injection even if query construction changes.
+        _validate_identifier(metric_name, "metric_name")
+
         table = self._select_table(time_range)
         agg_func = self._clickhouse_agg_func(aggregation)
         time_bucket = self._interval_sql(window)
@@ -382,8 +443,12 @@ class ClickHouseTimeSeriesRepository:
 
         if labels:
             for key, value in labels.items():
-                param_key = f"label_key_{key.replace('.', '_').replace('-', '_')}"
-                param_val = f"label_val_{key.replace('.', '_').replace('-', '_')}"
+                # Validate each label key before it is used to construct
+                # parameter placeholder names in the WHERE clause.
+                _validate_identifier(key, "label_key")
+                safe_key = key.replace('.', '_').replace('-', '_')
+                param_key = f"label_key_{safe_key}"
+                param_val = f"label_val_{safe_key}"
                 where_clauses.append(f"tags[%({param_key})s] = %({param_val})s")
                 query_params[param_key] = key
                 query_params[param_val] = value

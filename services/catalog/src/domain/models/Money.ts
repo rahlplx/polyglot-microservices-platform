@@ -19,7 +19,10 @@ export class Money {
 
   /**
    * Create a Money value object with validation.
-   * Nanos must be same sign as units and in range [0, 1_000_000_000).
+   * Nanos must be same sign as units and in range [-999,999,999, +999,999,999].
+   * If units is positive, nanos must be positive or zero.
+   * If units is negative, nanos must be negative or zero.
+   * If units is zero, nanos may be positive, negative, or zero.
    */
   public static create(currencyCode: string, units: number, nanos: number): Money {
     if (!currencyCode || currencyCode.length !== 3) {
@@ -63,19 +66,26 @@ export class Money {
 
   /**
    * Create Money from a decimal string, e.g. "29.99" with currency "USD".
+   *
+   * Handles negative values correctly including the range (-1, 0) where
+   * parseInt("-0") returns 0 in JavaScript. Uses the original string's
+   * leading minus sign to determine sign instead of relying on wholePart.
    */
   public static fromDecimal(currencyCode: string, amount: string): Money {
-    const parts = amount.split('.');
+    const isNegative = amount.startsWith('-');
+    const absoluteAmount = isNegative ? amount.slice(1) : amount;
+    const parts = absoluteAmount.split('.');
     const wholePart = parseInt(parts[0], 10);
     const decimalStr = parts[1] ?? '0';
     const paddedDecimal = decimalStr.padEnd(9, '0').slice(0, 9);
-    let nanos = parseInt(paddedDecimal, 10);
+    const nanos = parseInt(paddedDecimal, 10);
 
-    if (wholePart < 0) {
-      nanos = -nanos;
-    }
+    // Apply sign based on the original string, not parseInt result,
+    // to correctly handle values like "-0.50" where parseInt("-0") = 0
+    const signedUnits = isNegative ? -wholePart : wholePart;
+    const signedNanos = isNegative ? -nanos : nanos;
 
-    return Money.create(currencyCode, wholePart, nanos);
+    return Money.create(currencyCode, signedUnits, signedNanos);
   }
 
   /**
