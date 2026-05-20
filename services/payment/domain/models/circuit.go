@@ -21,11 +21,11 @@ const (
 // 5 consecutive failures trigger open state, 30 seconds before retry attempt,
 // and 1 successful request in half-open to close the circuit again.
 type CircuitConfig struct {
-	Name                   string        `json:"name"`
-	FailureThreshold       int           `json:"failure_threshold"`
-	Timeout                time.Duration `json:"timeout"`
-	MaxHalfOpenRequests    int           `json:"max_half_open_requests"`
-	OnStateChange          func(from, to CircuitState) `json:"-"`
+	Name                string                      `json:"name"`
+	FailureThreshold    int                         `json:"failure_threshold"`
+	Timeout             time.Duration               `json:"timeout"`
+	MaxHalfOpenRequests int                         `json:"max_half_open_requests"`
+	OnStateChange       func(from, to CircuitState) `json:"-"`
 }
 
 // DefaultCircuitConfig returns production-tested defaults for payment gateway

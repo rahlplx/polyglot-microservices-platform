@@ -19,12 +19,12 @@ type ProcessPaymentUseCase interface {
 // Retries with the same key return the original payment result without
 // creating a duplicate charge, ensuring safe retry semantics.
 type ProcessPaymentCommand struct {
-	OrderID        string             `json:"order_id"`
-	Amount         models.Money       `json:"amount"`
+	OrderID        string               `json:"order_id"`
+	Amount         models.Money         `json:"amount"`
 	Method         models.PaymentMethod `json:"method"`
-	CustomerID     string             `json:"customer_id"`
-	IdempotencyKey string             `json:"idempotency_key"`
-	Metadata       map[string]string  `json:"metadata,omitempty"`
+	CustomerID     string               `json:"customer_id"`
+	IdempotencyKey string               `json:"idempotency_key"`
+	Metadata       map[string]string    `json:"metadata,omitempty"`
 }
 
 // RefundPaymentUseCase processes refunds against completed payments.
@@ -38,11 +38,11 @@ type RefundPaymentUseCase interface {
 
 // RefundPaymentCommand contains the data needed to initiate a refund.
 type RefundPaymentCommand struct {
-	PaymentID      string             `json:"payment_id"`
-	Amount         models.Money       `json:"amount"`
+	PaymentID      string              `json:"payment_id"`
+	Amount         models.Money        `json:"amount"`
 	Reason         models.RefundReason `json:"reason"`
-	IdempotencyKey string             `json:"idempotency_key"`
-	Metadata       map[string]string  `json:"metadata,omitempty"`
+	IdempotencyKey string              `json:"idempotency_key"`
+	Metadata       map[string]string   `json:"metadata,omitempty"`
 }
 
 // GetTransactionUseCase retrieves a payment transaction by its ID.
@@ -67,12 +67,12 @@ type ListTransactionsUseCase interface {
 
 // ListTransactionsQuery contains filter criteria for transaction listing.
 type ListTransactionsQuery struct {
-	CustomerID string                 `json:"customer_id,omitempty"`
-	Status     models.PaymentStatus   `json:"status,omitempty"`
-	FromTime   *string                `json:"from_time,omitempty"`
-	ToTime     *string                `json:"to_time,omitempty"`
-	PageSize   int                    `json:"page_size,omitempty"`
-	Cursor     string                 `json:"cursor,omitempty"`
+	CustomerID string               `json:"customer_id,omitempty"`
+	Status     models.PaymentStatus `json:"status,omitempty"`
+	FromTime   *string              `json:"from_time,omitempty"`
+	ToTime     *string              `json:"to_time,omitempty"`
+	PageSize   int                  `json:"page_size,omitempty"`
+	Cursor     string               `json:"cursor,omitempty"`
 }
 
 // GetCircuitStatusUseCase returns the current state of a circuit breaker

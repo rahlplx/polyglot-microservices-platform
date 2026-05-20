@@ -8,6 +8,7 @@ package services
 import (
         "context"
         "fmt"
+        "io"
         "log/slog"
         "time"
 
@@ -40,7 +41,7 @@ func NewRegistryService(
         logger *slog.Logger,
 ) *RegistryService {
         if logger == nil {
-                logger = slog.New(slog.NewTextHandler(nil, nil))
+                logger = slog.New(slog.NewTextHandler(io.Discard, nil))
         }
         return &RegistryService{
                 repo:      repo,

@@ -17,15 +17,15 @@ import (
 // that links them to the originating order event for end-to-end
 // traceability.
 type DomainEvent struct {
-	ID          string            // Unique event identifier (UUID v4)
-	Source      string            // Event source (e.g., "payment-service")
-	Type        string            // CloudEvents type (e.g., "com.company.payment.authorized")
-	Time        time.Time         // Event timestamp
-	AggregateID string            // Payment or refund ID that this event relates to
-	CorrelationID string          // Links to the originating order event
-	Data        []byte            // Event payload (serialized protobuf or JSON)
-	ContentType string            // Payload content type (e.g., "application/protobuf")
-	Metadata    map[string]string // Additional event metadata
+	ID            string            // Unique event identifier (UUID v4)
+	Source        string            // Event source (e.g., "payment-service")
+	Type          string            // CloudEvents type (e.g., "com.company.payment.authorized")
+	Time          time.Time         // Event timestamp
+	AggregateID   string            // Payment or refund ID that this event relates to
+	CorrelationID string            // Links to the originating order event
+	Data          []byte            // Event payload (serialized protobuf or JSON)
+	ContentType   string            // Payload content type (e.g., "application/protobuf")
+	Metadata      map[string]string // Additional event metadata
 }
 
 // EventPublisherPort defines the interface for publishing payment domain

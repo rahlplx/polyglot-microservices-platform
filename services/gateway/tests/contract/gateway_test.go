@@ -130,10 +130,10 @@ func TestHealthCheckContract_ResponseStructure(t *testing.T) {
 func TestHealthCheckContract_ServingStatusEnum(t *testing.T) {
 	// Verify that all serving status values are distinct and in range
 	statuses := map[string]models.ServingStatus{
-		"UNKNOWN":      models.StatusUnknown,
-		"SERVING":      models.StatusServing,
-		"NOT_SERVING":  models.StatusNotServing,
-		"DEGRADED":     models.StatusDegraded,
+		"UNKNOWN":     models.StatusUnknown,
+		"SERVING":     models.StatusServing,
+		"NOT_SERVING": models.StatusNotServing,
+		"DEGRADED":    models.StatusDegraded,
 	}
 
 	seen := map[models.ServingStatus]string{}
@@ -146,10 +146,10 @@ func TestHealthCheckContract_ServingStatusEnum(t *testing.T) {
 
 	// Verify String() method returns expected names
 	expectedNames := map[models.ServingStatus]string{
-		models.StatusUnknown:   "UNKNOWN",
-		models.StatusServing:   "SERVING",
+		models.StatusUnknown:    "UNKNOWN",
+		models.StatusServing:    "SERVING",
 		models.StatusNotServing: "NOT_SERVING",
-		models.StatusDegraded:  "DEGRADED",
+		models.StatusDegraded:   "DEGRADED",
 	}
 
 	for status, expected := range expectedNames {

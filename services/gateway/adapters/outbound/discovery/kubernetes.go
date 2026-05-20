@@ -16,19 +16,19 @@ import (
 
 // KubernetesConfig holds the configuration for the Kubernetes discovery adapter.
 type KubernetesConfig struct {
-	Namespace       string        // Kubernetes namespace to watch (default: "default")
-	ResyncInterval  time.Duration // How often to refresh the endpoint cache
-	LabelSelector   string        // Optional label selector for filtering services
-	InCluster       bool          // Whether running inside a Kubernetes cluster
-	KubeconfigPath  string        // Path to kubeconfig file (for out-of-cluster)
+	Namespace      string        // Kubernetes namespace to watch (default: "default")
+	ResyncInterval time.Duration // How often to refresh the endpoint cache
+	LabelSelector  string        // Optional label selector for filtering services
+	InCluster      bool          // Whether running inside a Kubernetes cluster
+	KubeconfigPath string        // Path to kubeconfig file (for out-of-cluster)
 }
 
 // KubernetesDiscovery implements the ServiceDiscoveryPort using the
 // Kubernetes API. It maintains a local cache of endpoints that is kept
 // fresh through periodic resync and watch events.
 type KubernetesDiscovery struct {
-	config  KubernetesConfig
-	logger  *slog.Logger
+	config KubernetesConfig
+	logger *slog.Logger
 
 	mu       sync.RWMutex
 	cache    map[string][]models.ServiceEndpoint // service name → endpoints

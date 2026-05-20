@@ -11,10 +11,10 @@ import (
 type ServingStatus int
 
 const (
-	StatusUnknown   ServingStatus = iota // Status is unknown
-	StatusServing                        // Service is healthy and serving requests
-	StatusNotServing                     // Service is unavailable
-	StatusDegraded                       // Service is partially available
+	StatusUnknown    ServingStatus = iota // Status is unknown
+	StatusServing                         // Service is healthy and serving requests
+	StatusNotServing                      // Service is unavailable
+	StatusDegraded                        // Service is partially available
 )
 
 // String returns a human-readable representation of the ServingStatus.
@@ -85,22 +85,22 @@ func (r Route) MatchesMethod(method string) bool {
 // RateLimitPolicy defines the token bucket parameters for rate limiting
 // a specific client/route combination.
 type RateLimitPolicy struct {
-	Name          string        // Policy identifier
-	RequestsPerSec float64      // Token refill rate (tokens per second)
-	BurstSize     int           // Maximum tokens in the bucket (burst capacity)
-	Window        time.Duration // Sliding window duration for counting
-	KeyTemplate   string        // Go template for the rate limit key (e.g., "{{.ClientID}}:{{.Route}}")
+	Name           string        // Policy identifier
+	RequestsPerSec float64       // Token refill rate (tokens per second)
+	BurstSize      int           // Maximum tokens in the bucket (burst capacity)
+	Window         time.Duration // Sliding window duration for counting
+	KeyTemplate    string        // Go template for the rate limit key (e.g., "{{.ClientID}}:{{.Route}}")
 }
 
 // RateLimitStatus represents the current state of a rate limit counter
 // for a given client and route.
 type RateLimitStatus struct {
-	Key       string        // The resolved rate limit key
-	Allowed   bool          // Whether the request is allowed
-	Remaining int           // Remaining tokens in the current window
-	Limit     int           // Maximum tokens in the window
-	ResetAt   time.Time     // When the window resets
-	Policy    string        // Name of the applied policy
+	Key        string        // The resolved rate limit key
+	Allowed    bool          // Whether the request is allowed
+	Remaining  int           // Remaining tokens in the current window
+	Limit      int           // Maximum tokens in the window
+	ResetAt    time.Time     // When the window resets
+	Policy     string        // Name of the applied policy
 	RetryAfter time.Duration // Duration until the client should retry (0 if allowed)
 }
 
@@ -133,24 +133,24 @@ type DownstreamHealth struct {
 
 // HealthCheckResponse is the domain-level output of the health check use case.
 type HealthCheckResponse struct {
-	Status     ServingStatus       // Overall gateway health
-	Uptime     time.Duration       // Gateway uptime
-	Downstream []DownstreamHealth  // Health of each downstream service
+	Status     ServingStatus      // Overall gateway health
+	Uptime     time.Duration      // Gateway uptime
+	Downstream []DownstreamHealth // Health of each downstream service
 }
 
 // RateLimitRequest is the domain-level input for querying rate limit status.
 type RateLimitRequest struct {
-	ClientID string // Client identifier (from X-API-Key or mTLS SVID)
-	Route    string // Route pattern being accessed
+	ClientID string        // Client identifier (from X-API-Key or mTLS SVID)
+	Route    string        // Route pattern being accessed
 	Window   time.Duration // Requested window (0 = use policy default)
 }
 
 // RateLimitResponse is the domain-level output for rate limit queries.
 type RateLimitResponse struct {
-	Allowed   bool           // Whether the request is allowed
-	Remaining int            // Remaining requests in the window
-	ResetAt   time.Time      // When the window resets
-	Policy    string         // Applied policy name
+	Allowed    bool          // Whether the request is allowed
+	Remaining  int           // Remaining requests in the window
+	ResetAt    time.Time     // When the window resets
+	Policy     string        // Applied policy name
 	RetryAfter time.Duration // Duration to wait before retrying
 }
 
@@ -162,7 +162,7 @@ type RouteConfigRequest struct {
 
 // RouteConfigResponse is the domain-level output for route configuration queries.
 type RouteConfigResponse struct {
-	Routes     []Route          // Matching routes
-	Middleware []string         // Active middleware names
-	TimeoutMs  int              // Default timeout in milliseconds
+	Routes     []Route  // Matching routes
+	Middleware []string // Active middleware names
+	TimeoutMs  int      // Default timeout in milliseconds
 }

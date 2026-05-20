@@ -38,8 +38,8 @@ type OTelConfig struct {
 // It wraps the OTel SDK to provide a simpler interface for creating spans,
 // recording metrics, and propagating trace context.
 type OTelInstrumentation struct {
-	config  OTelConfig
-	logger  *slog.Logger
+	config OTelConfig
+	logger *slog.Logger
 
 	tracerProvider *sdktrace.TracerProvider
 	meterProvider  *sdkmetric.MeterProvider

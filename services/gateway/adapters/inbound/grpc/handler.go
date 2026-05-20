@@ -45,17 +45,17 @@ type HealthCheckRequest struct{}
 
 // HealthCheckResponse is the gRPC response message for health checks.
 type HealthCheckResponse struct {
-	Status     uint32                  `json:"status,omitempty"`
-	UptimeSec  int64                   `json:"uptime_sec,omitempty"`
-	Downstream []*DownstreamHealthMsg  `json:"downstream,omitempty"`
+	Status     uint32                 `json:"status,omitempty"`
+	UptimeSec  int64                  `json:"uptime_sec,omitempty"`
+	Downstream []*DownstreamHealthMsg `json:"downstream,omitempty"`
 }
 
 // DownstreamHealthMsg represents the health of a downstream service.
 type DownstreamHealthMsg struct {
-	Service string `json:"service,omitempty"`
-	Status  uint32 `json:"status,omitempty"`
-	LatencyNs int64 `json:"latency_ns,omitempty"`
-	Error   string `json:"error,omitempty"`
+	Service   string `json:"service,omitempty"`
+	Status    uint32 `json:"status,omitempty"`
+	LatencyNs int64  `json:"latency_ns,omitempty"`
+	Error     string `json:"error,omitempty"`
 }
 
 // RateLimitRequest is the gRPC request message for rate limit queries.
@@ -67,11 +67,11 @@ type RateLimitRequest struct {
 
 // RateLimitResponse is the gRPC response message for rate limit queries.
 type RateLimitResponse struct {
-	Allowed    bool   `json:"allowed,omitempty"`
-	Remaining  int32  `json:"remaining,omitempty"`
-	ResetAt    int64  `json:"reset_at,omitempty"` // Unix timestamp
-	Policy     string `json:"policy,omitempty"`
-	RetryAfterMs int64 `json:"retry_after_ms,omitempty"`
+	Allowed      bool   `json:"allowed,omitempty"`
+	Remaining    int32  `json:"remaining,omitempty"`
+	ResetAt      int64  `json:"reset_at,omitempty"` // Unix timestamp
+	Policy       string `json:"policy,omitempty"`
+	RetryAfterMs int64  `json:"retry_after_ms,omitempty"`
 }
 
 // RouteConfigRequest is the gRPC request message for route config queries.

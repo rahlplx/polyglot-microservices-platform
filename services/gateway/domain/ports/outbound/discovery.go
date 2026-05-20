@@ -12,7 +12,7 @@ import (
 
 // EndpointChange represents a change in the set of available service endpoints.
 type EndpointChange struct {
-	Service string               // Service name that changed
+	Service string                   // Service name that changed
 	Added   []models.ServiceEndpoint // Newly available endpoints
 	Removed []models.ServiceEndpoint // Endpoints that are no longer available
 }
