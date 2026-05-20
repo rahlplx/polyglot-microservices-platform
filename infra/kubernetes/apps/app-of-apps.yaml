@@ -15,23 +15,23 @@ spec:
     - list:
         elements:
           - name: gateway
-            path: infra/kubernetes/apps/gateway.yaml
+            path: services/gateway/kustomize
           - name: identity
-            path: infra/kubernetes/apps/identity.yaml
+            path: services/identity/kustomize
           - name: catalog
-            path: infra/kubernetes/apps/catalog.yaml
+            path: services/catalog/kustomize
           - name: order
-            path: infra/kubernetes/apps/order.yaml
+            path: services/order/kustomize
           - name: payment
-            path: infra/kubernetes/apps/payment.yaml
+            path: services/payment/kustomize
           - name: notification
-            path: infra/kubernetes/apps/notification.yaml
+            path: services/notification/kustomize
           - name: analytics
-            path: infra/kubernetes/apps/analytics.yaml
+            path: services/analytics/kustomize
           - name: cdc-relay
-            path: infra/kubernetes/apps/cdc-relay.yaml
+            path: services/cdc-relay/kustomize
           - name: schema-registry
-            path: infra/kubernetes/apps/schema-registry.yaml
+            path: services/schema-registry/kustomize
   template:
     metadata:
       name: "{{name}}"

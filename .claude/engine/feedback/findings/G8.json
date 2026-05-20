@@ -1,0 +1,25 @@
+{
+  "finding_id": "G8",
+  "source": "external_bot",
+  "external_source": "gemini-code-assist",
+  "severity": "high",
+  "category": "Security",
+  "file_path": "infra/kubernetes/platform/debezium.yaml",
+  "description": "readOnlyRootFilesystem: false \u2014 should be true for security",
+  "fix_description": "Set readOnlyRootFilesystem: true with emptyDir volume for /tmp",
+  "fix_commit": "",
+  "our_violation_id": "",
+  "status": "statically_verified",
+  "verification_tier": 1,
+  "verification_history": [
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/debezium.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T10:23:00.535284+00:00"
+    }
+  ],
+  "created_at": "2026-05-20T10:22:54.396191+00:00",
+  "updated_at": "2026-05-20T10:23:00.535290+00:00"
+}

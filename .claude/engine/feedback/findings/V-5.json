@@ -1,0 +1,25 @@
+{
+  "finding_id": "V-5",
+  "source": "our_audit",
+  "external_source": "",
+  "severity": "medium",
+  "category": "Bug",
+  "file_path": "services/payment/src/domain/services/saga_orchestrator.go",
+  "description": "time.Now() without .UTC() \u2014 producing local timestamps",
+  "fix_description": "Replaced time.Now() with time.Now().UTC()",
+  "fix_commit": "",
+  "our_violation_id": "V-5",
+  "status": "failed_tier1",
+  "verification_tier": 0,
+  "verification_history": [
+    {
+      "tier": 1,
+      "result": "fail",
+      "evidence": "File services/payment/src/domain/services/saga_orchestrator.go not found",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T10:23:00.534739+00:00"
+    }
+  ],
+  "created_at": "2026-05-20T10:22:54.391688+00:00",
+  "updated_at": "2026-05-20T10:23:00.534750+00:00"
+}

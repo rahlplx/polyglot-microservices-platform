@@ -1,0 +1,25 @@
+{
+  "finding_id": "V-10",
+  "source": "our_audit",
+  "external_source": "",
+  "severity": "medium",
+  "category": "Architecture",
+  "file_path": "services/catalog/schemas/proto/",
+  "description": "Service-local proto copies risk divergence from canonical schemas",
+  "fix_description": "Removed local copies, reference canonical schemas/ directory",
+  "fix_commit": "",
+  "our_violation_id": "V-10",
+  "status": "failed_tier1",
+  "verification_tier": 0,
+  "verification_history": [
+    {
+      "tier": 1,
+      "result": "fail",
+      "evidence": "File services/catalog/schemas/proto/ not found",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T10:23:00.602111+00:00"
+    }
+  ],
+  "created_at": "2026-05-20T10:22:54.392652+00:00",
+  "updated_at": "2026-05-20T10:23:00.602115+00:00"
+}

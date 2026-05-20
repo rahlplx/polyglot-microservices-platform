@@ -598,37 +598,11 @@ experiment_dns_outage() {
   baseline_code=$(curl $CURL_OPTS -o /dev/null -w "%{http_code}" "$GATEWAY_URL/healthz" 2>/dev/null) || baseline_code="000"
   echo -e "    Baseline gateway response: HTTP $baseline_code"
 
-  # Step 2: Block port 53 egress (DNS)
-  echo -e "  ${RED}[CHAOS]${NC} Blocking port 53 egress (DNS)"
+  # Step 2: Block DNS egress by applying default-deny egress for gateway
+  # NetworkPolicy default-deny with no egress rules blocks all outbound
+  # traffic including DNS (port 53). This simulates a DNS outage.
+  echo -e "  ${RED}[CHAOS]${NC} Applying default-deny egress to gateway (blocks DNS)"
   local dns_deny_policy="chaos-deny-dns-egress"
-  kubectl apply -f - <<POLICY 2>/dev/null || echo "DNS deny NetworkPolicy apply attempted"
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: ${dns_deny_policy}
-  namespace: ${K8S_NAMESPACE}
-spec:
-  podSelector:
-    matchLabels:
-      app: gateway
-  policyTypes:
-    - Egress
-  egress:
-    - ports:
-        - port: 53
-          protocol: UDP
-        - port: 53
-          protocol: TCP
-POLICY
-
-  # Note: The above policy ALLOWS DNS, but we actually want to DENY it.
-  # NetworkPolicy default-deny doesn't support "deny specific port only".
-  # So we use a different approach: patch the coredns or use iptables.
-  # For safety, we'll delete the above and use a proper approach.
-  kubectl delete networkpolicy "$dns_deny_policy" -n "$K8S_NAMESPACE" 2>/dev/null || true
-
-  # Apply a default-deny egress for gateway with NO allowed ports (blocks DNS)
-  echo -e "    Applying egress restriction to gateway pods"
   kubectl apply -f - <<POLICY 2>/dev/null || echo "Egress deny policy apply attempted"
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
