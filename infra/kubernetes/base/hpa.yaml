@@ -1,0 +1,335 @@
+# Horizontal Pod Autoscalers for production services
+# Scales based on CPU utilization with configurable min/max replicas
+# Budgets aligned with performance-budget.md Section 4
+# HPAs complement PDBs — scale up under load, scale down during low traffic
+---
+# Gateway: Front-line ingress, needs headroom for traffic spikes
+# Min 2 (HA), Max 10 (burst), CPU target 70%
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gateway-hpa
+  namespace: production
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/component: api-gateway
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gateway
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 3
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 120
+      selectPolicy: Min
+---
+# Order: Saga orchestration, needs capacity for order surges
+# Min 2 (HA), Max 8 (burst), CPU target 70%
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: order-hpa
+  namespace: production
+  labels:
+    app.kubernetes.io/name: order
+    app.kubernetes.io/component: order
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: order
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 75
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 120
+      selectPolicy: Min
+---
+# Analytics: Data processing pipeline, tolerant of higher CPU
+# Min 2 (HA), Max 6 (burst), CPU target 80%
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: analytics-hpa
+  namespace: production
+  labels:
+    app.kubernetes.io/name: analytics
+    app.kubernetes.io/component: analytics
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: analytics
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 90
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 120
+      selectPolicy: Min
+---
+# Catalog: Search-heavy service, needs scale for query volume
+# Min 2 (HA), Max 6 (burst), CPU target 70%
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: catalog-hpa
+  namespace: production
+  labels:
+    app.kubernetes.io/name: catalog
+    app.kubernetes.io/component: catalog
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: catalog
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 75
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 120
+      selectPolicy: Min
+---
+# Payment: Critical path, conservative scaling
+# Min 2 (HA), Max 6 (burst), CPU target 70%
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payment-hpa
+  namespace: production
+  labels:
+    app.kubernetes.io/name: payment
+    app.kubernetes.io/component: payment
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 90
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 120
+      selectPolicy: Min
+---
+# Notification: Async channel delivery, moderate scaling needs
+# Min 2 (HA), Max 4 (burst), CPU target 75%
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: notification-hpa
+  namespace: production
+  labels:
+    app.kubernetes.io/name: notification
+    app.kubernetes.io/component: notification
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: notification
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+      selectPolicy: Min
+---
+# RL Engine: Reinforcement learning policy evaluation, compute-intensive
+# Min 2 (HA), Max 4 (burst), CPU target 80%
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: rl-engine-hpa
+  namespace: production
+  labels:
+    app.kubernetes.io/name: rl-engine
+    app.kubernetes.io/component: rl-engine
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rl-engine
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+      selectPolicy: Min
+---
+# Schema Registry: Lightweight lookup service, low CPU threshold
+# Min 2 (HA), Max 4 (burst), CPU target 60%
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: schema-registry-hpa
+  namespace: production
+  labels:
+    app.kubernetes.io/name: schema-registry
+    app.kubernetes.io/component: schema-registry
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: schema-registry
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+      selectPolicy: Min

@@ -1,0 +1,356 @@
+# NetworkPolicy mTLS Enforcement — Polyglot Microservices Platform
+# Phase 5.3: Service Mesh mTLS Verification
+#
+# These NetworkPolicies enforce mTLS-only communication between services:
+# - Deny all non-mTLS traffic on gRPC ports (50051-50058)
+# - Allow only SPIRE agent traffic on Unix domain socket
+# - Allow health probes from kubelet on HTTP ports
+# - Allow ArgoCD sync traffic
+# - Deny plaintext gRPC between services
+# - Label selector matching services with spiffe.io/inject: "true"
+---
+# Enforce mTLS on all inter-service gRPC communication
+# Services with spiffe.io/inject: "true" must only accept mTLS connections
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: enforce-mtls-grpc
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    policy-type: mtls-enforcement
+spec:
+  podSelector:
+    matchLabels:
+      spiffe.io/inject: "true"
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow mTLS gRPC traffic only from other SPIFFE-injected workloads
+    - from:
+        - podSelector:
+            matchLabels:
+              spiffe.io/inject: "true"
+      ports:
+        # gRPC ports for all 9 services
+        - port: 50051
+          protocol: TCP
+        - port: 50052
+          protocol: TCP
+        - port: 50053
+          protocol: TCP
+        - port: 50054
+          protocol: TCP
+        - port: 50055
+          protocol: TCP
+        - port: 50056
+          protocol: TCP
+        - port: 50057
+          protocol: TCP
+        - port: 50058
+          protocol: TCP
+---
+# Deny all non-mTLS traffic on gRPC ports
+# This is a supplementary policy that explicitly blocks plaintext gRPC
+# on the service ports. Only mTLS-protected connections are allowed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-plaintext-grpc
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    policy-type: mtls-enforcement
+spec:
+  podSelector:
+    matchLabels:
+      spiffe.io/inject: "true"
+  policyTypes:
+    - Ingress
+  ingress:
+    # Explicitly allow only mTLS-enabled sources (SPIFFE-injected pods)
+    # Any pod WITHOUT spiffe.io/inject: "true" is denied on gRPC ports
+    - from:
+        - podSelector:
+            matchLabels:
+              spiffe.io/inject: "true"
+        # Also allow the gateway (which terminates external TLS and
+        # initiates mTLS to backend services)
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: gateway
+      ports:
+        - port: 50051
+          protocol: TCP
+        - port: 50052
+          protocol: TCP
+        - port: 50053
+          protocol: TCP
+        - port: 50054
+          protocol: TCP
+        - port: 50055
+          protocol: TCP
+        - port: 50056
+          protocol: TCP
+        - port: 50057
+          protocol: TCP
+        - port: 50058
+          protocol: TCP
+---
+# Allow SPIRE agent Workload API access from all pods
+# SPIRE agent provides SVIDs via Unix domain socket, but the
+# health check port needs NetworkPolicy allowlisting
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-spire-agent-workload-api
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    policy-type: mtls-enforcement
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: spire-agent
+  policyTypes:
+    - Ingress
+  ingress:
+    # All pods in the namespace need access to the SPIRE agent
+    # for SVID attestation and rotation
+    - from:
+        - podSelector: {}
+      ports:
+        - port: 8090
+          protocol: TCP
+---
+# Allow SPIRE server communication from SPIRE agents
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-spire-server-from-agents
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    policy-type: mtls-enforcement
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: spire-server
+  policyTypes:
+    - Ingress
+  ingress:
+    # SPIRE agents connect to the server for SVID issuance
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: spire-agent
+      ports:
+        - port: 8081
+          protocol: TCP
+    # Health checks from within the cluster
+    - from:
+        - podSelector: {}
+      ports:
+        - port: 8080
+          protocol: TCP
+    # Bundle endpoint (for potential future federation)
+    - from:
+        - podSelector: {}
+      ports:
+        - port: 8443
+          protocol: TCP
+---
+# Allow health probes from kubelet on HTTP ports
+# Kubelet health probes use HTTP (not mTLS) on health check ports
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-kubelet-health-probes
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    policy-type: mtls-enforcement
+spec:
+  podSelector:
+    matchLabels:
+      spiffe.io/inject: "true"
+  policyTypes:
+    - Ingress
+  ingress:
+    # Kubelet health probes from the node CIDR
+    # These use HTTP (not mTLS) and must be allowed
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        # HTTP health check ports
+        - port: 8080
+          protocol: TCP
+        - port: 9090
+          protocol: TCP
+        - port: 9091
+          protocol: TCP
+---
+# Allow ArgoCD sync traffic to all pods
+# ArgoCD needs to manage pod lifecycle and sync resources
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-argocd-sync
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    policy-type: mtls-enforcement
+spec:
+  podSelector:
+    matchLabels:
+      spiffe.io/inject: "true"
+  policyTypes:
+    - Ingress
+  ingress:
+    # ArgoCD sync traffic (typically from argocd namespace)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: argocd
+      ports:
+        - port: 8080
+          protocol: TCP
+---
+# Allow OTel telemetry egress from SPIFFE-injected workloads
+# OTel instrumentation uses HTTP/gRPC to push telemetry
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-otel-egress-from-spiffe-workloads
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    policy-type: mtls-enforcement
+spec:
+  podSelector:
+    matchLabels:
+      spiffe.io/inject: "true"
+  policyTypes:
+    - Egress
+  egress:
+    # OTel Collector (gRPC + HTTP)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - port: 4317
+          protocol: TCP
+        - port: 4318
+          protocol: TCP
+    # DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # SPIRE server for SVID issuance
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: spire-server
+      ports:
+        - port: 8081
+          protocol: TCP
+---
+# Deny all egress from SPIFFE-injected workloads except allowed paths
+# This prevents workloads from bypassing the mTLS mesh
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: restrict-spiffe-workload-egress
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    policy-type: mtls-enforcement
+spec:
+  podSelector:
+    matchLabels:
+      spiffe.io/inject: "true"
+  policyTypes:
+    - Egress
+  egress:
+    # Allow mTLS connections to other SPIFFE-injected workloads
+    - to:
+        - podSelector:
+            matchLabels:
+              spiffe.io/inject: "true"
+      ports:
+        - port: 50051
+          protocol: TCP
+        - port: 50052
+          protocol: TCP
+        - port: 50053
+          protocol: TCP
+        - port: 50054
+          protocol: TCP
+        - port: 50055
+          protocol: TCP
+        - port: 50056
+          protocol: TCP
+        - port: 50057
+          protocol: TCP
+        - port: 50058
+          protocol: TCP
+    # OTel telemetry
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - port: 4317
+          protocol: TCP
+        - port: 4318
+          protocol: TCP
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # SPIRE server
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: spire-server
+      ports:
+        - port: 8081
+          protocol: TCP
+    # Kafka (for event publishing)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kafka
+      ports:
+        - port: 9092
+          protocol: TCP
+    # Database subnets (PostgreSQL, ClickHouse)
+    - to:
+        - ipBlock:
+            cidr: 10.0.1.0/24
+      ports:
+        - port: 5432
+          protocol: TCP
+        - port: 8123
+          protocol: TCP
+    # Search engine (Meilisearch)
+    - to:
+        - ipBlock:
+            cidr: 10.0.2.0/24
+      ports:
+        - port: 9200
+          protocol: TCP

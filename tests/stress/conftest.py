@@ -1,49 +1,48 @@
 """
-TIER 3 Stress Test Configuration
-=================================
-Shared fixtures and configuration for all stress test suites.
+TIER 3 Stress Test Fixtures — Pytest Configuration
+====================================================
+Shared fixtures and configuration for stress tests.
 """
 
-import sys
-from pathlib import Path
-
 import pytest
+from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def pytest_configure(config):
-    """Register custom markers."""
-    config.addinivalue_line(
-        "markers", "stress: TIER 3 stress test (load, chaos, edge-case)"
-    )
-    config.addinivalue_line(
-        "markers", "boundary: Boundary value stress test"
-    )
-    config.addinivalue_line(
-        "markers", "concurrent: Concurrent access stress test"
-    )
-    config.addinivalue_line(
-        "markers", "security: Security scanning stress test"
-    )
-    config.addinivalue_line(
-        "markers", "infra: Infrastructure configuration stress test"
-    )
-
-
 @pytest.fixture(scope="session")
 def project_root():
-    """Provide project root path."""
+    """Return the project root directory."""
     return PROJECT_ROOT
 
 
 @pytest.fixture(scope="session")
-def k8s_dir(project_root):
-    """Provide K8s infrastructure directory."""
-    return project_root / "infra" / "kubernetes"
+def knowledge_dir():
+    """Return the RL knowledge base directory."""
+    return PROJECT_ROOT / ".claude" / "engine" / "feedback" / "knowledge"
 
 
 @pytest.fixture(scope="session")
-def services_dir(project_root):
-    """Provide services directory."""
-    return project_root / "services"
+def findings_dir():
+    """Return the RL findings directory."""
+    return PROJECT_ROOT / ".claude" / "engine" / "feedback" / "findings"
+
+
+@pytest.fixture(scope="session")
+def stress_test_config():
+    """Return stress test configuration."""
+    return {
+        "duration_seconds": 30,
+        "concurrency": 4,
+        "tier": 3,
+        "services": [
+            "gateway",
+            "identity",
+            "order",
+            "payment",
+            "catalog",
+            "notification",
+            "analytics",
+            "schema-registry",
+        ],
+    }

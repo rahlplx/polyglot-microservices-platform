@@ -1,0 +1,154 @@
+# ---------------------------------------------------------------------------
+# Composite Action: RL Knowledge Base Scanner
+# ---------------------------------------------------------------------------
+# Reusable scanning action that wraps knowledge_matcher.py for use across
+# multiple workflows. Provides structured output for downstream gate decisions.
+#
+# Inputs:
+#   scan-path           - Directory or file path to scan
+#   severity-threshold  - Minimum severity to fail on (CRITICAL|HIGH|MEDIUM|LOW)
+#   fail-on-findings    - Whether to fail the step when threshold is met
+#
+# Outputs:
+#   findings-count  - Total number of findings
+#   critical-count  - Number of CRITICAL severity findings
+#   high-count      - Number of HIGH severity findings
+#   findings-json   - JSON string of all findings
+# ---------------------------------------------------------------------------
+name: "RL Knowledge Scanner"
+description: "Scan code against RL knowledge base pattern signatures"
+author: "Polyglot Platform Team"
+
+inputs:
+  scan-path:
+    description: "Directory or file path to scan"
+    required: true
+    default: "."
+  severity-threshold:
+    description: "Minimum severity to fail on (CRITICAL, HIGH, MEDIUM, LOW)"
+    required: false
+    default: "CRITICAL"
+  fail-on-findings:
+    description: "Whether to fail the step when findings meet severity threshold"
+    required: false
+    default: "true"
+
+outputs:
+  findings-count:
+    description: "Total number of findings detected"
+    value: ${{ steps.scan-output.outputs.findings-count }}
+  critical-count:
+    description: "Number of CRITICAL severity findings"
+    value: ${{ steps.scan-output.outputs.critical-count }}
+  high-count:
+    description: "Number of HIGH severity findings"
+    value: ${{ steps.scan-output.outputs.high-count }}
+  findings-json:
+    description: "JSON string containing all findings"
+    value: ${{ steps.scan-output.outputs.findings-json }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Validate KB health
+      shell: bash
+      run: |
+        echo "::group::RL Knowledge Base Validation"
+        python3 .claude/engine/knowledge_matcher.py --validate
+        echo "::endgroup::"
+
+    - name: Gather scannable files
+      id: files
+      shell: bash
+      run: |
+        SCAN_PATH="${{ inputs.scan-path }}"
+        SEVERITY_THRESHOLD="${{ inputs.severity-threshold }}"
+
+        echo "Scanning path: ${SCAN_PATH}"
+        echo "Severity threshold: ${SEVERITY_THRESHOLD}"
+
+        # Collect all scannable files
+        FILES=()
+        if [ -f "${SCAN_PATH}" ]; then
+          FILES+=("${SCAN_PATH}")
+        elif [ -d "${SCAN_PATH}" ]; then
+          while IFS= read -r -d '' f; do
+            FILES+=("$f")
+          done < <(find "${SCAN_PATH}" -type f \( -name "*.py" -o -name "*.go" -o -name "*.ts" -o -name "*.kt" -o -name "*.rs" -o -name "*.yaml" -o -name "*.yml" \) -print0 2>/dev/null)
+        fi
+
+        echo "Found ${#FILES[@]} scannable file(s)"
+        echo "file-list=${FILES[*]}" >> "$GITHUB_OUTPUT"
+
+    - name: Run RL pattern scan
+      id: scan-output
+      shell: bash
+      run: |
+        FILE_LIST="${{ steps.files.outputs.file-list }}"
+        SEVERITY_THRESHOLD="${{ inputs.severity-threshold }}"
+        FAIL_ON_FINDINGS="${{ inputs.fail-on-findings }}"
+
+        if [ -z "${FILE_LIST}" ]; then
+          echo "No scannable files found"
+          echo "findings-count=0" >> "$GITHUB_OUTPUT"
+          echo "critical-count=0" >> "$GITHUB_OUTPUT"
+          echo "high-count=0" >> "$GITHUB_OUTPUT"
+          echo "findings-json={}" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Run scan with JSON output
+        SCAN_OUTPUT=$(python3 .claude/engine/knowledge_matcher.py --scan-diff --json ${FILE_LIST} 2>/dev/null || true)
+
+        if [ -z "${SCAN_OUTPUT}" ]; then
+          echo "findings-count=0" >> "$GITHUB_OUTPUT"
+          echo "critical-count=0" >> "$GITHUB_OUTPUT"
+          echo "high-count=0" >> "$GITHUB_OUTPUT"
+          echo "findings-json={}" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Parse results
+        FINDINGS_COUNT=$(echo "${SCAN_OUTPUT}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('total_findings',0))" 2>/dev/null || echo "0")
+        CRITICAL_COUNT=$(echo "${SCAN_OUTPUT}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('critical_count',0))" 2>/dev/null || echo "0")
+        HIGH_COUNT=$(echo "${SCAN_OUTPUT}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('high_count',0))" 2>/dev/null || echo "0")
+
+        echo "findings-count=${FINDINGS_COUNT}" >> "$GITHUB_OUTPUT"
+        echo "critical-count=${CRITICAL_COUNT}" >> "$GITHUB_OUTPUT"
+        echo "high-count=${HIGH_COUNT}" >> "$GITHUB_OUTPUT"
+
+        # Store JSON as output (escaped for GitHub Actions)
+        FINDINGS_JSON=$(echo "${SCAN_OUTPUT}" | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin)).replace('%','%25').replace('\n','%0A').replace('\r','%0D'))" 2>/dev/null || echo "{}")
+        echo "findings-json=${FINDINGS_JSON}" >> "$GITHUB_OUTPUT"
+
+        echo ""
+        echo "=== RL Scan Results ==="
+        echo "Total findings: ${FINDINGS_COUNT}"
+        echo "CRITICAL: ${CRITICAL_COUNT}"
+        echo "HIGH: ${HIGH_COUNT}"
+        echo "Severity threshold: ${SEVERITY_THRESHOLD}"
+
+        # Determine if we should fail based on severity threshold
+        BLOCKING_COUNT=0
+        case "${SEVERITY_THRESHOLD}" in
+          CRITICAL) BLOCKING_COUNT=${CRITICAL_COUNT} ;;
+          HIGH)     BLOCKING_COUNT=$((CRITICAL_COUNT + HIGH_COUNT)) ;;
+          MEDIUM)
+            MEDIUM_COUNT=$(echo "${SCAN_OUTPUT}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('medium_count',0))" 2>/dev/null || echo "0")
+            BLOCKING_COUNT=$((CRITICAL_COUNT + HIGH_COUNT + MEDIUM_COUNT))
+            ;;
+          LOW)      BLOCKING_COUNT=${FINDINGS_COUNT} ;;
+        esac
+
+        if [ "${FAIL_ON_FINDINGS}" = "true" ] && [ "${BLOCKING_COUNT}" -gt 0 ]; then
+          echo ""
+          echo "::error::RL scan found ${BLOCKING_COUNT} finding(s) at or above ${SEVERITY_THRESHOLD} severity"
+          exit 1
+        fi
+
+        echo "RL scan completed successfully"

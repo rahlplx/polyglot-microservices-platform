@@ -1,0 +1,331 @@
+# ---------------------------------------------------------------------------
+# Integration Test Gate — Polyglot Microservices Platform
+# ---------------------------------------------------------------------------
+# Triggers: After CI Pipeline completes successfully on main/develop
+# Jobs:
+#   1. integration-tests   — Run cross-service integration tests
+#   2. chaos-experiments   — Run chaos engineering experiments in kind
+#   3. stress-tests        — Run TIER 3 stress tests with pytest
+#   4. promote-findings    — Promote passing findings via RL engine
+#   5. gate-summary        — Summarize results; block deployment on failure
+# ---------------------------------------------------------------------------
+name: Integration Gate
+
+on:
+  workflow_run:
+    workflows: ["CI Pipeline"]
+    branches: [main, develop]
+    types: [completed]
+
+concurrency:
+  group: integration-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+  checks: write
+  actions: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+
+jobs:
+  # =========================================================================
+  # 1. Integration Tests — Cross-service integration validation
+  # =========================================================================
+  integration-tests:
+    name: "Integration Tests"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      result: ${{ steps.run-integration.outputs.result }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify CI Pipeline succeeded
+        run: |
+          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+            echo "::error::CI Pipeline did not succeed (conclusion: ${{ github.event.workflow_run.conclusion }})"
+            echo "Integration gate requires CI to pass first"
+            exit 1
+          fi
+          echo "CI Pipeline succeeded — proceeding with integration tests"
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Make scripts executable
+        run: chmod +x scripts/integration-test.sh scripts/chaos-experiments.sh
+
+      - name: Run integration tests
+        id: run-integration
+        run: |
+          echo "::group::Integration Test Execution"
+          if ./scripts/integration-test.sh --env staging --verbose; then
+            echo "result=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=failure" >> "$GITHUB_OUTPUT"
+          fi
+          echo "::endgroup::"
+
+      - name: Upload integration test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: test-results/integration/
+          retention-days: 14
+
+  # =========================================================================
+  # 2. Chaos Engineering Experiments
+  # =========================================================================
+  chaos-experiments:
+    name: "Chaos Experiments"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      result: ${{ steps.run-chaos.outputs.result }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: chaos-test
+          node_image: kindest/node:v1.29.2
+          wait: 120s
+
+      - name: Make scripts executable
+        run: chmod +x scripts/chaos-experiments.sh
+
+      - name: Run chaos experiments
+        id: run-chaos
+        run: |
+          echo "::group::Chaos Engineering Experiments"
+          if ./scripts/chaos-experiments.sh --cluster chaos-test --duration 60 --skip-setup; then
+            echo "result=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=failure" >> "$GITHUB_OUTPUT"
+          fi
+          echo "::endgroup::"
+
+      - name: Upload chaos test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-test-results
+          path: test-results/chaos/
+          retention-days: 14
+
+  # =========================================================================
+  # 3. TIER 3 Stress Tests
+  # =========================================================================
+  stress-tests:
+    name: "TIER 3 Stress Tests"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      result: ${{ steps.run-stress.outputs.result }}
+      passed: ${{ steps.run-stress.outputs.passed }}
+      failed: ${{ steps.run-stress.outputs.failed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov
+
+      - name: Run stress test suite (pytest)
+        id: run-stress
+        run: |
+          echo "::group::TIER 3 Stress Test Execution"
+          PASSED=0
+          FAILED=0
+
+          if [ -d "tests/stress" ]; then
+            if python3 -m pytest tests/stress/ -v --junitxml=test-results/stress/stress-results.xml --tb=short 2>&1; then
+              echo "result=success" >> "$GITHUB_OUTPUT"
+            else
+              echo "result=failure" >> "$GITHUB_OUTPUT"
+            fi
+
+            # Parse counts from results
+            if [ -f "test-results/stress/stress-results.xml" ]; then
+              PASSED=$(python3 -c "
+                import xml.etree.ElementTree as ET
+                tree = ET.parse('test-results/stress/stress-results.xml')
+                root = tree.getroot()
+                total = int(root.attrib.get('tests', 0))
+                failures = int(root.attrib.get('failures', 0))
+                errors = int(root.attrib.get('errors', 0))
+                print(total - failures - errors)
+              " 2>/dev/null || echo "0")
+              FAILED=$(python3 -c "
+                import xml.etree.ElementTree as ET
+                tree = ET.parse('test-results/stress/stress-results.xml')
+                root = tree.getroot()
+                print(int(root.attrib.get('failures', 0)) + int(root.attrib.get('errors', 0)))
+              " 2>/dev/null || echo "0")
+            fi
+          else
+            echo "No stress test directory found — skipping"
+            echo "result=success" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "passed=${PASSED}" >> "$GITHUB_OUTPUT"
+          echo "failed=${FAILED}" >> "$GITHUB_OUTPUT"
+          echo "::endgroup::"
+
+      - name: Upload stress test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stress-test-results
+          path: test-results/stress/
+          retention-days: 14
+
+  # =========================================================================
+  # 4. Promote Findings via RL Engine
+  # =========================================================================
+  promote-findings:
+    name: "RL Promote Findings"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [integration-tests, chaos-experiments, stress-tests]
+    if: >
+      needs.integration-tests.outputs.result == 'success' &&
+      needs.chaos-experiments.outputs.result == 'success' &&
+      needs.stress-tests.outputs.result == 'success'
+    outputs:
+      promoted-count: ${{ steps.promote.outputs.promoted-count }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Promote passing stress test findings
+        id: promote
+        run: |
+          echo "::group::RL Promotion"
+          python3 tests/stress/run_stress_tests.py --promote --json --output rl-promotion-results.json 2>/dev/null || true
+
+          PROMOTED=0
+          if [ -f "rl-promotion-results.json" ]; then
+            PROMOTED=$(python3 -c "
+              import json
+              with open('rl-promotion-results.json') as f:
+                d = json.load(f)
+              print(d.get('promotion', {}).get('promoted', 0))
+            " 2>/dev/null || echo "0")
+          fi
+
+          echo "promoted-count=${PROMOTED}" >> "$GITHUB_OUTPUT"
+          echo "Promoted ${PROMOTED} finding(s) to RL knowledge base"
+          echo "::endgroup::"
+
+      - name: Upload promotion results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rl-promotion-results
+          path: rl-promotion-results.json
+          retention-days: 14
+
+  # =========================================================================
+  # 5. Gate Summary — Block deployment on failure, create issue if failed
+  # =========================================================================
+  gate-summary:
+    name: "Integration Gate Summary"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [integration-tests, chaos-experiments, stress-tests, promote-findings]
+    if: always()
+    outputs:
+      gate-result: ${{ steps.evaluate.outputs.gate-result }}
+    steps:
+      - name: Evaluate gate results
+        id: evaluate
+        run: |
+          INT_RESULT="${{ needs.integration-tests.outputs.result }}"
+          CHAOS_RESULT="${{ needs.chaos-experiments.outputs.result }}"
+          STRESS_RESULT="${{ needs.stress-tests.outputs.result }}"
+          PROMOTE_RESULT="${{ needs.promote-findings.result }}"
+
+          echo "=== Integration Gate Summary ==="
+          echo "Integration Tests: ${INT_RESULT:-skipped}"
+          echo "Chaos Experiments: ${CHAOS_RESULT:-skipped}"
+          echo "Stress Tests: ${STRESS_RESULT:-skipped}"
+          echo "RL Promotion: ${PROMOTE_RESULT:-skipped}"
+
+          if [ "${INT_RESULT}" = "success" ] && \
+             [ "${CHAOS_RESULT}" = "success" ] && \
+             [ "${STRESS_RESULT}" = "success" ]; then
+            echo "gate-result=success" >> "$GITHUB_OUTPUT"
+            echo ""
+            echo "ALL integration gate checks PASSED"
+            echo "Deployment pipeline may proceed"
+          else
+            echo "gate-result=failure" >> "$GITHUB_OUTPUT"
+            echo ""
+            echo "::error::INTEGRATION GATE FAILED — deployment is blocked"
+            echo "Failed checks:"
+            [ "${INT_RESULT}" != "success" ] && echo "  - Integration tests: ${INT_RESULT}"
+            [ "${CHAOS_RESULT}" != "success" ] && echo "  - Chaos experiments: ${CHAOS_RESULT}"
+            [ "${STRESS_RESULT}" != "success" ] && echo "  - Stress tests: ${STRESS_RESULT}"
+          fi
+
+      - name: Create failure issue
+        if: steps.evaluate.outputs.gate-result == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const intResult = '${{ needs.integration-tests.outputs.result }}' || 'skipped';
+            const chaosResult = '${{ needs.chaos-experiments.outputs.result }}' || 'skipped';
+            const stressResult = '${{ needs.stress-tests.outputs.result }}' || 'skipped';
+            const sha = '${{ github.sha }}'.substring(0, 7);
+            const branch = '${{ github.ref_name }}';
+
+            let body = `## Integration Gate Failure\n\n`;
+            body += `**Commit**: \`${sha}\`\n`;
+            body += `**Branch**: \`${branch}\`\n\n`;
+            body += `### Failed Checks\n\n`;
+            body += `| Check | Result |\n|-------|--------|\n`;
+            body += `| Integration Tests | ${intResult} |\n`;
+            body += `| Chaos Experiments | ${chaosResult} |\n`;
+            body += `| Stress Tests | ${stressResult} |\n\n`;
+            body += `### Action Required\n\n`;
+            body += `1. Review the failed test artifacts in the workflow run\n`;
+            body += `2. Fix the underlying issues\n`;
+            body += `3. Re-run the CI pipeline to trigger a new integration gate\n\n`;
+            body += `Deployment is **blocked** until all integration gate checks pass.\n`;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Integration Gate Failed: ${sha} on ${branch}`,
+              body: body,
+              labels: ['integration-gate-failed', 'deployment-blocked']
+            });
+
+      - name: Gate result
+        if: steps.evaluate.outputs.gate-result == 'failure'
+        run: |
+          echo "::error::Integration gate failed — deployment blocked"
+          exit 1

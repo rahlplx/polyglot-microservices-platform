@@ -1,0 +1,27 @@
+{
+  "timestamp": "2026-05-20T13:21:28Z",
+  "overall_score": 4,
+  "total_checks": 7,
+  "pass_count": 2,
+  "fail_count": 0,
+  "warn_count": 5,
+  "skip_count": 0,
+  "blocking_issues": [],
+  "category_scores": {
+    "infrastructure": 0,
+    "security": 0,
+    "observability": 0,
+    "reliability": 28,
+    "operational": 0,
+    "compliance": 0
+  },
+  "category_weights": {
+    "infrastructure": 20,
+    "security": 25,
+    "observability": 15,
+    "reliability": 15,
+    "operational": 15,
+    "compliance": 10
+  },
+  "checks": [{"check":"circuit-breakers","category":"reliability","status":"warn","details":"No circuit breaker implementations found","blocking":false},{"check":"retry-policies","category":"reliability","status":"warn","details":"No retry policies found","blocking":false},{"check":"timeout-policies","category":"reliability","status":"warn","details":"No timeout policies found","blocking":false},{"check":"graceful-shutdown","category":"reliability","status":"warn","details":"No graceful shutdown handling","blocking":false},{"check":"health-endpoints","category":"reliability","status":"warn","details":"No health endpoints in code","blocking":false},{"check":"chaos-experiments","category":"reliability","status":"pass","details":"Chaos experiment script exists","blocking":false},{"check":"hpa-configured","category":"reliability","status":"pass","details":"8 HPAs defined","blocking":false}]
+}

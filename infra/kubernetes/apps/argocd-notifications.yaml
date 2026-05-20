@@ -1,0 +1,508 @@
+# ArgoCD Notification & Alerting Configuration
+# Polyglot Microservices Platform — Phase 5.2
+# Defines triggers, templates, and subscriptions for ArgoCD notifications
+# Requires: argocd-notifications-controller installed in the cluster
+# Reference: https://argocd-notifications.readthedocs.io/
+---
+apiVersion: argoproj.io/v1alpha1
+kind: NotificationConfiguration
+metadata:
+  name: default-notification-config
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: argocd
+spec:
+  # ---------------------------------------------------------------------------
+  # Triggers — conditions that generate notifications
+  # ---------------------------------------------------------------------------
+  triggers:
+    # Trigger: Application health degraded for more than 5 minutes
+    # Fires when health status transitions to "Degraded" and stays for 5m
+    - name: on-health-degraded
+      enabled: true
+      condition: >
+        app.status.health.status == 'Degraded'
+        && app.status.operationState != null
+        && app.status.operationState.finishedAt != null
+        && time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() > 5
+      oncePer: app.status.health.status
+      templates:
+        - app-degraded-slack
+
+    # Trigger: Application out-of-sync for more than 10 minutes
+    # Fires when sync status is "OutOfSync" for 10m (indicates config drift)
+    - name: on-out-of-sync
+      enabled: true
+      condition: >
+        app.status.sync.status == 'OutOfSync'
+        && app.status.operationState != null
+        && app.status.operationState.finishedAt != null
+        && time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() > 10
+      oncePer: app.status.sync.status
+      templates:
+        - app-out-of-sync-slack
+
+    # Trigger: Sync operation failed
+    # Fires immediately when a sync operation fails
+    - name: on-sync-failed
+      enabled: true
+      condition: >
+        app.status.operationState != null
+        && app.status.operationState.phase == 'Failed'
+      oncePer: app.status.operationState.syncResult.revision
+      templates:
+        - sync-failed-slack
+
+    # Trigger: Sync operation succeeded (audit logging)
+    # Fires on successful sync for compliance audit trail
+    - name: on-sync-succeeded
+      enabled: true
+      condition: >
+        app.status.operationState != null
+        && app.status.operationState.phase == 'Succeeded'
+      oncePer: app.status.operationState.syncResult.revision
+      templates:
+        - sync-succeeded-slack
+
+    # Trigger: Application deleted
+    # Fires when an application resource is deleted
+    - name: on-app-deleted
+      enabled: true
+      condition: >
+        app.metadata.deletionTimestamp != null
+      oncePer: app.metadata.deletionTimestamp
+      templates:
+        - app-deleted-slack
+
+    # Trigger: New application created
+    # Fires when a new application appears in the project
+    - name: on-app-created
+      enabled: true
+      condition: >
+        app.status.operationState == null
+      oncePer: app.metadata.name
+      templates:
+        - app-created-slack
+
+  # ---------------------------------------------------------------------------
+  # Templates — notification content templates
+  # ---------------------------------------------------------------------------
+  templates:
+    # Slack template for degraded application health
+    - name: app-degraded-slack
+      title: "Application Degraded: {{.app.metadata.name}}"
+      body: |
+        :rotating_light: *Application Health Degraded*
+
+        *Application:* {{.app.metadata.name}}
+        *Project:* {{.app.spec.project}}
+        *Health Status:* {{.app.status.health.status}}
+        *Sync Status:* {{.app.status.sync.status}}
+        *Namespace:* {{.app.spec.destination.namespace}}
+        *Cluster:* {{.app.spec.destination.server}}
+
+        {{range .app.status.health.conditions}}
+        *Condition:* {{.message}}
+        {{end}}
+
+        {{range .app.status.operationState.operation.sync}}
+        *Sync Revision:* {{.revision}}
+        {{end}}
+
+        :link: *View in ArgoCD:* https://argocd.example.com/applications/{{.app.metadata.name}}
+        :book: *Runbook:* https://runbooks.example.org/{{.app.metadata.name}}/degraded
+
+        _This alert fires when health remains Degraded for more than 5 minutes._
+      slack:
+        attachments: |
+          [{
+            "title": ":rotating_light: Application Degraded: {{.app.metadata.name}}",
+            "title_link": "https://argocd.example.com/applications/{{.app.metadata.name}}",
+            "color": "#FF0000",
+            "fields": [
+              {
+                "title": "Project",
+                "value": "{{.app.spec.project}}",
+                "short": true
+              },
+              {
+                "title": "Health",
+                "value": "{{.app.status.health.status}}",
+                "short": true
+              },
+              {
+                "title": "Sync",
+                "value": "{{.app.status.sync.status}}",
+                "short": true
+              },
+              {
+                "title": "Namespace",
+                "value": "{{.app.spec.destination.namespace}}",
+                "short": true
+              }
+            ],
+            "footer": "ArgoCD Notifications",
+            "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png",
+            "ts": {{.timestamp}}
+          }]
+
+    # Slack template for out-of-sync application
+    - name: app-out-of-sync-slack
+      title: "Application Out of Sync: {{.app.metadata.name}}"
+      body: |
+        :warning: *Application Configuration Drift Detected*
+
+        *Application:* {{.app.metadata.name}}
+        *Project:* {{.app.spec.project}}
+        *Sync Status:* {{.app.status.sync.status}}
+        *Health Status:* {{.app.status.health.status}}
+        *Namespace:* {{.app.spec.destination.namespace}}
+
+        The live state of this application has diverged from the desired Git state.
+        This drift has persisted for more than 10 minutes.
+
+        :link: *View in ArgoCD:* https://argocd.example.com/applications/{{.app.metadata.name}}?diff=true
+        :book: *Runbook:* https://runbooks.example.org/{{.app.metadata.name}}/drift
+
+        _To resolve: Review the diff and either sync the app or correct the live state._
+      slack:
+        attachments: |
+          [{
+            "title": ":warning: Configuration Drift: {{.app.metadata.name}}",
+            "title_link": "https://argocd.example.com/applications/{{.app.metadata.name}}?diff=true",
+            "color": "#FFA500",
+            "fields": [
+              {
+                "title": "Project",
+                "value": "{{.app.spec.project}}",
+                "short": true
+              },
+              {
+                "title": "Sync Status",
+                "value": "{{.app.status.sync.status}}",
+                "short": true
+              },
+              {
+                "title": "Health",
+                "value": "{{.app.status.health.status}}",
+                "short": true
+              },
+              {
+                "title": "Namespace",
+                "value": "{{.app.spec.destination.namespace}}",
+                "short": true
+              }
+            ],
+            "footer": "ArgoCD Notifications",
+            "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png",
+            "ts": {{.timestamp}}
+          }]
+
+    # Slack template for failed sync operations
+    - name: sync-failed-slack
+      title: "Sync Failed: {{.app.metadata.name}}"
+      body: |
+        :x: *Sync Operation Failed*
+
+        *Application:* {{.app.metadata.name}}
+        *Project:* {{.app.spec.project}}
+        *Sync Phase:* {{.app.status.operationState.phase}}
+        *Started At:* {{.app.status.operationState.startedAt}}
+        *Finished At:* {{.app.status.operationState.finishedAt}}
+
+        {{if .app.status.operationState.message}}
+        *Error Message:* {{.app.status.operationState.message}}
+        {{end}}
+
+        {{if .app.status.operationState.syncResult}}
+        *Revision:* {{.app.status.operationState.syncResult.revision}}
+        *Source:* {{.app.status.operationState.syncResult.source.repoURL}}
+        {{end}}
+
+        :link: *View in ArgoCD:* https://argocd.example.com/applications/{{.app.metadata.name}}
+        :book: *Runbook:* https://runbooks.example.org/{{.app.metadata.name}}/sync-failed
+
+        _The retry strategy will attempt exponential backoff (5s, 10s, 20s, max 3m)._
+      slack:
+        attachments: |
+          [{
+            "title": ":x: Sync Failed: {{.app.metadata.name}}",
+            "title_link": "https://argocd.example.com/applications/{{.app.metadata.name}}",
+            "color": "#FF0000",
+            "fields": [
+              {
+                "title": "Project",
+                "value": "{{.app.spec.project}}",
+                "short": true
+              },
+              {
+                "title": "Phase",
+                "value": "{{.app.status.operationState.phase}}",
+                "short": true
+              },
+              {
+                "title": "Started",
+                "value": "{{.app.status.operationState.startedAt}}",
+                "short": true
+              },
+              {
+                "title": "Finished",
+                "value": "{{.app.status.operationState.finishedAt}}",
+                "short": true
+              }
+            ],
+            "footer": "ArgoCD Notifications",
+            "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png",
+            "ts": {{.timestamp}}
+          }]
+
+    # Slack template for successful sync (audit logging)
+    - name: sync-succeeded-slack
+      title: "Sync Succeeded: {{.app.metadata.name}}"
+      body: |
+        :white_check_mark: *Sync Operation Succeeded*
+
+        *Application:* {{.app.metadata.name}}
+        *Project:* {{.app.spec.project}}
+        *Sync Revision:* {{.app.status.operationState.syncResult.revision}}
+        *Started At:* {{.app.status.operationState.startedAt}}
+        *Finished At:* {{.app.status.operationState.finishedAt}}
+
+        :link: *View in ArgoCD:* https://argocd.example.com/applications/{{.app.metadata.name}}
+
+        _This notification is for audit logging purposes._
+      slack:
+        attachments: |
+          [{
+            "title": ":white_check_mark: Sync Succeeded: {{.app.metadata.name}}",
+            "title_link": "https://argocd.example.com/applications/{{.app.metadata.name}}",
+            "color": "#36A64F",
+            "fields": [
+              {
+                "title": "Project",
+                "value": "{{.app.spec.project}}",
+                "short": true
+              },
+              {
+                "title": "Revision",
+                "value": "{{.app.status.operationState.syncResult.revision}}",
+                "short": true
+              },
+              {
+                "title": "Started",
+                "value": "{{.app.status.operationState.startedAt}}",
+                "short": true
+              },
+              {
+                "title": "Finished",
+                "value": "{{.app.status.operationState.finishedAt}}",
+                "short": true
+              }
+            ],
+            "footer": "ArgoCD Audit Log",
+            "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png",
+            "ts": {{.timestamp}}
+          }]
+
+    # Slack template for application deletion
+    - name: app-deleted-slack
+      title: "Application Deleted: {{.app.metadata.name}}"
+      body: |
+        :wastebasket: *Application Deletion Detected*
+
+        *Application:* {{.app.metadata.name}}
+        *Project:* {{.app.spec.project}}
+        *Namespace:* {{.app.spec.destination.namespace}}
+        *Deletion Timestamp:* {{.app.metadata.deletionTimestamp}}
+
+        :link: *View in ArgoCD:* https://argocd.example.com/applications/{{.app.metadata.name}}
+
+        _This application is pending deletion with the resources-finalizer._
+      slack:
+        attachments: |
+          [{
+            "title": ":wastebasket: Application Deleted: {{.app.metadata.name}}",
+            "color": "#808080",
+            "fields": [
+              {
+                "title": "Project",
+                "value": "{{.app.spec.project}}",
+                "short": true
+              },
+              {
+                "title": "Namespace",
+                "value": "{{.app.spec.destination.namespace}}",
+                "short": true
+              }
+            ]
+          }]
+
+    # Slack template for new application creation
+    - name: app-created-slack
+      title: "Application Created: {{.app.metadata.name}}"
+      body: |
+        :new: *New Application Detected*
+
+        *Application:* {{.app.metadata.name}}
+        *Project:* {{.app.spec.project}}
+        *Source:* {{.app.spec.source.repoURL}} ({{.app.spec.source.targetRevision}})
+        *Path:* {{.app.spec.source.path}}
+        *Namespace:* {{.app.spec.destination.namespace}}
+
+        :link: *View in ArgoCD:* https://argocd.example.com/applications/{{.app.metadata.name}}
+      slack:
+        attachments: |
+          [{
+            "title": ":new: New Application: {{.app.metadata.name}}",
+            "title_link": "https://argocd.example.com/applications/{{.app.metadata.name}}",
+            "color": "#0000FF",
+            "fields": [
+              {
+                "title": "Project",
+                "value": "{{.app.spec.project}}",
+                "short": true
+              },
+              {
+                "title": "Source Path",
+                "value": "{{.app.spec.source.path}}",
+                "short": true
+              }
+            ]
+          }]
+
+  # ---------------------------------------------------------------------------
+  # Services — notification delivery backends
+  # ---------------------------------------------------------------------------
+  services:
+    # Slack service configuration
+    # The webhook URL is stored in a Kubernetes Secret referenced here
+    - name: slack-platform-team
+      type: slack
+      settings:
+        authToken:
+          key: slack-token
+          name: argocd-notifications-secret
+        signingSecret:
+          key: slack-signing-secret
+          name: argocd-notifications-secret
+      # Alternatively, use webhook URL:
+      # settings:
+      #   webhookUrl:
+      #     key: slack-webhook-url
+      #     name: argocd-notifications-secret
+
+    # Email service for audit notifications
+    - name: email-audit
+      type: email
+      settings:
+        host: smtp.example.org
+        port: 587
+        from: argocd-notifications@example.org
+        username:
+          key: smtp-username
+          name: argocd-notifications-secret
+        password:
+          key: smtp-password
+          name: argocd-notifications-secret
+
+    # Webhook service for custom integrations (PagerDuty, OpsGenie, etc.)
+    - name: webhook-pagerduty
+      type: webhook
+      settings:
+        url: https://events.pagerduty.com/v2/enqueue
+        headers:
+          - name: Content-Type
+            value: application/json
+        body: |
+          {
+            "routing_key": "{{.routing_key}}",
+            "event_action": "trigger",
+            "payload": {
+              "summary": "ArgoCD Alert: {{.app.metadata.name}} - {{.alert_type}}",
+              "severity": "{{.severity}}",
+              "source": "argocd",
+              "component": "{{.app.metadata.name}}",
+              "group": "{{.app.spec.project}}",
+              "class": "deployment"
+            }
+          }
+
+  # ---------------------------------------------------------------------------
+  # Subscriptions — which applications send which notifications to whom
+  # ---------------------------------------------------------------------------
+  subscriptions:
+    # Polyglot microservices project subscription
+    # All apps in the project get degraded, out-of-sync, and sync-failed alerts
+    - recipients:
+        - slack:platform-team
+      triggers:
+        - on-health-degraded
+        - on-out-of-sync
+        - on-sync-failed
+      selector:
+        matchExpressions:
+          - key: app.kubernetes.io/part-of
+            operator: In
+            values:
+              - polyglot-microservices
+
+    # Audit log subscription — all successful syncs for compliance
+    - recipients:
+        - slack:platform-team
+        - email:audit@example.org
+      triggers:
+        - on-sync-succeeded
+      selector:
+        matchExpressions:
+          - key: app.kubernetes.io/part-of
+            operator: In
+            values:
+              - polyglot-microservices
+
+    # Platform components — elevated alerting for critical infrastructure
+    - recipients:
+        - slack:platform-team
+        - slack:oncall
+        - webhook:pagerduty
+      triggers:
+        - on-health-degraded
+        - on-sync-failed
+      selector:
+        matchLabels:
+          app.kubernetes.io/component: platform
+
+    # Application lifecycle notifications (create/delete)
+    - recipients:
+        - slack:platform-team
+      triggers:
+        - on-app-created
+        - on-app-deleted
+      selector:
+        matchExpressions:
+          - key: app.kubernetes.io/part-of
+            operator: In
+            values:
+              - polyglot-microservices
+---
+# ArgoCD Notifications Secret placeholder
+# In production, this should be managed by an external secrets operator (Vault, Sealed Secrets, etc.)
+# This is a template — actual values must be injected at deploy time
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-notifications-secret
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+type: Opaque
+stringData:
+  # Slack bot token for posting messages (xoxb-...)
+  slack-token: "${SLACK_BOT_TOKEN}"
+  # Slack signing secret for verifying requests
+  slack-signing-secret: "${SLACK_SIGNING_SECRET}"
+  # SMTP credentials for email notifications
+  smtp-username: "${SMTP_USERNAME}"
+  smtp-password: "${SMTP_PASSWORD}"
+  # PagerDuty routing key
+  routing_key: "${PAGERDUTY_ROUTING_KEY}"

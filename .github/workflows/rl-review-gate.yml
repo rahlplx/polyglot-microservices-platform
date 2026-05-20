@@ -1,0 +1,321 @@
+# ---------------------------------------------------------------------------
+# RL Knowledge Scanner Review Gate — Polyglot Microservices Platform
+# ---------------------------------------------------------------------------
+# Triggers: PRs to main/develop, pushes to main
+# Jobs:
+#   1. detect-changes  — Identify scannable files in the diff
+#   2. rl-scan         — Run knowledge_matcher.py against changed files
+#   3. pr-comment      — Post findings summary as PR comment
+#   4. gate-decision   — Block merge if CRITICAL/HIGH patterns found
+# ---------------------------------------------------------------------------
+name: RL Review Gate
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+concurrency:
+  group: rl-review-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+env:
+  SEVERITY_BLOCKING: "CRITICAL,HIGH"
+
+jobs:
+  # =========================================================================
+  # 1. Detect changed files that should be scanned
+  # =========================================================================
+  detect-changes:
+    name: "Detect Scannable Changes"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      scannable: ${{ steps.filter.outputs.scannable }}
+      scannable-files: ${{ steps.list-files.outputs.files }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed file types
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            scannable:
+              - '**/*.py'
+              - '**/*.go'
+              - '**/*.ts'
+              - '**/*.kt'
+              - '**/*.rs'
+              - '**/*.yaml'
+              - '**/*.yml'
+
+      - name: List scannable changed files
+        id: list-files
+        if: steps.filter.outputs.scannable == 'true'
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.base_ref }}"
+          else
+            BASE="HEAD~1"
+          fi
+
+          FILES=$(git diff --name-only --diff-filter=ACMR "${BASE}...HEAD" \
+            | grep -E '\.(py|go|ts|kt|rs|ya?ml)$' \
+            || true)
+
+          if [ -z "${FILES}" ]; then
+            echo "files=" >> "$GITHUB_OUTPUT"
+          else
+            # Format as space-separated list for downstream consumption
+            FILE_LIST=$(echo "${FILES}" | tr '\n' ' ' | sed 's/ $//')
+            echo "files=${FILE_LIST}" >> "$GITHUB_OUTPUT"
+            echo "Scannable files: ${FILE_LIST}"
+          fi
+
+  # =========================================================================
+  # 2. Run RL Knowledge Base scanner against changed files
+  # =========================================================================
+  rl-scan:
+    name: "RL Pattern Scan"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [detect-changes]
+    if: needs.detect-changes.outputs.scannable == 'true'
+    outputs:
+      findings-count: ${{ steps.scan-results.outputs.findings-count }}
+      critical-count: ${{ steps.scan-results.outputs.critical-count }}
+      high-count: ${{ steps.scan-results.outputs.high-count }}
+      findings-json: ${{ steps.scan-results.outputs.findings-json }}
+      has-blocking: ${{ steps.scan-results.outputs.has-blocking }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate KB health
+        run: |
+          echo "::group::RL Knowledge Base Health Check"
+          python3 .claude/engine/knowledge_matcher.py --validate
+          echo "::endgroup::"
+
+      - name: Scan changed files
+        id: scan-results
+        run: |
+          FILES="${{ needs.detect-changes.outputs.scannable-files }}"
+
+          if [ -z "${FILES}" ]; then
+            echo "findings-count=0" >> "$GITHUB_OUTPUT"
+            echo "critical-count=0" >> "$GITHUB_OUTPUT"
+            echo "high-count=0" >> "$GITHUB_OUTPUT"
+            echo "findings-json={}" >> "$GITHUB_OUTPUT"
+            echo "has-blocking=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Run scan with JSON output
+          SCAN_OUTPUT=$(python3 .claude/engine/knowledge_matcher.py --scan-diff --json ${FILES} 2>/dev/null || true)
+
+          if [ -z "${SCAN_OUTPUT}" ]; then
+            echo "findings-count=0" >> "$GITHUB_OUTPUT"
+            echo "critical-count=0" >> "$GITHUB_OUTPUT"
+            echo "high-count=0" >> "$GITHUB_OUTPUT"
+            echo "findings-json={}" >> "$GITHUB_OUTPUT"
+            echo "has-blocking=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Parse counts
+          FINDINGS_COUNT=$(echo "${SCAN_OUTPUT}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('total_findings',0))" 2>/dev/null || echo "0")
+          CRITICAL_COUNT=$(echo "${SCAN_OUTPUT}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('critical_count',0))" 2>/dev/null || echo "0")
+          HIGH_COUNT=$(echo "${SCAN_OUTPUT}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('high_count',0))" 2>/dev/null || echo "0")
+
+          echo "findings-count=${FINDINGS_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "critical-count=${CRITICAL_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "high-count=${HIGH_COUNT}" >> "$GITHUB_OUTPUT"
+
+          # Store JSON (escaped for GitHub Actions)
+          FINDINGS_JSON=$(echo "${SCAN_OUTPUT}" | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin)).replace('%','%25').replace('\n','%0A').replace('\r','%0D'))" 2>/dev/null || echo "{}")
+          echo "findings-json=${FINDINGS_JSON}" >> "$GITHUB_OUTPUT"
+
+          # Determine if blocking
+          BLOCKING=$((CRITICAL_COUNT + HIGH_COUNT))
+          if [ "${BLOCKING}" -gt 0 ]; then
+            echo "has-blocking=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-blocking=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo ""
+          echo "=== RL Scan Summary ==="
+          echo "Total findings: ${FINDINGS_COUNT}"
+          echo "CRITICAL: ${CRITICAL_COUNT}"
+          echo "HIGH: ${HIGH_COUNT}"
+          echo "Blocking: $([ "${BLOCKING}" -gt 0 ] && echo 'YES' || echo 'NO')"
+
+      - name: Upload scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rl-scan-results
+          path: |
+            rl-scan-output.json
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # =========================================================================
+  # 3. Post findings as PR comment
+  # =========================================================================
+  pr-comment:
+    name: "Post RL Findings Comment"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [rl-scan]
+    if: always() && needs.rl-scan.result != 'skipped' && github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Post RL findings comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const findingsCount = parseInt('${{ needs.rl-scan.outputs.findings-count }}' || '0');
+            const criticalCount = parseInt('${{ needs.rl-scan.outputs.critical-count }}' || '0');
+            const highCount = parseInt('${{ needs.rl-scan.outputs.high-count }}' || '0');
+            const hasBlocking = '${{ needs.rl-scan.outputs.has-blocking }}' === 'true';
+
+            let findings = [];
+            try {
+              const raw = decodeURIComponent('${{ needs.rl-scan.outputs.findings-json }}');
+              const parsed = JSON.parse(raw);
+              findings = parsed.findings || [];
+            } catch (e) {
+              // No findings or parse error
+            }
+
+            let body = '## RL Knowledge Base Scan Results\n\n';
+
+            if (findingsCount === 0) {
+              body += '**No pattern findings detected.** The RL knowledge base found no known issue patterns in the changed files.\n';
+            } else {
+              // Summary counts
+              body += `| Severity | Count |\n|----------|-------|\n`;
+              body += `| CRITICAL | ${criticalCount} |\n`;
+              body += `| HIGH | ${highCount} |\n`;
+              body += `| MEDIUM/LOW | ${findingsCount - criticalCount - highCount} |\n`;
+              body += `| **Total** | **${findingsCount}** |\n\n`;
+
+              // Blocking status
+              if (hasBlocking) {
+                body += '> **MERGE BLOCKED**: CRITICAL or HIGH severity patterns detected. Fix before merging.\n\n';
+              } else {
+                body += '> **Warnings only**: No blocking findings. MEDIUM/LOW items are advisory.\n\n';
+              }
+
+              // Detailed findings table
+              body += '### Findings Detail\n\n';
+              body += '| Pattern | Severity | File | Fix Recommendation |\n';
+              body += '|---------|----------|------|--------------------|\n';
+
+              for (const f of findings) {
+                const fileShort = f.file ? f.file.replace(/^\/home\/runner\/work\/[^/]+\/[^/]+\//, '') : 'N/A';
+                body += `| ${f.signature} | **${f.severity}** | \`${fileShort}\` | ${f.fix} |\n`;
+              }
+
+              // Knowledge base references
+              body += '\n### Knowledge Base References\n\n';
+              const allKidIds = new Set();
+              for (const f of findings) {
+                for (const kid of (f.knowledge_ids || [])) {
+                  allKidIds.add(kid);
+                }
+              }
+              body += 'Referenced knowledge items: ' + Array.from(allKidIds).map(k => `\`${k}\``).join(', ') + '\n';
+            }
+
+            body += '\n---\n*Generated by RL Review Gate • Powered by knowledge_matcher.py with 12 pattern signatures*';
+
+            // Find and update existing comment, or create new
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existingComment = comments.data.find(c =>
+              c.user.login === 'github-actions[bot]' && c.body.startsWith('## RL Knowledge Base Scan Results')
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
+
+  # =========================================================================
+  # 4. Gate decision — block merge if CRITICAL/HIGH findings
+  # =========================================================================
+  gate-decision:
+    name: "RL Gate Decision"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [detect-changes, rl-scan]
+    if: always()
+    steps:
+      - name: Evaluate gate
+        run: |
+          SCANNABLE="${{ needs.detect-changes.outputs.scannable }}"
+
+          if [ "${SCANNABLE}" != "true" ]; then
+            echo "No scannable files in diff — RL gate PASSED"
+            exit 0
+          fi
+
+          SCAN_RESULT="${{ needs.rl-scan.result }}"
+          if [ "${SCAN_RESULT}" = "skipped" ]; then
+            echo "RL scan was skipped — RL gate PASSED"
+            exit 0
+          fi
+
+          CRITICAL="${{ needs.rl-scan.outputs.critical-count }}"
+          HIGH="${{ needs.rl-scan.outputs.high-count }}"
+          BLOCKING=$((CRITICAL + HIGH))
+
+          echo "=== RL Gate Decision ==="
+          echo "CRITICAL findings: ${CRITICAL}"
+          echo "HIGH findings: ${HIGH}"
+          echo "Blocking findings: ${BLOCKING}"
+
+          if [ "${BLOCKING}" -gt 0 ]; then
+            echo ""
+            echo "::error::RL GATE BLOCKED: ${BLOCKING} CRITICAL/HIGH severity pattern(s) found"
+            echo "Fix the identified patterns before merging. See the RL findings comment for details."
+            exit 1
+          fi
+
+          echo "RL gate PASSED — no blocking findings"

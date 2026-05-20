@@ -1,0 +1,333 @@
+# ArgoCD Application Health Check Configuration
+# Polyglot Microservices Platform — Phase 5.2
+# ConfigMap containing health check URLs, sync windows, resource thresholds,
+# and ArgoCD notification webhook config for Slack integration
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-health-checks
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/component: health-checks
+data:
+  # ---------------------------------------------------------------------------
+  # Health check endpoints per service
+  # Each service exposes a /healthz or /health endpoint for liveness/readiness
+  # ---------------------------------------------------------------------------
+  health-endpoints.yaml: |
+    services:
+      gateway:
+        endpoint: "http://gateway.production.svc.cluster.local:8080/healthz"
+        method: GET
+        expected_status: 200
+        timeout_seconds: 5
+        interval_seconds: 30
+        protocol: http
+      identity:
+        endpoint: "http://identity.production.svc.cluster.local:8080/health"
+        method: GET
+        expected_status: 200
+        timeout_seconds: 5
+        interval_seconds: 30
+        protocol: http
+      catalog:
+        endpoint: "http://catalog.production.svc.cluster.local:3000/health"
+        method: GET
+        expected_status: 200
+        timeout_seconds: 5
+        interval_seconds: 30
+        protocol: http
+      order:
+        endpoint: "http://order.production.svc.cluster.local:8084/health"
+        method: GET
+        expected_status: 200
+        timeout_seconds: 5
+        interval_seconds: 30
+        protocol: http
+      payment:
+        endpoint: "http://payment.production.svc.cluster.local:9091/healthz"
+        method: GET
+        expected_status: 200
+        timeout_seconds: 5
+        interval_seconds: 30
+        protocol: http
+      notification:
+        endpoint: "http://notification.production.svc.cluster.local:8086/health"
+        method: GET
+        expected_status: 200
+        timeout_seconds: 5
+        interval_seconds: 30
+        protocol: http
+      analytics:
+        endpoint: "http://analytics.production.svc.cluster.local:8087/health"
+        method: GET
+        expected_status: 200
+        timeout_seconds: 5
+        interval_seconds: 30
+        protocol: http
+      cdc-relay:
+        endpoint: "http://cdc-relay.production.svc.cluster.local:8085/healthz"
+        method: GET
+        expected_status: 200
+        timeout_seconds: 5
+        interval_seconds: 30
+        protocol: http
+      schema-registry:
+        endpoint: "http://schema-registry.production.svc.cluster.local:8089/healthz"
+        method: GET
+        expected_status: 200
+        timeout_seconds: 5
+        interval_seconds: 30
+        protocol: http
+    platform:
+      kafka:
+        endpoint: "http://kafka.production.svc.cluster.local:8080/health"
+        method: GET
+        expected_status: 200
+        timeout_seconds: 10
+        interval_seconds: 60
+        protocol: http
+      spire-server:
+        endpoint: "https://spire-server.production.svc.cluster.local:8081/healthz"
+        method: GET
+        expected_status: 200
+        timeout_seconds: 5
+        interval_seconds: 30
+        protocol: https
+        tls_skip_verify: true
+      otel-collector:
+        endpoint: "http://otel-collector.production.svc.cluster.local:13133"
+        method: GET
+        expected_status: 200
+        timeout_seconds: 5
+        interval_seconds: 30
+        protocol: http
+      tempo:
+        endpoint: "http://tempo.production.svc.cluster.local:3100/ready"
+        method: GET
+        expected_status: 200
+        timeout_seconds: 5
+        interval_seconds: 30
+        protocol: http
+
+  # ---------------------------------------------------------------------------
+  # Sync windows — scheduled maintenance windows where auto-sync is paused
+  # Prevents accidental deployments during peak hours or maintenance windows
+  # ---------------------------------------------------------------------------
+  sync-windows.yaml: |
+    windows:
+      # Weekday business hours maintenance window (UTC)
+      # Auto-sync paused Mon-Fri 08:00-09:00 UTC for controlled morning deployments
+      - name: weekday-morning-maintenance
+        kind: deny
+        schedule: "0 8 * * 1-5"
+        duration: 1h
+        applications:
+          - "*"
+        namespaces:
+          - production
+        clusters:
+          - "*"
+        manualSync: true
+
+      # Weekend deployment freeze — no auto-sync on Saturdays
+      - name: weekend-freeze
+        kind: deny
+        schedule: "0 0 * * 6"
+        duration: 24h
+        applications:
+          - "*"
+        namespaces:
+          - production
+        clusters:
+          - "*"
+        manualSync: false
+
+      # Holiday deployment freeze (Christmas week)
+      - name: holiday-freeze
+        kind: deny
+        schedule: "0 0 24 12 *"
+        duration: 168h
+        applications:
+          - "*"
+        namespaces:
+          - production
+        clusters:
+          - "*"
+        manualSync: false
+
+      # Allow sync window for platform-components (broader than services)
+      - name: platform-components-allow
+        kind: allow
+        schedule: "0 9 * * 1-5"
+        duration: 4h
+        applications:
+          - platform-components
+        namespaces:
+          - production
+        clusters:
+          - "*"
+        manualSync: true
+
+  # ---------------------------------------------------------------------------
+  # Resource validation thresholds
+  # Define acceptable resource utilization limits for health scoring
+  # ---------------------------------------------------------------------------
+  resource-thresholds.yaml: |
+    thresholds:
+      # CPU thresholds (percentage of limit)
+      cpu:
+        warning: 80
+        critical: 95
+        sustained_minutes: 5
+      # Memory thresholds (percentage of limit)
+      memory:
+        warning: 80
+        critical: 95
+        sustained_minutes: 5
+      # Restart thresholds (per 10-minute window)
+      restarts:
+        warning: 3
+        critical: 5
+      # Pod eviction threshold
+      evictions:
+        warning: 1
+        critical: 3
+        window_minutes: 30
+      # PVC usage thresholds (percentage of capacity)
+      pvc_usage:
+        warning: 75
+        critical: 90
+      # Deployment availability threshold (percentage of desired replicas)
+      availability:
+        warning: 66
+        critical: 50
+
+    # Per-service resource budgets (from performance-budget.md)
+    service_budgets:
+      gateway:
+        cpu_request: 100m
+        cpu_limit: 500m
+        memory_request: 128Mi
+        memory_limit: 512Mi
+        min_replicas: 3
+      identity:
+        cpu_request: 100m
+        cpu_limit: 300m
+        memory_request: 256Mi
+        memory_limit: 512Mi
+        min_replicas: 2
+      catalog:
+        cpu_request: 200m
+        cpu_limit: 1000m
+        memory_request: 256Mi
+        memory_limit: 1Gi
+        min_replicas: 3
+      order:
+        cpu_request: 500m
+        cpu_limit: 2000m
+        memory_request: 512Mi
+        memory_limit: 2Gi
+        min_replicas: 3
+      payment:
+        cpu_request: 200m
+        cpu_limit: 1000m
+        memory_request: 256Mi
+        memory_limit: 1Gi
+        min_replicas: 2
+      notification:
+        cpu_request: 100m
+        cpu_limit: 500m
+        memory_request: 256Mi
+        memory_limit: 512Mi
+        min_replicas: 2
+      analytics:
+        cpu_request: 500m
+        cpu_limit: 2000m
+        memory_request: 1Gi
+        memory_limit: 4Gi
+        min_replicas: 2
+      cdc-relay:
+        cpu_request: 500m
+        cpu_limit: 2000m
+        memory_request: 1Gi
+        memory_limit: 4Gi
+        min_replicas: 1
+      schema-registry:
+        cpu_request: 100m
+        cpu_limit: 300m
+        memory_request: 128Mi
+        memory_limit: 256Mi
+        min_replicas: 2
+
+  # ---------------------------------------------------------------------------
+  # ArgoCD notification webhook configuration for Slack
+  # Integrates with argocd-notifications-controller for alerting
+  # ---------------------------------------------------------------------------
+  notification-webhooks.yaml: |
+    webhooks:
+      # Primary Slack webhook for platform team notifications
+      - name: slack-platform-team
+        type: slack
+        url: "${SLACK_WEBHOOK_URL}"
+        headers:
+          - name: Content-Type
+            value: application/json
+        settings:
+          channel: "#platform-alerts"
+          username: "ArgoCD Bot"
+          icon_emoji: ":robot_face:"
+
+      # Secondary Slack webhook for on-call escalation
+      - name: slack-oncall
+        type: slack
+        url: "${SLACK_ONCALL_WEBHOOK_URL}"
+        headers:
+          - name: Content-Type
+            value: application/json
+        settings:
+          channel: "#oncall-platform"
+          username: "ArgoCD Escalation"
+          icon_emoji: ":rotating_light:"
+
+      # PagerDuty webhook for critical alerts
+      - name: pagerduty-critical
+        type: webhook
+        url: "${PAGERDUTY_EVENTS_URL}"
+        headers:
+          - name: Content-Type
+            value: application/json
+          - name: Authorization
+            value: "Token token=${PAGERDUTY_ROUTING_KEY}"
+        settings:
+          severity_map:
+            Degraded: critical
+            OutOfSync: warning
+
+    # Notification routing rules
+    routing:
+      # All Degraded alerts go to on-call + PagerDuty
+      - trigger: on-health-degraded
+        webhooks:
+          - slack-platform-team
+          - slack-oncall
+          - pagerduty-critical
+
+      # OutOfSync alerts go to platform team
+      - trigger: on-out-of-sync
+        webhooks:
+          - slack-platform-team
+
+      # Sync failures go to platform team + on-call
+      - trigger: on-sync-failed
+        webhooks:
+          - slack-platform-team
+          - slack-oncall
+
+      # Successful syncs for audit logging
+      - trigger: on-sync-succeeded
+        webhooks:
+          - slack-platform-team

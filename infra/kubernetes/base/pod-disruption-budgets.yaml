@@ -1,0 +1,212 @@
+# PodDisruptionBudgets for production namespace
+# Ensures minimum availability during voluntary disruptions (node drains, rolling updates)
+# Critical stateful services: minAvailable ensures quorum during maintenance
+# Service deployments: maxUnavailable allows controlled rolling updates
+---
+# Kafka Broker: Require 2 of 3 replicas available (quorum for replication factor 3)
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kafka-broker-pdb
+  namespace: production
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: messaging
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafka
+---
+# Zookeeper: Require 2 of 3 replicas available (quorum for leader election)
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: zookeeper-pdb
+  namespace: production
+  labels:
+    app.kubernetes.io/name: zookeeper
+    app.kubernetes.io/component: messaging
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zookeeper
+---
+# SPIRE Server: Require 2 of 3 replicas available (trust root HA)
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: spire-server-pdb
+  namespace: production
+  labels:
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/component: identity
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spire-server
+---
+# Gateway: Allow 1 pod unavailable during rolling updates
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gateway-pdb
+  namespace: production
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/component: api-gateway
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gateway
+---
+# Identity: Allow 1 pod unavailable during rolling updates
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: identity-pdb
+  namespace: production
+  labels:
+    app.kubernetes.io/name: identity
+    app.kubernetes.io/component: identity
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: identity
+---
+# Catalog: Allow 1 pod unavailable during rolling updates
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: catalog-pdb
+  namespace: production
+  labels:
+    app.kubernetes.io/name: catalog
+    app.kubernetes.io/component: catalog
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: catalog
+---
+# Order: Allow 1 pod unavailable during rolling updates
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: order-pdb
+  namespace: production
+  labels:
+    app.kubernetes.io/name: order
+    app.kubernetes.io/component: order
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: order
+---
+# Payment: Allow 1 pod unavailable during rolling updates
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: payment-pdb
+  namespace: production
+  labels:
+    app.kubernetes.io/name: payment
+    app.kubernetes.io/component: payment
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: payment
+---
+# Notification: Allow 1 pod unavailable during rolling updates
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: notification-pdb
+  namespace: production
+  labels:
+    app.kubernetes.io/name: notification
+    app.kubernetes.io/component: notification
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: notification
+---
+# Analytics: Allow 1 pod unavailable during rolling updates
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: analytics-pdb
+  namespace: production
+  labels:
+    app.kubernetes.io/name: analytics
+    app.kubernetes.io/component: analytics
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: analytics
+---
+# CDC Relay: Allow 1 pod unavailable during rolling updates
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cdc-relay-pdb
+  namespace: production
+  labels:
+    app.kubernetes.io/name: cdc-relay
+    app.kubernetes.io/component: cdc
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cdc-relay
+---
+# Schema Registry: Allow 1 pod unavailable during rolling updates
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: schema-registry-pdb
+  namespace: production
+  labels:
+    app.kubernetes.io/name: schema-registry
+    app.kubernetes.io/component: schema-registry
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: schema-registry
+---
+# OTel Collector (DaemonSet): Require at least 1 collector running
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: otel-collector-pdb
+  namespace: production
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector

@@ -1,0 +1,299 @@
+# Prometheus Alerting Rules for polyglot-microservices platform
+# PrometheusRule CRD with alert rules for all services and platform components
+# Aligned with performance-budget.md SLO targets and SPECIFICATION.md success criteria
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: polyglot-platform-alerts
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    prometheus: k8s
+    role: alert-rules
+spec:
+  groups:
+    # ──────────────────────────────────────────────────
+    # Service Availability Alerts
+    # ──────────────────────────────────────────────────
+    - name: service-availability
+      rules:
+        - alert: ServiceDown
+          expr: |
+            sum(up{job=~"gateway|identity|catalog|order|payment|notification|analytics|cdc-relay|schema-registry"}) by (job) == 0
+          for: 2m
+          labels:
+            severity: critical
+            team: platform
+            runbook: docs/runbooks/platform-runbook.md
+          annotations:
+            summary: "Service {{ $labels.job }} is down"
+            description: >-
+              Service {{ $labels.job }} has no ready pods for 2 minutes.
+              This may indicate a crash, failed deployment, or resource exhaustion.
+              Check pod status: kubectl get pods -n production -l app.kubernetes.io/name={{ $labels.job }}
+            action: >-
+              Check pod events, logs, and resource usage. If OOMKilled, increase memory limits.
+              If CrashLoopBackOff, check application logs for startup errors.
+
+        - alert: PodCrashLooping
+          expr: |
+            rate(kube_pod_container_status_restarts_total{namespace="production"}[10m]) * 60 * 5 > 5
+          for: 0m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Pod {{ $labels.pod }} is crash looping"
+            description: >-
+              Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has restarted
+              {{ $value }} times in the last 10 minutes. This indicates a recurring failure.
+            action: >-
+              Check pod logs: kubectl logs {{ $labels.pod }} -n production --previous
+              Check pod events: kubectl describe pod {{ $labels.pod }} -n production
+
+        - alert: OOMKilled
+          expr: |
+            kube_pod_container_status_last_terminated_reason{namespace="production", reason="OOMKilled"} == 1
+          for: 0m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Container {{ $labels.container }} OOM killed"
+            description: >-
+              Container {{ $labels.container }} in pod {{ $labels.pod }} was killed
+              due to out-of-memory conditions. The memory limit is too low for the
+              current workload.
+            action: >-
+              Increase memory limits in the deployment manifest and redeploy.
+              Check memory usage patterns in Grafana to determine appropriate limits.
+
+    # ──────────────────────────────────────────────────
+    # Service Level Objective (SLO) Alerts
+    # ──────────────────────────────────────────────────
+    - name: slo-breaches
+      rules:
+        - alert: HighErrorRate
+          expr: |
+            (
+              sum(rate(http_requests_total{job=~"gateway|identity|catalog|order|payment|notification|analytics|schema-registry", code=~"5.."}[5m])) by (job)
+              /
+              sum(rate(http_requests_total{job=~"gateway|identity|catalog|order|payment|notification|analytics|schema-registry"}[5m])) by (job)
+            ) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "High error rate on {{ $labels.job }}"
+            description: >-
+              Service {{ $labels.job }} error rate is {{ $value | humanizePercentage }}
+              (threshold: 5%) for the last 5 minutes. This exceeds the SLO error budget.
+            action: >-
+              Check recent deployments for regressions. Examine error logs in Loki
+              for stack traces. Check downstream service health.
+
+        - alert: HighLatency
+          expr: |
+            histogram_quantile(0.99,
+              sum(rate(http_request_duration_seconds_bucket{job=~"gateway|identity|catalog|order|payment|notification|analytics|schema-registry"}[5m])) by (job, le)
+            ) > 2
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "High p99 latency on {{ $labels.job }}"
+            description: >-
+              Service {{ $labels.job }} p99 latency is {{ $value }}s
+              (threshold: 2s) for the last 5 minutes. This may indicate
+              resource saturation, slow downstream calls, or database issues.
+            action: >-
+              Check CPU/memory utilization. Examine slow traces in Tempo.
+              Check database query performance and connection pool utilization.
+
+    # ──────────────────────────────────────────────────
+    # Kafka and Messaging Alerts
+    # ──────────────────────────────────────────────────
+    - name: kafka-alerts
+      rules:
+        - alert: KafkaConsumerLag
+          expr: |
+            kafka_consumer_group_lag{namespace="production"} > 1000
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+            runbook: docs/runbooks/platform-runbook.md
+          annotations:
+            summary: "Kafka consumer lag exceeds threshold"
+            description: >-
+              Consumer group {{ $labels.consumer_group }} on topic {{ $labels.topic }}
+              has a lag of {{ $value }} messages (threshold: 1000) for 5 minutes.
+              This indicates consumers cannot keep up with production rate.
+            action: >-
+              Check consumer pod health and resource utilization. Consider scaling
+              consumer replicas via HPA. Check for slow processing or downstream errors.
+
+        - alert: KafkaUnderReplicatedPartitions
+          expr: |
+            kafka_cluster_partition_underreplicated > 0
+          for: 5m
+          labels:
+            severity: critical
+            team: platform
+            runbook: docs/runbooks/platform-runbook.md
+          annotations:
+            summary: "Kafka has under-replicated partitions"
+            description: >-
+              Kafka cluster has {{ $value }} under-replicated partitions for 5 minutes.
+              This risks data loss if a broker fails. ISR count is below the
+              minimum in-sync replicas threshold.
+            action: >-
+              Check broker health: kubectl get pods -n production -l app.kubernetes.io/name=kafka
+              Check disk usage on Kafka brokers. Verify network connectivity between brokers.
+              Restart failed broker if necessary.
+
+    # ──────────────────────────────────────────────────
+    # SPIRE / Identity Alerts
+    # ──────────────────────────────────────────────────
+    - name: spire-alerts
+      rules:
+        - alert: SPIREServerUnhealthy
+          expr: |
+            up{job="spire-server"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            team: platform
+            runbook: docs/runbooks/platform-runbook.md
+          annotations:
+            summary: "SPIRE Server is unhealthy"
+            description: >-
+              SPIRE Server healthz endpoint is failing for 2 minutes.
+              This blocks SVID issuance and rotation for all workloads.
+              mTLS connections will begin failing as SVIDs expire.
+            action: >-
+              Check SPIRE Server pod: kubectl get pods -n production -l app.kubernetes.io/name=spire-server
+              Check server logs: kubectl logs -n production -l app.kubernetes.io/name=spire-server
+              Verify SQLite data volume is not full.
+
+        - alert: CertificateExpiry
+          expr: |
+            (
+              spire_server_svid_expiry_timestamp_seconds - time()
+            ) < 86400
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "SVID expiring within 24 hours"
+            description: >-
+              A SPIFFE SVID for workload {{ $labels.spiffe_id }} will expire
+              in less than 24 hours. Normal SVID TTL is 1 hour with automatic
+              rotation. This alert indicates rotation is not happening.
+            action: >-
+              Check SPIRE Agent health on the affected node. Verify the workload
+              API socket is accessible. Check SPIRE Server entry registrations.
+
+    # ──────────────────────────────────────────────────
+    # Infrastructure Alerts
+    # ──────────────────────────────────────────────────
+    - name: infrastructure
+      rules:
+        - alert: DiskUsageHigh
+          expr: |
+            (
+              kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes
+            ) > 0.80
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "PVC {{ $labels.persistentvolumeclaim }} usage exceeds 80%"
+            description: >-
+              PersistentVolumeClaim {{ $labels.persistentvolumeclaim }} in namespace
+              {{ $labels.namespace }} is {{ $value | humanizePercentage }} full.
+              At current growth rate, the volume may fill up and cause service failure.
+            action: >-
+              Check what is consuming storage. Expand PVC if needed:
+              kubectl edit pvc {{ $labels.persistentvolumeclaim }} -n production
+              Implement log rotation or data retention policies if applicable.
+
+    # ──────────────────────────────────────────────────
+    # CDC Pipeline Alerts
+    # ──────────────────────────────────────────────────
+    - name: cdc-pipeline
+      rules:
+        - alert: CDCPipelineLag
+          expr: |
+            (
+              time() - debezium_source_lag_seconds{namespace="production"}
+            ) > 30
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+            runbook: docs/runbooks/platform-runbook.md
+          annotations:
+            summary: "CDC pipeline lag exceeds 30 seconds"
+            description: >-
+              The Debezium CDC pipeline lag is {{ $value }}s (threshold: 30s)
+              for 5 minutes. Analytics and notification services may be serving
+              stale data. This violates the CDC SLA from performance-budget.md.
+            action: >-
+              Check Debezium connector status. Verify PostgreSQL replication slot
+              is active. Check Kafka producer throughput. Consider scaling the
+              CDC relay deployment.
+
+    # ──────────────────────────────────────────────────
+    # Resilience Alerts
+    # ──────────────────────────────────────────────────
+    - name: resilience
+      rules:
+        - alert: CircuitBreakerOpen
+          expr: |
+            resilience4j_circuitbreaker_state{state="open", namespace="production"} == 1
+          for: 1m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Circuit breaker open on {{ $labels.job }}"
+            description: >-
+              Circuit breaker for {{ $labels.job }} targeting {{ $labels.target }}
+              has been in OPEN state for more than 1 minute. All calls to the
+              downstream service are being rejected, causing degraded functionality.
+            action: >-
+              Check downstream service health. Examine error rates and latency
+              for the target service. If the target has recovered, the circuit
+              breaker should transition to HALF_OPEN after the wait duration.
+
+    # ──────────────────────────────────────────────────
+    # RL Engine / Knowledge Base Alerts
+    # ──────────────────────────────────────────────────
+    - name: rl-engine
+      rules:
+        - alert: RLKnowledgeBaseStale
+          expr: |
+            (
+              time() - rl_engine_knowledge_base_last_updated_timestamp_seconds{namespace="production"}
+            ) > 2592000
+          for: 1h
+          labels:
+            severity: info
+            team: platform
+            runbook: docs/runbooks/rl-engine-runbook.md
+          annotations:
+            summary: "RL knowledge base has not been updated in 30 days"
+            description: >-
+              The RL Engine knowledge base has not received updates for over
+              30 days ({{ $value | humanizeDuration }}). Stale knowledge may
+              degrade RL policy decisions and circuit breaker tuning accuracy.
+            action: >-
+              Verify the CDC pipeline feeding the RL engine is operational.
+              Check rl-engine logs for ingestion errors. Run a manual knowledge
+              base update if the pipeline has stalled.

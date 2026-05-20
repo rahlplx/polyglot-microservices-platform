@@ -1,0 +1,72 @@
+# Resource Quotas and LimitRanges for production namespace
+# Prevents resource sprawl and ensures fair allocation across all services
+# Budgets aligned with performance-budget.md Section 4
+---
+# Production namespace resource quota
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: production-quota
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    environment: production
+spec:
+  hard:
+    # CPU: Total requests/limits across all pods
+    # 9 services + platform (Kafka, ZK, SPIRE, OTel, Debezium, Grafana, Prometheus, Tempo, Loki)
+    requests.cpu: "20"
+    limits.cpu: "40"
+    # Memory: Total requests/limits across all pods
+    requests.memory: 32Gi
+    limits.memory: 64Gi
+    # Workload limits
+    pods: "100"
+    services: "20"
+    # Configuration limits
+    secrets: "50"
+    configmaps: "50"
+    # Storage limits
+    persistentvolumeclaims: "20"
+    requests.storage: 500Gi
+---
+# LimitRange: Default resource assignments for pods without explicit requests/limits
+# Ensures every container has resource boundaries even if not specified
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: production-limits
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    environment: production
+spec:
+  limits:
+    # Default container limits (applied when not specified in pod spec)
+    - type: Container
+      default:
+        cpu: "500m"
+        memory: "512Mi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "128Mi"
+      max:
+        cpu: "4"
+        memory: 8Gi
+      min:
+        cpu: "50m"
+        memory: "64Mi"
+      maxLimitRequestRatio:
+        cpu: "10"
+        memory: "8"
+    # Default pod limits (aggregate across all containers in a pod)
+    - type: Pod
+      max:
+        cpu: "8"
+        memory: 16Gi
+    # PVC storage limits
+    - type: PersistentVolumeClaim
+      max:
+        storage: 100Gi
+      min:
+        storage: 1Gi

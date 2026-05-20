@@ -2,7 +2,7 @@
 # Main CI Pipeline — Polyglot Microservices Platform
 # ---------------------------------------------------------------------------
 # Triggers: push to main/develop, PRs to main/develop
-# Stages: Lint (per-language) → Test (per-service) → Build (Docker) → Security Scan
+# Stages: Lint (per-language) → Test (per-service) → Build (Docker) → Security Scan + RL Scan
 #
 # Service-Language Mappings:
 #   identity        = Rust
@@ -465,6 +465,44 @@ jobs:
             exit 1
           fi
           echo "ACL enforcement check PASSED."
+
+      - name: Setup Python 3.12 for RL Scanner
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: RL Knowledge Base health check
+        run: |
+          echo "::group::RL Knowledge Base Validation"
+          python3 .claude/engine/knowledge_matcher.py --validate
+          echo "::endgroup::"
+
+      - name: RL pattern scan — changed files
+        run: |
+          echo "::group::RL Pattern Scan"
+          # Gather changed files
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            CHANGED_FILES=$(git diff --name-only --diff-filter=ACMR "origin/${{ github.base_ref }}...HEAD" 2>/dev/null || echo "")
+          else
+            CHANGED_FILES=$(git diff --name-only --diff-filter=ACMR "HEAD~1...HEAD" 2>/dev/null || echo "")
+          fi
+
+          # Filter to scannable extensions
+          SCANNABLE_FILES=$(echo "${CHANGED_FILES}" | grep -E '\.(py|go|ts|kt|rs|ya?ml)$' || true)
+
+          if [ -z "${SCANNABLE_FILES}" ]; then
+            echo "No scannable files in diff — RL scan skipped"
+            exit 0
+          fi
+
+          echo "Scanning ${SCANNABLE_FILES}"
+          if python3 .claude/engine/knowledge_matcher.py --scan-diff ${SCANNABLE_FILES}; then
+            echo "RL pattern scan PASSED — no CRITICAL/HIGH patterns found"
+          else
+            echo "::error::RL pattern scan FAILED — CRITICAL or HIGH severity patterns detected in changed files"
+            exit 1
+          fi
+          echo "::endgroup::"
 
   # =========================================================================
   # CI Summary

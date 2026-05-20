@@ -1,0 +1,328 @@
+# SPIRE Federation Policy — Polyglot Microservices Platform
+# Phase 5.3: Service Mesh mTLS Verification
+#
+# Defines trust domain, SVID TTL, entry registration patterns for all 9 services.
+# No external federation — this cluster operates as an isolated trust domain.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-federation-policy
+  namespace: production
+  labels:
+    app.kubernetes.io/name: spire-federation-policy
+    app.kubernetes.io/component: identity
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: argocd
+data:
+  # Trust domain configuration — single isolated trust domain, no federation
+  trust-domain.conf: |
+    # Trust Domain Configuration
+    # =========================
+    # This cluster operates as an isolated trust domain.
+    # No federated trust domains are permitted — all workloads
+    # must present SVIDs from trust.example.org exclusively.
+
+    trust_domain = "trust.example.org"
+
+    # Federated trust domains — NONE
+    # Any SPIFFE ID from a foreign trust domain will be rejected
+    # during mTLS handshake verification.
+    federated_trust_domains = []
+
+  # Bundle endpoint configuration
+  bundle-endpoint.conf: |
+    # Bundle Endpoint Configuration
+    # =============================
+    # The bundle endpoint serves the trust bundle for this trust domain.
+    # It is used by SPIRE agents to bootstrap and by potential future
+    # federation partners (currently none).
+
+    bundle_endpoint {
+      # Listen on all interfaces within the pod
+      address = "0.0.0.0"
+      port = 8443
+
+      # Refresh interval for the bundle (how often clients should check for updates)
+      refresh_hint = "5m"
+
+      # The bundle is signed by the server CA
+      # No additional authentication is required for reading the bundle
+    }
+
+  # SVID TTL configuration
+  svid-ttl.conf: |
+    # SVID Time-To-Live Configuration
+    # ================================
+    # X.509 SVIDs for workloads have a 1-hour TTL with automatic rotation.
+    # JWT-SVIDs have a 15-minute TTL for API gateway token validation.
+    # Server CA certificates have a 24-hour TTL for signing workloads.
+    # Root CA has a 72-hour TTL for signing server CAs.
+
+    # Workload X.509 SVID — 1 hour
+    # SPIRE Agent automatically rotates SVIDs at 50% of TTL (30 minutes).
+    # This ensures workloads always have a valid SVID with a 30-minute
+    # safety margin before expiration.
+    default_x509_svid_ttl = "1h"
+
+    # JWT-SVID — 15 minutes
+    # Used by the API gateway for token-based authentication.
+    # Short TTL limits the window of replay attacks.
+    default_jwt_svid_ttl = "15m"
+
+    # Server CA — 24 hours
+    # The server CA signs workload SVIDs. It rotates daily to limit
+    # the impact of CA key compromise.
+    ca_ttl = "24h"
+
+  # JWT-SVID configuration for API gateway
+  jwt-svid.conf: |
+    # JWT-SVID Configuration for API Gateway
+    # =======================================
+    # The API gateway (Envoy/Grpc-Gateway) validates JWT-SVIDs
+    # presented by external clients. These tokens are issued by
+    # the SPIRE server and carry the workload's SPIFFE ID as
+    # the subject claim.
+
+    jwt_issuer = "https://trust.example.org"
+
+    # Expected audience for JWT-SVIDs
+    # The gateway will only accept tokens with these audiences
+    audiences = [
+      "api.trust.example.org",
+      "grpc.trust.example.org"
+    ]
+
+    # Clock skew tolerance for JWT validation
+    clock_skew_allowance = "30s"
+
+  # Entry registration patterns for all 9 services
+  # Each entry maps a SPIFFE ID to a K8s namespace + service account selector
+  entry-registrations.conf: |
+    # Entry Registration Patterns
+    # ===========================
+    # Each workload is registered with:
+    #   - SPIFFE ID: spiffe://trust.example.org/ns/production/sa/<service-account>
+    #   - Parent ID: spiffe://trust.example.org/spire/agent/k8s_psat/production
+    #   - Selectors: k8s:ns:production + k8s:sa:<service-account>
+    #   - DNS names: <service>.production.svc.cluster.local
+    #   - TTL: 3600 seconds (1 hour)
+
+    # -------------------------------------------------------------------
+    # Gateway Service (Go)
+    # -------------------------------------------------------------------
+    entry "gateway" {
+      spiffe_id = "spiffe://trust.example.org/ns/production/sa/gateway"
+      parent_id = "spiffe://trust.example.org/spire/agent"
+      selectors = [
+        "k8s:ns:production",
+        "k8s:sa:gateway"
+      ]
+      dns_names = [
+        "gateway",
+        "gateway.production",
+        "gateway.production.svc",
+        "gateway.production.svc.cluster.local"
+      ]
+      ttl = 3600
+      federates_with = []
+    }
+
+    # -------------------------------------------------------------------
+    # Identity Service (Rust)
+    # -------------------------------------------------------------------
+    entry "identity" {
+      spiffe_id = "spiffe://trust.example.org/ns/production/sa/identity"
+      parent_id = "spiffe://trust.example.org/spire/agent"
+      selectors = [
+        "k8s:ns:production",
+        "k8s:sa:identity"
+      ]
+      dns_names = [
+        "identity",
+        "identity.production",
+        "identity.production.svc",
+        "identity.production.svc.cluster.local"
+      ]
+      ttl = 3600
+      federates_with = []
+    }
+
+    # -------------------------------------------------------------------
+    # Catalog Service (TypeScript)
+    # -------------------------------------------------------------------
+    entry "catalog" {
+      spiffe_id = "spiffe://trust.example.org/ns/production/sa/catalog"
+      parent_id = "spiffe://trust.example.org/spire/agent"
+      selectors = [
+        "k8s:ns:production",
+        "k8s:sa:catalog"
+      ]
+      dns_names = [
+        "catalog",
+        "catalog.production",
+        "catalog.production.svc",
+        "catalog.production.svc.cluster.local"
+      ]
+      ttl = 3600
+      federates_with = []
+    }
+
+    # -------------------------------------------------------------------
+    # Order Service (Kotlin)
+    # -------------------------------------------------------------------
+    entry "order" {
+      spiffe_id = "spiffe://trust.example.org/ns/production/sa/order"
+      parent_id = "spiffe://trust.example.org/spire/agent"
+      selectors = [
+        "k8s:ns:production",
+        "k8s:sa:order"
+      ]
+      dns_names = [
+        "order",
+        "order.production",
+        "order.production.svc",
+        "order.production.svc.cluster.local"
+      ]
+      ttl = 3600
+      federates_with = []
+    }
+
+    # -------------------------------------------------------------------
+    # Payment Service (Go)
+    # -------------------------------------------------------------------
+    entry "payment" {
+      spiffe_id = "spiffe://trust.example.org/ns/production/sa/payment"
+      parent_id = "spiffe://trust.example.org/spire/agent"
+      selectors = [
+        "k8s:ns:production",
+        "k8s:sa:payment"
+      ]
+      dns_names = [
+        "payment",
+        "payment.production",
+        "payment.production.svc",
+        "payment.production.svc.cluster.local"
+      ]
+      ttl = 3600
+      federates_with = []
+    }
+
+    # -------------------------------------------------------------------
+    # Notification Service (Python)
+    # -------------------------------------------------------------------
+    entry "notification" {
+      spiffe_id = "spiffe://trust.example.org/ns/production/sa/notification"
+      parent_id = "spiffe://trust.example.org/spire/agent"
+      selectors = [
+        "k8s:ns:production",
+        "k8s:sa:notification"
+      ]
+      dns_names = [
+        "notification",
+        "notification.production",
+        "notification.production.svc",
+        "notification.production.svc.cluster.local"
+      ]
+      ttl = 3600
+      federates_with = []
+    }
+
+    # -------------------------------------------------------------------
+    # Analytics Service (Python)
+    # -------------------------------------------------------------------
+    entry "analytics" {
+      spiffe_id = "spiffe://trust.example.org/ns/production/sa/analytics"
+      parent_id = "spiffe://trust.example.org/spire/agent"
+      selectors = [
+        "k8s:ns:production",
+        "k8s:sa:analytics"
+      ]
+      dns_names = [
+        "analytics",
+        "analytics.production",
+        "analytics.production.svc",
+        "analytics.production.svc.cluster.local"
+      ]
+      ttl = 3600
+      federates_with = []
+    }
+
+    # -------------------------------------------------------------------
+    # CDC Relay Service (Python)
+    # -------------------------------------------------------------------
+    entry "cdc-relay" {
+      spiffe_id = "spiffe://trust.example.org/ns/production/sa/cdc-relay"
+      parent_id = "spiffe://trust.example.org/spire/agent"
+      selectors = [
+        "k8s:ns:production",
+        "k8s:sa:cdc-relay"
+      ]
+      dns_names = [
+        "cdc-relay",
+        "cdc-relay.production",
+        "cdc-relay.production.svc",
+        "cdc-relay.production.svc.cluster.local"
+      ]
+      ttl = 3600
+      federates_with = []
+    }
+
+    # -------------------------------------------------------------------
+    # Schema Registry Service (Go)
+    # -------------------------------------------------------------------
+    entry "schema-registry" {
+      spiffe_id = "spiffe://trust.example.org/ns/production/sa/schema-registry"
+      parent_id = "spiffe://trust.example.org/spire/agent"
+      selectors = [
+        "k8s:ns:production",
+        "k8s:sa:schema-registry"
+      ]
+      dns_names = [
+        "schema-registry",
+        "schema-registry.production",
+        "schema-registry.production.svc",
+        "schema-registry.production.svc.cluster.local"
+      ]
+      ttl = 3600
+      federates_with = []
+    }
+
+  # Policy enforcement rules
+  policy-rules.conf: |
+    # Policy Enforcement Rules
+    # ========================
+    # These rules are evaluated by the SPIRE server when processing
+    # SVID issuance requests and by workloads during mTLS handshake.
+
+    # Rule 1: Only SVIDs from trust.example.org are accepted
+    # Any SPIFFE ID with a different trust domain is rejected.
+    rule "reject_foreign_trust_domain" {
+      condition = "spiffe_id.trust_domain != 'trust.example.org'"
+      action = "REJECT"
+      message = "SVID from foreign trust domain rejected"
+    }
+
+    # Rule 2: SVID must match the requesting workload's service account
+    # Prevents a workload from obtaining an SVID for a different SA.
+    rule "enforce_sa_match" {
+      condition = "svid.spiffe_id.sa != workload.k8s_sa"
+      action = "REJECT"
+      message = "SVID SPIFFE ID does not match workload service account"
+    }
+
+    # Rule 3: SVID TTL must not exceed 1 hour
+    # Ensures short-lived credentials for zero-trust posture.
+    rule "enforce_svid_ttl" {
+      condition = "svid.ttl > 3600"
+      action = "REJECT"
+      message = "SVID TTL exceeds maximum of 1 hour"
+    }
+
+    # Rule 4: No plaintext gRPC connections between services
+    # All inter-service communication must use mTLS.
+    rule "deny_plaintext_grpc" {
+      condition = "connection.protocol == 'grpc' && connection.tls == false"
+      action = "DENY"
+      message = "Plaintext gRPC connections are denied between services"
+    }
