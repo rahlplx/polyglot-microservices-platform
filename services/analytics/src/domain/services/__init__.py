@@ -12,11 +12,11 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
-from .models import (
-    AggregationFunction, Dashboard, DataPoint, Granularity, Metric,
+from ..models import (
+    AggregationFunction, Dashboard, Granularity,
     Report, ReportType, TimeSeries,
 )
-from .ports import (
+from ..ports import (
     DashboardRepositoryPort, EventRepositoryPort, GetDashboardPort,
     GetMetricsPort, GetReportPort, StreamEventsPort,
     TimeSeriesRepositoryPort,

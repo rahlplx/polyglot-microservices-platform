@@ -53,41 +53,66 @@ func NewCircuitBreakerService(config models.CircuitConfig, logger *slog.Logger) 
 // If the circuit is Open, it returns an error immediately. If HalfOpen,
 // it allows limited requests through. All outcomes are recorded to update
 // the circuit state according to the configured rules.
-func (cb *CircuitBreakerService) Execute(ctx context.Context, fn func() (interface{}, error)) (interface{}, error) {
+func (cb *CircuitBreakerService) Execute(ctx context.Context, fn func(ctx context.Context) error) error {
         // Check current state and possibly transition from Open to HalfOpen.
         state := cb.beforeRequest()
         switch state {
         case models.CircuitStateOpen:
-                return nil, fmt.Errorf("circuit breaker %s is open", cb.name)
+                return fmt.Errorf("circuit breaker %s is open", cb.name)
         case models.CircuitStateHalfOpen:
                 // Allow the request through in half-open state as a probe.
         default:
                 // Closed state: allow all requests through.
         }
 
-        result, err := fn()
+        err := fn(ctx)
         if err != nil {
                 cb.recordFailure()
-                return nil, err
+                return err
         }
 
         cb.recordSuccess()
-        return result, nil
+        return nil
 }
 
 // GetState returns a snapshot of the circuit breaker's current state for observability.
-func (cb *CircuitBreakerService) GetState(ctx context.Context) (*models.CircuitBreakerInfo, error) {
+func (cb *CircuitBreakerService) GetState(ctx context.Context) models.CircuitBreakerInfo {
         cb.mu.RLock()
         defer cb.mu.RUnlock()
 
-        return &models.CircuitBreakerInfo{
+        return models.CircuitBreakerInfo{
                 Name:            cb.name,
                 State:           cb.state,
                 FailureCount:    cb.failureCount,
                 SuccessCount:    cb.successCount,
                 LastFailureTime: cb.lastFailureTime,
                 LastStateChange: &cb.lastStateChange,
-        }, nil
+        }
+}
+
+// Reset forcefully resets the circuit breaker to Closed state.
+// This is an administrative operation that should be used with caution.
+func (cb *CircuitBreakerService) Reset(ctx context.Context) error {
+        cb.mu.Lock()
+        defer cb.mu.Unlock()
+
+        from := cb.state
+        cb.state = models.CircuitStateClosed
+        cb.failureCount = 0
+        cb.successCount = 0
+        cb.halfOpenSuccesses = 0
+        cb.lastStateChange = time.Now().UTC()
+
+        cb.logger.Info("circuit breaker reset to closed state",
+                "circuit", cb.name,
+                "from", from,
+        )
+
+        if cb.onStateChange != nil {
+                cb.onStateChange(from, models.CircuitStateClosed)
+        }
+
+        return nil
 }
 
 // beforeRequest checks and potentially transitions the circuit state before

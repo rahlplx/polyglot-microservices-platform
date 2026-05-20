@@ -4,7 +4,6 @@ package notification.v1;
 
 option go_package = "github.com/comprehensive-architecture/services/gen/go/notification/v1";
 
-import "common/v1/types.proto";
 import "google/protobuf/timestamp.proto";
 
 // Notification service handles multi-channel notification delivery with ML optimization

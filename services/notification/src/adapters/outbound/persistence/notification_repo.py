@@ -22,6 +22,7 @@ from typing import Optional
 from sqlalchemy import (
     Column,
     DateTime,
+    Float,
     Integer,
     String,
     Text,
@@ -175,9 +176,6 @@ class DeliveryModelRecord(Base):
     trained_at = Column(DateTime(timezone=True), default=func.now())
     accuracy = Column(Float, default=0.0)
     feature_importance = Column(JSONB, default=dict)
-
-
-# Need Float import
 
 
 class NotificationRepository:

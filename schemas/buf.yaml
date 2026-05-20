@@ -4,7 +4,7 @@ modules:
     name: buf.build/comprehensive-architecture/services
 lint:
   use:
-    - DEFAULT
+    - STANDARD
   enum_zero_value_suffix: _UNSPECIFIED
   rpc_allow_same_request_response: false
   service_suffix: Service

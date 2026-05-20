@@ -26,7 +26,7 @@ from src.domain.ports.outbound.channel_sender import DeliveryRequest, DeliveryRe
 from src.domain.services.notification_service import (
     ChannelUnavailableError,
     NotificationService,
-    NotificationNotFoundError,
+    RecipientNotFoundError,
     RecipientOptedOutError,
 )
 
@@ -105,6 +105,7 @@ def mock_delivery_optimizer() -> AsyncMock:
 def mock_template_service() -> AsyncMock:
     service = AsyncMock()
     service.render.return_value = RenderedTemplate(
+        template_id="order-confirmation",
         subject="Test Subject",
         plain_text_content="Test body",
         html_content="<p>Test body</p>",
@@ -279,7 +280,7 @@ class TestPreferenceManagement:
         )
         mock_preference_service.get_preference.return_value = None
         request = GetPreferencesRequest(recipient_id="nonexistent")
-        with pytest.raises(NotificationNotFoundError):
+        with pytest.raises(RecipientNotFoundError):
             await notification_service.get_preferences(request)
 
 

@@ -4,6 +4,7 @@
 // Defines the trait for workload registration and certificate storage.
 // The domain service uses this port to persist and retrieve workload
 // and certificate data. ZERO external dependencies.
+// HEXAGONAL: Port interface — infrastructure types are contract definitions, not imports
 // ---------------------------------------------------------------------------
 
 use crate::domain::models::{

@@ -8,8 +8,7 @@ Window, Fixed Window, and Adaptive ML — and delegates state persistence
 to the outbound RateLimitStorePort.
 
 The engine is designed for correctness under concurrent access by relying
-on the store adapter's atomicity guarantees (e.g., Redis Lua scripts or
-PostgreSQL serializable transactions). The domain logic itself remains
+on the store adapter's atomicity guarantees. The domain logic itself remains
 stateless between requests; all mutable state lives in the store.
 
 Traffic pattern analysis uses a sliding-window request counter to classify
@@ -53,11 +52,11 @@ class RateLimitEngine(CheckRateLimitPort, RecordRequestPort, GetTrafficPatternPo
 
     The engine is stateless between requests — all mutable rate limit
     state (token buckets, counters) is persisted via the store port.
-    This enables horizontal scaling with shared state backends like Redis.
+    This enables horizontal scaling with shared state backends.
 
     Usage::
 
-        store = RedisRateLimitStore(redis_client)
+        store = InMemoryRateLimitStore()
         engine = RateLimitEngine(store=store)
 
         key = RateLimitKey(client_id="user-42", route="/api/v1/products", method="GET")

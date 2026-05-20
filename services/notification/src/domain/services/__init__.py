@@ -13,12 +13,11 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from .models import (
+from ..models import (
     DeliveryAttempt, Notification, NotificationChannel,
-    NotificationPreference, NotificationPriority, NotificationStatus,
-    Template,
+    NotificationPreference, NotificationPriority,
 )
-from .ports import (
+from ..ports import (
     ChannelSenderPort, DeliveryTrackerPort, GetDeliveryStatusPort,
     GetPreferencesPort, NotificationRepositoryPort, PreferenceRepositoryPort,
     SendNotificationPort, TemplateRepositoryPort,

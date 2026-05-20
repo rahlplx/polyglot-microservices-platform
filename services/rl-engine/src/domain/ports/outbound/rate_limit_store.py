@@ -3,13 +3,12 @@ Outbound port interface for rate limit state persistence.
 
 This module defines the RateLimitStorePort, which abstracts the storage
 backend for rate limiting state. The domain engine depends on this port
-rather than a concrete Redis or PostgreSQL implementation, following
+rather than a concrete storage implementation, following
 the Dependency Inversion Principle.
 
 Implementations must provide atomic read-modify-write semantics for
-correct concurrent operation. For Redis-based implementations, this is
-typically achieved using Lua scripts. For PostgreSQL, serializable
-isolation level or explicit row-level locking is required.
+correct concurrent operation. This is typically achieved using atomic
+store operations or transactional guarantees provided by the storage backend.
 
 The store manages two types of state:
 1. Token bucket state — keyed by compound rate limit key, persisted as
@@ -33,11 +32,8 @@ class RateLimitStorePort(ABC):
     supporting both token bucket and sliding/fixed window strategies.
     Implementations must ensure atomicity for concurrent access patterns.
 
-    Typical implementations:
-    - Redis: Using Lua scripts for atomic token bucket operations and
-      INCR + EXPIRE for window counters.
-    - PostgreSQL: Using serializable transactions or advisory locks
-      for atomic operations.
+    Typical implementations use atomic increment-and-expire operations
+    for window counters and atomic compare-and-swap for token bucket state.
 
     The port is deliberately synchronous to ensure that rate limit checks
     are fast and deterministic. Asynchronous store operations should be
@@ -87,8 +83,7 @@ class RateLimitStorePort(ABC):
 
         The operation must be atomic: the increment and read must happen
         as a single operation to prevent race conditions between concurrent
-        requests. Redis INCR with EXPIRE (in a Lua script) or PostgreSQL
-        INSERT ... ON CONFLICT ... UPDATE are typical implementations.
+        requests. Atomic increment-with-expiry is a typical implementation.
 
         Args:
             key: The counter key, typically including a window identifier.

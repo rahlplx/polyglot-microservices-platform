@@ -159,7 +159,7 @@ func (r *PostgresTransactionRepo) GetRefund(ctx context.Context, id string) (*mo
 // SaveOutboxEvent persists an event to the outbox table for CDC relay pickup.
 // The event is written in the same database transaction as the aggregate change,
 // ensuring at-least-once delivery without two-phase commit.
-func (r *PostgresTransactionRepo) SaveOutboxEvent(ctx context.Context, eventType string, aggregateID string, payload []byte) error {
+func (r *PostgresTransactionRepo) SaveOutboxEvent(ctx context.Context, eventType string, payload []byte, aggregateID string) error {
         r.mu.Lock()
         defer r.mu.Unlock()
 
@@ -174,5 +174,112 @@ func (r *PostgresTransactionRepo) SaveOutboxEvent(ctx context.Context, eventType
 
         r.outbox = append(r.outbox, event)
         r.logger.InfoContext(ctx, "outbox event saved", "event_type", eventType, "aggregate_id", aggregateID)
+        return nil
+}
+
+// --- Interface-conforming methods for outbound.TransactionRepository ---
+
+// Save persists a payment record. If the payment already exists, it updates it.
+func (r *PostgresTransactionRepo) Save(ctx context.Context, payment *models.Payment) error {
+        r.mu.Lock()
+        defer r.mu.Unlock()
+
+        if _, exists := r.payments[payment.ID]; exists {
+                r.payments[payment.ID] = payment
+                r.logger.InfoContext(ctx, "payment updated via Save", "payment_id", payment.ID, "status", payment.Status)
+                return nil
+        }
+
+        r.payments[payment.ID] = payment
+        r.logger.InfoContext(ctx, "payment saved via Save", "payment_id", payment.ID)
+        return nil
+}
+
+// FindByID retrieves a payment by its unique identifier.
+func (r *PostgresTransactionRepo) FindByID(ctx context.Context, paymentID string) (*models.Payment, error) {
+        return r.GetPayment(ctx, paymentID)
+}
+
+// FindByOrderID retrieves all payments associated with the given order ID.
+func (r *PostgresTransactionRepo) FindByOrderID(ctx context.Context, orderID string) ([]models.Payment, error) {
+        r.mu.RLock()
+        defer r.mu.RUnlock()
+
+        var results []models.Payment
+        for _, p := range r.payments {
+                if p.OrderID == orderID {
+                        results = append(results, *p)
+                }
+        }
+        if results == nil {
+                results = []models.Payment{}
+        }
+        return results, nil
+}
+
+// FindByGatewayReference looks up a payment by its external gateway reference.
+func (r *PostgresTransactionRepo) FindByGatewayReference(ctx context.Context, gatewayRef string) (*models.Payment, error) {
+        r.mu.RLock()
+        defer r.mu.RUnlock()
+
+        for _, p := range r.payments {
+                if p.GatewayTxnID == gatewayRef {
+                        return p, nil
+                }
+        }
+        return nil, fmt.Errorf("payment with gateway reference %s not found", gatewayRef)
+}
+
+// FindByIdempotencyKey looks up a payment by its idempotency key.
+func (r *PostgresTransactionRepo) FindByIdempotencyKey(ctx context.Context, key string) (*models.Payment, error) {
+        return r.GetPaymentByIdempotencyKey(ctx, key)
+}
+
+// FindRefundByID retrieves a refund by its unique identifier.
+func (r *PostgresTransactionRepo) FindRefundByID(ctx context.Context, refundID string) (*models.Refund, error) {
+        return r.GetRefund(ctx, refundID)
+}
+
+// FindRefundsByPaymentID retrieves all refunds for a given payment.
+func (r *PostgresTransactionRepo) FindRefundsByPaymentID(ctx context.Context, paymentID string) ([]models.Refund, error) {
+        r.mu.RLock()
+        defer r.mu.RUnlock()
+
+        var results []models.Refund
+        for _, ref := range r.refunds {
+                if ref.PaymentID == paymentID {
+                        results = append(results, *ref)
+                }
+        }
+        if results == nil {
+                results = []models.Refund{}
+        }
+        return results, nil
+}
+
+// FindPendingOperations retrieves all operations that are pending gateway submission.
+func (r *PostgresTransactionRepo) FindPendingOperations(ctx context.Context) ([]models.Payment, error) {
+        r.mu.RLock()
+        defer r.mu.RUnlock()
+
+        var results []models.Payment
+        for _, p := range r.payments {
+                if p.Status == models.PaymentStatusPending {
+                        results = append(results, *p)
+                }
+        }
+        if results == nil {
+                results = []models.Payment{}
+        }
+        return results, nil
+}
+
+// SavePendingOperation persists a pending operation for later retry.
+func (r *PostgresTransactionRepo) SavePendingOperation(ctx context.Context, op *models.Payment) error {
+        r.mu.Lock()
+        defer r.mu.Unlock()
+
+        r.payments[op.ID] = op
+        r.logger.InfoContext(ctx, "pending operation saved", "payment_id", op.ID)
         return nil
 }

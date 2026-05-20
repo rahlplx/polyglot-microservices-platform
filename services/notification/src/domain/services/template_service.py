@@ -18,7 +18,7 @@ from typing import Optional
 
 from ..models.template import RenderedTemplate, Template, TemplateVariant
 from ..ports.outbound.template_store import TemplateRepositoryPort
-from ..services.notification_service import InvalidTemplateVarsError, TemplateNotFoundError
+from .exceptions import InvalidTemplateVarsError, TemplateNotFoundError
 
 logger = logging.getLogger(__name__)
 

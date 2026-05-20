@@ -13,7 +13,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from .models import (
+from ..models import (
     DeliveryAttempt, Notification, NotificationChannel,
     NotificationPreference, NotificationStatus, Template,
 )

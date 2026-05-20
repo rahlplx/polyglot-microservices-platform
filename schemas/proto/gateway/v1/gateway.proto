@@ -12,7 +12,7 @@ service GatewayService {
   // Proxy a request to the appropriate internal service
   rpc ProxyRequest(ProxyRequestRequest) returns (ProxyRequestResponse);
   // Check gateway health and upstream connectivity
-  rpc HealthCheck(common.v1.HealthCheckResponse) returns (common.v1.HealthCheckResponse);
+  rpc HealthCheck(common.v1.HealthCheckRequest) returns (common.v1.HealthCheckResponse);
   // Get current rate limit status for a client
   rpc GetRateLimitStatus(GetRateLimitStatusRequest) returns (GetRateLimitStatusResponse);
 }
