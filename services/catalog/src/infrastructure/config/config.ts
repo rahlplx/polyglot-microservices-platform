@@ -16,6 +16,7 @@ const ServerConfigSchema = z.object({
   httpPort: z.number().int().min(1).max(65535).default(3000),
   grpcPort: z.number().int().min(1).max(65535).default(50053),
   shutdownTimeoutMs: z.number().int().positive().default(15000),
+  protoPath: z.string().min(1).default('catalog/v1/catalog.proto'),
 });
 
 const DatabaseConfigSchema = z.object({
@@ -140,6 +141,7 @@ export function loadConfig(): AppConfig {
       httpPort: envInt('CATALOG_HTTP_PORT', 3000),
       grpcPort: envInt('CATALOG_GRPC_PORT', 50053),
       shutdownTimeoutMs: envInt('CATALOG_SHUTDOWN_TIMEOUT_MS', 15000),
+      protoPath: envString('CATALOG_PROTO_PATH', 'catalog/v1/catalog.proto'),
     },
     database: {
       host: envString('CATALOG_DB_HOST', 'localhost'),
