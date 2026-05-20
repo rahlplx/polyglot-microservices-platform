@@ -6,6 +6,8 @@
 // ZERO external dependencies — only std and domain models/ports.
 // ---------------------------------------------------------------------------
 
+use std::sync::Arc;
+
 use crate::domain::models::{
     RevocationReason, RevokedSVID, TTLPolicy, X509Bundle, X509SVID,
 };
@@ -29,9 +31,9 @@ use crate::domain::ports::outbound::store::{StoreError, WorkloadStorePort};
 /// processed immediately without approval workflows.
 pub struct SVIDService {
     /// The workload store for looking up registered workloads.
-    store: Box<dyn WorkloadStorePort>,
+    store: Arc<dyn WorkloadStorePort>,
     /// The certificate authority for signing SVIDs.
-    ca: Box<dyn CertificateAuthorityPort>,
+    ca: Arc<dyn CertificateAuthorityPort>,
     /// The TTL policy for this service.
     ttl_policy: TTLPolicy,
 }
@@ -39,8 +41,8 @@ pub struct SVIDService {
 impl SVIDService {
     /// Creates a new SVID service.
     pub fn new(
-        store: Box<dyn WorkloadStorePort>,
-        ca: Box<dyn CertificateAuthorityPort>,
+        store: Arc<dyn WorkloadStorePort>,
+        ca: Arc<dyn CertificateAuthorityPort>,
         ttl_policy: TTLPolicy,
     ) -> Self {
         Self {
@@ -467,8 +469,8 @@ mod tests {
         store.add_attested_workload("spiffe://trust.example.org/services/gateway");
 
         let service = SVIDService::new(
-            Box::new(store),
-            Box::new(MockCA::new()),
+            Arc::new(store),
+            Arc::new(MockCA::new()),
             TTLPolicy::default(),
         );
 
@@ -491,8 +493,8 @@ mod tests {
         let store = MockStore::new();
 
         let service = SVIDService::new(
-            Box::new(store),
-            Box::new(MockCA::new()),
+            Arc::new(store),
+            Arc::new(MockCA::new()),
             TTLPolicy::default(),
         );
 
@@ -518,8 +520,8 @@ mod tests {
         let store = MockStore::new();
 
         let service = SVIDService::new(
-            Box::new(store),
-            Box::new(MockCA::new()),
+            Arc::new(store),
+            Arc::new(MockCA::new()),
             TTLPolicy::default(),
         );
 

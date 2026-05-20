@@ -6,6 +6,7 @@
 // any infrastructure dependencies.
 // ---------------------------------------------------------------------------
 
+use std::sync::Arc;
 use identity_service::domain::models::{
     AttestationFailureReason, AttestationRequest, AttestationResult,
     Selector, SPIFFEID, TrustDomain, Workload,
@@ -14,6 +15,7 @@ use identity_service::domain::ports::inbound::attestation::AttestationUseCase;
 use identity_service::domain::ports::outbound::store::{
     StoreError, StoredSVID, WorkloadList, WorkloadStorePort,
 };
+use std::sync::Arc;
 use identity_service::domain::models::{
     RevocationReason, RevokedSVID, X509Bundle, X509SVID,
 };
@@ -105,7 +107,7 @@ fn attestation_succeeds_with_matching_selectors() {
     let mut store = InMemoryWorkloadStore::new();
     store.insert(create_gateway_workload());
 
-    let service = AttestationService::new(Box::new(store), 300);
+    let service = AttestationService::new(Arc::new(store), 300);
     let request = AttestationRequest::new(
         SPIFFEID::parse("spiffe://trust.example.org/services/gateway").unwrap(),
         vec![
@@ -127,7 +129,7 @@ fn attestation_fails_with_missing_selector() {
     let mut store = InMemoryWorkloadStore::new();
     store.insert(create_gateway_workload());
 
-    let service = AttestationService::new(Box::new(store), 300);
+    let service = AttestationService::new(Arc::new(store), 300);
     let request = AttestationRequest::new(
         SPIFFEID::parse("spiffe://trust.example.org/services/gateway").unwrap(),
         vec![
@@ -148,7 +150,7 @@ fn attestation_fails_with_missing_selector() {
 #[test]
 fn attestation_fails_for_unregistered_workload() {
     let store = InMemoryWorkloadStore::new();
-    let service = AttestationService::new(Box::new(store), 300);
+    let service = AttestationService::new(Arc::new(store), 300);
 
     let request = AttestationRequest::new(
         SPIFFEID::parse("spiffe://trust.example.org/services/unknown").unwrap(),
@@ -169,7 +171,7 @@ fn attestation_fails_for_trust_domain_mismatch() {
     let mut store = InMemoryWorkloadStore::new();
     store.insert(create_gateway_workload());
 
-    let service = AttestationService::new(Box::new(store), 300);
+    let service = AttestationService::new(Arc::new(store), 300);
     let request = AttestationRequest::new(
         SPIFFEID::parse("spiffe://trust.example.org/services/gateway").unwrap(),
         vec![Selector::k8s_namespace("production")],
@@ -190,7 +192,7 @@ fn attestation_succeeds_for_different_workloads_in_same_domain() {
     store.insert(create_gateway_workload());
     store.insert(create_order_workload());
 
-    let service = AttestationService::new(Box::new(store), 300);
+    let service = AttestationService::new(Arc::new(store), 300);
 
     // Gateway workload
     let gateway_request = AttestationRequest::new(
@@ -232,7 +234,7 @@ fn attestation_fails_for_empty_selectors() {
     );
     store.insert(workload);
 
-    let service = AttestationService::new(Box::new(store), 300);
+    let service = AttestationService::new(Arc::new(store), 300);
     let request = AttestationRequest::new(
         SPIFFEID::parse("spiffe://trust.example.org/services/empty").unwrap(),
         vec![],
@@ -282,7 +284,7 @@ fn attestation_has_expiry() {
     store.insert(create_gateway_workload());
 
     let ttl = 300u64;
-    let service = AttestationService::new(Box::new(store), ttl);
+    let service = AttestationService::new(Arc::new(store), ttl);
     let request = AttestationRequest::new(
         SPIFFEID::parse("spiffe://trust.example.org/services/gateway").unwrap(),
         vec![

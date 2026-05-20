@@ -20,11 +20,11 @@ import (
 // Buf lint). The service is used by CI/CD pipelines and IDE plugins to
 // validate schema changes before they are merged or registered.
 type ValidationService struct {
-	repo        outbound.SchemaRepository
-	compiler    outbound.ProtoCompilerPort
-	validator   outbound.SchemaValidatorPort
-	compatSvc   *CompatibilityService
-	logger      *slog.Logger
+	repo      outbound.SchemaRepository
+	compiler  outbound.ProtoCompilerPort
+	validator outbound.SchemaValidatorPort
+	compatSvc *CompatibilityService
+	logger    *slog.Logger
 }
 
 // NewValidationService creates a new ValidationService with the given
@@ -120,9 +120,9 @@ func (s *ValidationService) Validate(ctx context.Context, req models.ValidateSch
 	}
 
 	return models.ValidateSchemaResponse{
-		Valid:              len(allErrors) == 0,
-		Errors:             allErrors,
-		Warnings:           allWarnings,
+		Valid:               len(allErrors) == 0,
+		Errors:              allErrors,
+		Warnings:            allWarnings,
 		CompatibilityResult: compatResult,
 	}, nil
 }
@@ -193,8 +193,8 @@ func (s *ValidationService) validateSyntax(ctx context.Context, req models.Valid
 		result, err := s.compiler.Compile(ctx, req.Definition, nil)
 		if err != nil {
 			return []models.ValidationError{{
-				Message:  "schema compilation failed: " + err.Error(),
-				RuleID:   "COMPILE_ERROR",
+				Message: "schema compilation failed: " + err.Error(),
+				RuleID:  "COMPILE_ERROR",
 			}}, nil
 		}
 		if !result.Success {

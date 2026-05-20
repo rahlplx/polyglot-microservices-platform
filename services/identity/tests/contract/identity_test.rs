@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------
 
 use identity_service::domain::models::{
-    AttestationRequest, AttestationResult, RevocationReason, RotationReason,
+    AttestationRequest, AttestationResult, RevocationReason, RevokedSVID, RotationReason,
     Selector, SPIFFEID, TrustDomain, TTLPolicy, Workload, X509Bundle, X509SVID,
 };
 use identity_service::domain::ports::inbound::{
@@ -138,7 +138,7 @@ fn contract_attest_workload_returns_attested_flag() {
         vec![Selector::k8s_namespace("production"), Selector::k8s_label("app", "gateway")],
     );
 
-    let service = AttestationService::new(Box::new(store), 300);
+    let service = AttestationService::new(Arc::new(store), 300);
     let request = AttestationRequest::new(
         SPIFFEID::parse("spiffe://trust.example.org/services/gateway").unwrap(),
         vec![Selector::k8s_namespace("production"), Selector::k8s_label("app", "gateway")],
@@ -157,7 +157,7 @@ fn contract_attest_workload_returns_attested_flag() {
 #[test]
 fn contract_attest_workload_failure_includes_reason() {
     let store = ContractTestStore::new();
-    let service = AttestationService::new(Box::new(store), 300);
+    let service = AttestationService::new(Arc::new(store), 300);
 
     let request = AttestationRequest::new(
         SPIFFEID::parse("spiffe://trust.example.org/services/nonexistent").unwrap(),
@@ -181,8 +181,8 @@ fn contract_issue_svid_returns_certificate_chain() {
     );
 
     let service = SVIDService::new(
-        Box::new(store),
-        Box::new(ContractTestCA),
+        Arc::new(store),
+        Arc::new(ContractTestCA),
         TTLPolicy::default(),
     );
 
@@ -211,8 +211,8 @@ fn contract_issue_svid_rejects_unregistered_workload() {
     let store = ContractTestStore::new();
 
     let service = SVIDService::new(
-        Box::new(store),
-        Box::new(ContractTestCA),
+        Arc::new(store),
+        Arc::new(ContractTestCA),
         TTLPolicy::default(),
     );
 
@@ -233,8 +233,8 @@ fn contract_revoke_svid_returns_revoked_status() {
     let store = ContractTestStore::new();
 
     let service = SVIDService::new(
-        Box::new(store),
-        Box::new(ContractTestCA),
+        Arc::new(store),
+        Arc::new(ContractTestCA),
         TTLPolicy::default(),
     );
 
@@ -257,8 +257,8 @@ fn contract_get_trust_bundle_returns_root_certs() {
     let store = ContractTestStore::new();
 
     let service = SVIDService::new(
-        Box::new(store),
-        Box::new(ContractTestCA),
+        Arc::new(store),
+        Arc::new(ContractTestCA),
         TTLPolicy::default(),
     );
 

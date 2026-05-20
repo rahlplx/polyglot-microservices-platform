@@ -17,6 +17,7 @@ use crate::domain::ports::inbound::{
     AttestationUseCase, GetTrustBundleUseCase, IssueSVIDUseCase,
     RevokeSVIDUseCase, RotateCertificateUseCase,
 };
+use crate::domain::ports::outbound::ca::CertificateAuthorityPort;
 use crate::domain::services::{AttestationService, CertificateRotationService, SVIDService};
 use crate::infrastructure::config::Config;
 
@@ -113,9 +114,10 @@ impl AppContainer {
             config.attestation_ttl_seconds,
         ));
 
+        let crypto_adapter_as_ca: Arc<dyn CertificateAuthorityPort> = crypto_adapter.clone();
         let svid_service = Arc::new(SVIDService::new(
             persistence_adapter.clone(),
-            crypto_adapter.clone(),
+            crypto_adapter_as_ca,
             ttl_policy.clone(),
         ));
 

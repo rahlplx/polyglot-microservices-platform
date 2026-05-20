@@ -108,19 +108,19 @@ func (w ValidationWarning) String() string {
 // use case. It specifies the schema to validate, the validation depth, and
 // optionally a target version for compatibility checking.
 type ValidateSchemaRequest struct {
-	Subject        string          // Subject to validate against
-	Definition     string          // Raw schema definition to validate
-	Type           SchemaType      // Schema type
-	ValidationLvl  ValidationLevel // Depth of validation to perform
-	TargetVersion  *int32          // Reference version for compatibility check (nil = latest)
+	Subject       string          // Subject to validate against
+	Definition    string          // Raw schema definition to validate
+	Type          SchemaType      // Schema type
+	ValidationLvl ValidationLevel // Depth of validation to perform
+	TargetVersion *int32          // Reference version for compatibility check (nil = latest)
 }
 
 // ValidateSchemaResponse is the domain-level output of the schema validation
 // use case. It includes the overall validity, any errors and warnings found,
 // and optionally the result of the compatibility check.
 type ValidateSchemaResponse struct {
-	Valid              bool                 // Whether the schema passed all validation checks
-	Errors             []ValidationError    // Errors that must be fixed before registration
-	Warnings           []ValidationWarning  // Warnings that should be reviewed
+	Valid               bool                 // Whether the schema passed all validation checks
+	Errors              []ValidationError    // Errors that must be fixed before registration
+	Warnings            []ValidationWarning  // Warnings that should be reviewed
 	CompatibilityResult *CompatibilityResult // Result of compatibility check (nil if not checked)
 }

@@ -316,9 +316,9 @@ impl Default for TTLPolicy {
 impl TTLPolicy {
     /// Returns the default TTL for the given trust domain.
     pub fn default_ttl_for_domain(&self, trust_domain: &str) -> u64 {
-        if trust_domain == super::super::super::models::workload::TrustDomain::PRODUCTION {
+        if trust_domain == crate::domain::models::workload::TrustDomain::PRODUCTION {
             self.default_production_ttl_seconds
-        } else if trust_domain == super::super::super::models::workload::TrustDomain::STAGING {
+        } else if trust_domain == crate::domain::models::workload::TrustDomain::STAGING {
             self.default_staging_ttl_seconds
         } else {
             self.default_development_ttl_seconds

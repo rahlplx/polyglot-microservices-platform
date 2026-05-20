@@ -272,7 +272,7 @@ impl Workload {
 /// from the workload's environment (e.g., Kubernetes pod labels, Unix
 /// UID) and presents them to the Identity service. If the presented
 /// selectors match a registered workload's selectors, attestation succeeds.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Selector {
     /// The selector type (e.g., "k8s", "unix", "spiffe").
     pub kind: String,

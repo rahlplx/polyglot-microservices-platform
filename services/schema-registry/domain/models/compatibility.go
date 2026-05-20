@@ -79,13 +79,13 @@ func (c CompatibilityLevel) String() string {
 // Returns an error if the string does not match any known level.
 func ParseCompatibilityLevel(s string) (CompatibilityLevel, error) {
 	levels := map[string]CompatibilityLevel{
-		"NONE":                 CompatibilityNone,
-		"BACKWARD":             CompatibilityBackward,
-		"FORWARD":              CompatibilityForward,
-		"FULL":                 CompatibilityFull,
-		"BACKWARD_TRANSITIVE":  CompatibilityBackwardTransitive,
-		"FORWARD_TRANSITIVE":   CompatibilityForwardTransitive,
-		"FULL_TRANSITIVE":      CompatibilityFullTransitive,
+		"NONE":                CompatibilityNone,
+		"BACKWARD":            CompatibilityBackward,
+		"FORWARD":             CompatibilityForward,
+		"FULL":                CompatibilityFull,
+		"BACKWARD_TRANSITIVE": CompatibilityBackwardTransitive,
+		"FORWARD_TRANSITIVE":  CompatibilityForwardTransitive,
+		"FULL_TRANSITIVE":     CompatibilityFullTransitive,
 	}
 	level, ok := levels[s]
 	if !ok {
@@ -137,7 +137,7 @@ type CompatibilityViolation struct {
 // compatibility verdict, the level at which the check was performed, and a list
 // of any violations found.
 type CompatibilityResult struct {
-	Compatible       bool                    // Whether the schema is compatible
+	Compatible       bool                     // Whether the schema is compatible
 	Violations       []CompatibilityViolation // List of violations (empty if compatible)
 	CompatibilityLvl CompatibilityLevel       // Level at which the check was performed
 }
@@ -191,10 +191,10 @@ func ParseCheckLevel(s string) (CheckLevel, error) {
 // schema versions. Each change includes the type of breakage, the affected
 // field or message, and the category (WIRE, SOURCE, or FILE level).
 type BreakingChange struct {
-	ChangeType string // Type of breaking change (e.g., "FIELD_REMOVED", "TYPE_CHANGED")
-	FieldPath  string // Path to the affected field or message
+	ChangeType  string // Type of breaking change (e.g., "FIELD_REMOVED", "TYPE_CHANGED")
+	FieldPath   string // Path to the affected field or message
 	Description string // Human-readable description of the breakage
-	Category   string // Category: WIRE, SOURCE, or FILE
+	Category    string // Category: WIRE, SOURCE, or FILE
 }
 
 // MitigationSuggestion provides an actionable recommendation for resolving
@@ -209,10 +209,10 @@ type MitigationSuggestion struct {
 // CheckBreakingRequest is the domain-level input for the breaking change
 // analysis use case.
 type CheckBreakingRequest struct {
-	Subject         string      // Subject of the proposed schema
-	PreviousVersion *int32      // Reference version (nil = latest)
-	ProposedSchema  string      // Proposed schema definition
-	CheckLevel      CheckLevel  // Strictness level for the analysis
+	Subject         string     // Subject of the proposed schema
+	PreviousVersion *int32     // Reference version (nil = latest)
+	ProposedSchema  string     // Proposed schema definition
+	CheckLevel      CheckLevel // Strictness level for the analysis
 }
 
 // CheckBreakingResponse is the domain-level output of the breaking change

@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 
 use proptest::prelude::*;
+use std::sync::Arc;
 use identity_service::domain::models::{
     AttestationRequest, AttestationResult, RevocationReason, RotationReason,
     Selector, SPIFFEID, SPIFFEIDError, TrustDomain, TTLPolicy,
@@ -298,7 +299,7 @@ proptest! {
         trust_domain in trust_domain_strategy()
     ) {
         let store = PropertyTestStore::new();
-        let service = AttestationService::new(Box::new(store), 300);
+        let service = AttestationService::new(Arc::new(store), 300);
 
         let spiffe_id = SPIFFEID::parse(&spiffe_id_str).unwrap();
         let domain = TrustDomain::new(trust_domain);
@@ -318,7 +319,7 @@ proptest! {
         trust_domain in trust_domain_strategy()
     ) {
         let store = PropertyTestStore::new();
-        let service = AttestationService::new(Box::new(store), 300);
+        let service = AttestationService::new(Arc::new(store), 300);
 
         let spiffe_id = SPIFFEID::parse(&spiffe_id_str).unwrap();
         let domain = TrustDomain::new(trust_domain.clone());

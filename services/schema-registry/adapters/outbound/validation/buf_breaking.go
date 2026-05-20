@@ -20,11 +20,11 @@ import (
 // BufBreakingConfig holds the configuration for the Buf breaking change
 // detection adapter.
 type BufBreakingConfig struct {
-	BinaryPath    string        // Path to the buf binary (default: "buf")
-	Timeout       time.Duration // Execution timeout for breaking checks (default: 60s)
-	LintTimeout   time.Duration // Execution timeout for lint checks (default: 30s)
-	MaxMemoryMB   int           // Maximum memory per subprocess (default: 512MB)
-	WorkDir       string        // Working directory (default: os.TempDir())
+	BinaryPath  string        // Path to the buf binary (default: "buf")
+	Timeout     time.Duration // Execution timeout for breaking checks (default: 60s)
+	LintTimeout time.Duration // Execution timeout for lint checks (default: 30s)
+	MaxMemoryMB int           // Maximum memory per subprocess (default: 512MB)
+	WorkDir     string        // Working directory (default: os.TempDir())
 }
 
 // BufBreakingAdapter implements the SchemaValidatorPort using the Buf CLI
@@ -108,8 +108,8 @@ lint:
 	if len(output) > 0 {
 		// In production, this would parse JSON lines from buf lint output
 		errors = append(errors, models.ValidationError{
-			Message:  "buf lint detected issues: " + truncate(string(output), 500),
-			RuleID:   "BUF_LINT",
+			Message: "buf lint detected issues: " + truncate(string(output), 500),
+			RuleID:  "BUF_LINT",
 		})
 	}
 

@@ -24,19 +24,19 @@ import (
 
 // App holds all initialized application components.
 type App struct {
-	Config              *config.Config
-	RegistryService     *services.RegistryService
+	Config               *config.Config
+	RegistryService      *services.RegistryService
 	CompatibilityService *services.CompatibilityService
-	ValidationService   *services.ValidationService
-	GRPCHandler         *grpc.Handler
-	RESTController      *rest.Controller
-	SchemaStore         *persistence.PostgresSchemaStore
-	BufCompiler         *compiler.BufCompiler
-	BufBreakingAdapter  *validation.BufBreakingAdapter
-	OTel                *observability.OTelInstrumentation
-	SPIFFE              *identity.SPIFFEIdentity
-	Server              *server.Server
-	Logger              *slog.Logger
+	ValidationService    *services.ValidationService
+	GRPCHandler          *grpc.Handler
+	RESTController       *rest.Controller
+	SchemaStore          *persistence.PostgresSchemaStore
+	BufCompiler          *compiler.BufCompiler
+	BufBreakingAdapter   *validation.BufBreakingAdapter
+	OTel                 *observability.OTelInstrumentation
+	SPIFFE               *identity.SPIFFEIdentity
+	Server               *server.Server
+	Logger               *slog.Logger
 }
 
 // InitializeApp creates and wires all application components using manual DI.
@@ -124,11 +124,11 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	var bufBreaking *validation.BufBreakingAdapter
 	if cfg.Features.EnableBreakingChecks {
 		bufBreaking, err = validation.NewBufBreakingAdapter(validation.BufBreakingConfig{
-			BinaryPath:      cfg.Buf.BinaryPath,
-			Timeout:         cfg.Buf.BreakingTimeout,
-			LintTimeout:     cfg.Buf.LintTimeout,
-			MaxMemoryMB:     cfg.Buf.MaxMemoryMB,
-			WorkDir:         cfg.Buf.WorkDir,
+			BinaryPath:  cfg.Buf.BinaryPath,
+			Timeout:     cfg.Buf.BreakingTimeout,
+			LintTimeout: cfg.Buf.LintTimeout,
+			MaxMemoryMB: cfg.Buf.MaxMemoryMB,
+			WorkDir:     cfg.Buf.WorkDir,
 		}, logger)
 		if err != nil {
 			logger.Warn("Buf breaking adapter initialization failed, breaking checks will be unavailable",

@@ -78,8 +78,8 @@ type ProtoCompiler interface {
 // includes any errors that prevented successful compilation and warnings
 // that indicate non-fatal issues.
 type CompilationResult struct {
-	Success bool              // Whether the compilation succeeded
-	Errors  []models.ValidationError  // Compilation errors
+	Success  bool                       // Whether the compilation succeeded
+	Errors   []models.ValidationError   // Compilation errors
 	Warnings []models.ValidationWarning // Compilation warnings
 }
 

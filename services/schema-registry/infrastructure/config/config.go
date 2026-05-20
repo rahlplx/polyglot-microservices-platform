@@ -62,27 +62,27 @@ type PostgresConfig struct {
 
 // BufCLIConfig holds Buf CLI configuration.
 type BufCLIConfig struct {
-	BinaryPath    string        // Path to the buf binary (default: "buf")
-	Version       string        // Required buf version (default: "1.30.0")
-	Timeout       time.Duration // Execution timeout (default: 30s)
+	BinaryPath      string        // Path to the buf binary (default: "buf")
+	Version         string        // Required buf version (default: "1.30.0")
+	Timeout         time.Duration // Execution timeout (default: 30s)
 	BreakingTimeout time.Duration // Breaking change check timeout (default: 60s)
-	LintTimeout   time.Duration // Lint check timeout (default: 30s)
-	WorkDir       string        // Working directory for temp files
-	MaxMemoryMB   int           // Maximum memory per subprocess (default: 512MB)
-	MaxConcurrent int           // Maximum concurrent subprocesses (default: 10)
+	LintTimeout     time.Duration // Lint check timeout (default: 30s)
+	WorkDir         string        // Working directory for temp files
+	MaxMemoryMB     int           // Maximum memory per subprocess (default: 512MB)
+	MaxConcurrent   int           // Maximum concurrent subprocesses (default: 10)
 }
 
 // OTelConfig holds OpenTelemetry configuration.
 type OTelConfig struct {
-	Enabled         bool          // Whether OTel is enabled (default: true)
-	Endpoint        string        // OTel Collector endpoint (default: "localhost:4317")
-	ServiceName     string        // Service name (default: "schema-registry")
-	ServiceVersion  string        // Service version (default: "1.0.0")
-	TraceEnabled    bool          // Whether tracing is enabled (default: true)
-	MetricsEnabled  bool          // Whether metrics are enabled (default: true)
-	SampleRate      float64       // Trace sampling rate 0.0-1.0 (default: 0.1)
-	ExportInterval  time.Duration // Metric export interval (default: 15s)
-	ExportTimeout   time.Duration // Metric export timeout (default: 5s)
+	Enabled        bool          // Whether OTel is enabled (default: true)
+	Endpoint       string        // OTel Collector endpoint (default: "localhost:4317")
+	ServiceName    string        // Service name (default: "schema-registry")
+	ServiceVersion string        // Service version (default: "1.0.0")
+	TraceEnabled   bool          // Whether tracing is enabled (default: true)
+	MetricsEnabled bool          // Whether metrics are enabled (default: true)
+	SampleRate     float64       // Trace sampling rate 0.0-1.0 (default: 0.1)
+	ExportInterval time.Duration // Metric export interval (default: 15s)
+	ExportTimeout  time.Duration // Metric export timeout (default: 5s)
 }
 
 // SPIFFEConfig holds SPIFFE/SPIRE workload API configuration.

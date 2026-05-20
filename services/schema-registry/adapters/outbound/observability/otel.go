@@ -42,8 +42,8 @@ type OTelConfig struct {
 // spans, recording metrics, and propagating trace context. All span names
 // follow the pattern `schema-registry.{operation}` for consistent querying.
 type OTelInstrumentation struct {
-	config  OTelConfig
-	logger  *slog.Logger
+	config OTelConfig
+	logger *slog.Logger
 
 	tracerProvider *sdktrace.TracerProvider
 	meterProvider  *sdkmetric.MeterProvider
@@ -51,12 +51,12 @@ type OTelInstrumentation struct {
 	meter          metric.Meter
 
 	// Schema Registry metrics
-	registrationCounter  metric.Int64Counter
-	validationCounter    metric.Int64Counter
-	validationDuration   metric.Float64Histogram
-	violationCounter     metric.Int64Counter
-	subjectGauge         metric.Int64ObservableGauge
-	versionGauge         metric.Int64ObservableGauge
+	registrationCounter metric.Int64Counter
+	validationCounter   metric.Int64Counter
+	validationDuration  metric.Float64Histogram
+	violationCounter    metric.Int64Counter
+	subjectGauge        metric.Int64ObservableGauge
+	versionGauge        metric.Int64ObservableGauge
 }
 
 // NewOTelInstrumentation creates and initializes a new OTel instrumentation adapter.

@@ -6,6 +6,8 @@
 // domain models/ports are used.
 // ---------------------------------------------------------------------------
 
+use std::sync::Arc;
+
 use crate::domain::models::{
     AttestationFailureReason, AttestationRequest, AttestationResult,
     Selector, TrustDomain,
@@ -28,14 +30,14 @@ use crate::domain::ports::outbound::store::{StoreError, WorkloadStorePort};
 /// 4. Return the attestation result with an expiry timestamp
 pub struct AttestationService {
     /// The workload store for looking up registered workloads.
-    store: Box<dyn WorkloadStorePort>,
+    store: Arc<dyn WorkloadStorePort>,
     /// The attestation TTL in seconds (how long an attestation is valid).
     attestation_ttl_seconds: u64,
 }
 
 impl AttestationService {
     /// Creates a new attestation service.
-    pub fn new(store: Box<dyn WorkloadStorePort>, attestation_ttl_seconds: u64) -> Self {
+    pub fn new(store: Arc<dyn WorkloadStorePort>, attestation_ttl_seconds: u64) -> Self {
         Self {
             store,
             attestation_ttl_seconds,
@@ -288,7 +290,7 @@ mod tests {
         );
         store.add_workload(workload);
 
-        let service = AttestationService::new(Box::new(store), 300);
+        let service = AttestationService::new(Arc::new(store), 300);
         let request = AttestationRequest::new(
             SPIFFEID::parse("spiffe://trust.example.org/services/gateway").unwrap(),
             vec![
@@ -315,7 +317,7 @@ mod tests {
         );
         store.add_workload(workload);
 
-        let service = AttestationService::new(Box::new(store), 300);
+        let service = AttestationService::new(Arc::new(store), 300);
         let request = AttestationRequest::new(
             SPIFFEID::parse("spiffe://trust.example.org/services/gateway").unwrap(),
             vec![
@@ -332,7 +334,7 @@ mod tests {
     #[test]
     fn attest_no_matching_workload() {
         let store = InMemoryWorkloadStore::new();
-        let service = AttestationService::new(Box::new(store), 300);
+        let service = AttestationService::new(Arc::new(store), 300);
         let request = AttestationRequest::new(
             SPIFFEID::parse("spiffe://trust.example.org/services/unknown").unwrap(),
             vec![Selector::k8s_namespace("production")],
@@ -352,7 +354,7 @@ mod tests {
         );
         store.add_workload(workload);
 
-        let service = AttestationService::new(Box::new(store), 300);
+        let service = AttestationService::new(Arc::new(store), 300);
         let request = AttestationRequest::new(
             SPIFFEID::parse("spiffe://trust.example.org/services/gateway").unwrap(),
             vec![Selector::k8s_namespace("production")],

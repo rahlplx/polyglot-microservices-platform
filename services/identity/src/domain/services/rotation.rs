@@ -5,6 +5,8 @@
 // logic for mTLS certificate rotation. ZERO external dependencies.
 // ---------------------------------------------------------------------------
 
+use std::sync::Arc;
+
 use crate::domain::models::{
     RevocationReason, RotationReason, RotationResult, TTLPolicy, X509Bundle, X509SVID,
 };
@@ -36,9 +38,9 @@ use crate::domain::ports::outbound::store::{StoreError, WorkloadStorePort};
 /// - Emergency rotations (key compromise) bypass CA rotation checks
 pub struct CertificateRotationService {
     /// The workload store for certificate persistence.
-    store: Box<dyn WorkloadStorePort>,
+    store: Arc<dyn WorkloadStorePort>,
     /// The certificate authority for signing new SVIDs.
-    ca: Box<dyn CertificateAuthorityPort>,
+    ca: Arc<dyn CertificateAuthorityPort>,
     /// The TTL policy for this service.
     ttl_policy: TTLPolicy,
     /// Set of SPIFFE IDs currently being rotated (in-memory lock).
@@ -49,8 +51,8 @@ pub struct CertificateRotationService {
 impl CertificateRotationService {
     /// Creates a new certificate rotation service.
     pub fn new(
-        store: Box<dyn WorkloadStorePort>,
-        ca: Box<dyn CertificateAuthorityPort>,
+        store: Arc<dyn WorkloadStorePort>,
+        ca: Arc<dyn CertificateAuthorityPort>,
         ttl_policy: TTLPolicy,
     ) -> Self {
         Self {
@@ -304,6 +306,7 @@ mod scopeguard {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::models::RevokedSVID;
     use crate::domain::models::workload::Selector;
     use crate::domain::models::workload::{SPIFFEID, Workload};
     use crate::domain::ports::outbound::ca::{GeneratedSVID, SignedSVID};
@@ -447,8 +450,8 @@ mod tests {
     #[test]
     fn determine_new_ttl_key_compromise() {
         let service = CertificateRotationService::new(
-            Box::new(MockRotationStore::new()),
-            Box::new(MockRotationCA),
+            Arc::new(MockRotationStore::new()),
+            Arc::new(MockRotationCA),
             TTLPolicy::default(),
         );
         let ttl = service.determine_new_ttl(RotationReason::KeyCompromise, "trust.example.org");

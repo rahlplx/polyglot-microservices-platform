@@ -20,11 +20,11 @@ import (
 
 // BufConfig holds the configuration for the Buf CLI adapter.
 type BufConfig struct {
-	BinaryPath    string        // Path to the buf binary (default: "buf")
-	Version       string        // Required buf version (default: "1.30.0")
-	Timeout       time.Duration // Execution timeout (default: 30s)
-	MaxMemoryMB   int           // Maximum memory per subprocess (default: 512MB)
-	WorkDir       string        // Working directory for buf execution (default: os.TempDir())
+	BinaryPath  string        // Path to the buf binary (default: "buf")
+	Version     string        // Required buf version (default: "1.30.0")
+	Timeout     time.Duration // Execution timeout (default: 30s)
+	MaxMemoryMB int           // Maximum memory per subprocess (default: 512MB)
+	WorkDir     string        // Working directory for buf execution (default: os.TempDir())
 }
 
 // BufCompiler implements the ProtoCompilerPort using the Buf CLI for
@@ -136,8 +136,8 @@ breaking:
 			Success: false,
 			Errors: []models.ValidationError{
 				{
-					Message:  fmt.Sprintf("buf build failed: %s", string(output)),
-					RuleID:   "BUF_BUILD_ERROR",
+					Message: fmt.Sprintf("buf build failed: %s", string(output)),
+					RuleID:  "BUF_BUILD_ERROR",
 				},
 			},
 		}, nil
@@ -181,8 +181,8 @@ func parseBufErrors(output string) []models.ValidationError {
 	// of buf's structured error output
 	if output != "" {
 		errors = append(errors, models.ValidationError{
-			Message:  "buf compilation error: " + truncate(output, 500),
-			RuleID:   "BUF_COMPILE_ERROR",
+			Message: "buf compilation error: " + truncate(output, 500),
+			RuleID:  "BUF_COMPILE_ERROR",
 		})
 	}
 

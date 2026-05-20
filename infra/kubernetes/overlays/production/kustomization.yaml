@@ -5,6 +5,7 @@ metadata:
 resources:
 - ../../base
 - ../../platform
+- topology-spread.yaml
 namespace: production
 commonLabels:
   environment: production
