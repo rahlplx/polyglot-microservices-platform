@@ -11,10 +11,10 @@ import json
 import logging
 from typing import Any
 
-from ..domain.models import (
+from src.domain.models import (
     AggregationFunction, Granularity, ReportType,
 )
-from ..domain.ports import GetMetricsPort, GetReportPort, StreamEventsPort
+from src.domain.ports import GetMetricsPort, GetReportPort, StreamEventsPort
 
 logger = logging.getLogger(__name__)
 

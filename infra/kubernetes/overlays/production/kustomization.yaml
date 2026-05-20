@@ -7,9 +7,11 @@ resources:
 - ../../platform
 - topology-spread.yaml
 namespace: production
-commonLabels:
-  environment: production
-  app.kubernetes.io/environment: production
+labels:
+- pairs:
+    environment: production
+    app.kubernetes.io/environment: production
+  includeSelectors: true
 images:
 - name: gateway
   newName: ghcr.io/example/gateway
@@ -47,67 +49,5 @@ configMapGenerator:
   - OTEL_METRICS_EXPORT_INTERVAL=15000
   - SPIRE_TRUST_DOMAIN=trust.example.org
   behavior: create
-patchesJson6902:
-- target:
-    group: apps
-    version: v1
-    kind: Deployment
-    name: gateway
-  patch: "- op: add\n  path: /spec/template/spec/containers/0/envFrom\n  value:\n\
-    \    - configMapRef:\n        name: environment-config\n"
-- target:
-    group: apps
-    version: v1
-    kind: Deployment
-    name: identity
-  patch: "- op: add\n  path: /spec/template/spec/containers/0/envFrom\n  value:\n\
-    \    - configMapRef:\n        name: environment-config\n"
-- target:
-    group: apps
-    version: v1
-    kind: Deployment
-    name: catalog
-  patch: "- op: add\n  path: /spec/template/spec/containers/0/envFrom\n  value:\n\
-    \    - configMapRef:\n        name: environment-config\n"
-- target:
-    group: apps
-    version: v1
-    kind: Deployment
-    name: order
-  patch: "- op: add\n  path: /spec/template/spec/containers/0/envFrom\n  value:\n\
-    \    - configMapRef:\n        name: environment-config\n"
-- target:
-    group: apps
-    version: v1
-    kind: Deployment
-    name: payment
-  patch: "- op: add\n  path: /spec/template/spec/containers/0/envFrom\n  value:\n\
-    \    - configMapRef:\n        name: environment-config\n"
-- target:
-    group: apps
-    version: v1
-    kind: Deployment
-    name: notification
-  patch: "- op: add\n  path: /spec/template/spec/containers/0/envFrom\n  value:\n\
-    \    - configMapRef:\n        name: environment-config\n"
-- target:
-    group: apps
-    version: v1
-    kind: Deployment
-    name: analytics
-  patch: "- op: add\n  path: /spec/template/spec/containers/0/envFrom\n  value:\n\
-    \    - configMapRef:\n        name: environment-config\n"
-- target:
-    group: apps
-    version: v1
-    kind: Deployment
-    name: cdc-relay
-  patch: "- op: add\n  path: /spec/template/spec/containers/0/envFrom\n  value:\n\
-    \    - configMapRef:\n        name: environment-config\n"
-- target:
-    group: apps
-    version: v1
-    kind: Deployment
-    name: schema-registry
-  patch: "- op: add\n  path: /spec/template/spec/containers/0/envFrom\n  value:\n\
-    \    - configMapRef:\n        name: environment-config\n"
+patches:
+- path: env-config-patch.yaml

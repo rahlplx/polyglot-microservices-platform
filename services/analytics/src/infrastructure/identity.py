@@ -239,12 +239,12 @@ ZW5TMTm5YnJs6vQKqLB4Z5QjCJBkZxbT4EWrgpNYCAgIEEwQHAQIDBAUGBwgJ
 CAkKCwwNDg8QERITFBUWFxgZGhscHR4fIA==
 -----END CERTIFICATE-----"""
 
-        dev_key = b"""-----BEGIN PRIVATE KEY-----
-MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCub6ODTHa5eWHx
-Oy2qiWK5e8eScUNywdT5Eb6gNFih5+32KgkGSzOad7cMt1QjM2xOGVuUxE5uWJy
-bOr0CqiweGeUIwiQZGcW0+BFq4KTWAgCBBMEBwECAwQFBgcICQgJCgsMDQ4PEBES
-ExQVFhcYGRobHB0eHyA=
------END PRIVATE KEY-----"""
+        # SECURITY: Private key is loaded from the ANALYTICS_DEV_PRIVATE_KEY
+        # environment variable. Never hardcode private keys in source code.
+        dev_key = os.environ.get("ANALYTICS_DEV_PRIVATE_KEY", "").encode()
+        if not dev_key:
+            logger.warning("ANALYTICS_DEV_PRIVATE_KEY env var not set; dev mTLS will not work")
+            dev_key = b""
 
         dev_ca = b"""-----BEGIN CERTIFICATE-----
 MIICdDCCAdqgAwIBAgIJALfFxYwW2y9EMA0GCSqGSIb3DQEBCwUAMBExDzANBgNV

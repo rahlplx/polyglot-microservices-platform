@@ -22,8 +22,6 @@ import os
 import sys
 import hashlib
 import numpy as np
-from pathlib import Path
-from typing import Optional
 from sentence_transformers import SentenceTransformer
 
 PROJECT_ROOT = "/home/z/my-project"

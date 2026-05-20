@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+spec:
+  template:
+    spec:
+      containers:
+        - name: gateway
+          envFrom:
+            - configMapRef:
+                name: environment-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity
+spec:
+  template:
+    spec:
+      containers:
+        - name: identity
+          envFrom:
+            - configMapRef:
+                name: environment-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog
+spec:
+  template:
+    spec:
+      containers:
+        - name: catalog
+          envFrom:
+            - configMapRef:
+                name: environment-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order
+spec:
+  template:
+    spec:
+      containers:
+        - name: order
+          envFrom:
+            - configMapRef:
+                name: environment-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment
+spec:
+  template:
+    spec:
+      containers:
+        - name: payment
+          envFrom:
+            - configMapRef:
+                name: environment-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification
+spec:
+  template:
+    spec:
+      containers:
+        - name: notification
+          envFrom:
+            - configMapRef:
+                name: environment-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics
+spec:
+  template:
+    spec:
+      containers:
+        - name: analytics
+          envFrom:
+            - configMapRef:
+                name: environment-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cdc-relay
+spec:
+  template:
+    spec:
+      containers:
+        - name: cdc-relay
+          envFrom:
+            - configMapRef:
+                name: environment-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: schema-registry
+spec:
+  template:
+    spec:
+      containers:
+        - name: schema-registry
+          envFrom:
+            - configMapRef:
+                name: environment-config

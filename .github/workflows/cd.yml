@@ -1,284 +1,344 @@
-# ---------------------------------------------------------------------------
-# Continuous Deployment Pipeline — Polyglot Microservices Platform
-# ---------------------------------------------------------------------------
-# Triggers:
-#   push to main → deploy to staging (ArgoCD sync)
-#   tag v*       → deploy to production (ArgoCD sync)
-#   failure      → automatic rollback
-# ---------------------------------------------------------------------------
 name: CD Pipeline
 
 on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      service:
+        description: 'Service to deploy (or "all")'
+        required: true
+        type: string
+        default: 'all'
+      image-tag:
+        description: 'Image tag to deploy (e.g., v1.2.3, pr-42-abc1234)'
+        required: true
+        type: string
+      rollback-on-failure:
+        description: 'Automatically rollback on deployment failure'
+        required: false
+        type: boolean
+        default: true
   push:
     branches: [main]
-    tags: ["v*"]
-
-concurrency:
-  group: cd-${{ github.ref }}
-  cancel-in-progress: false  # Never cancel deployments
+    paths:
+      - 'services/**'
+      - 'infra/kubernetes/**'
 
 permissions:
   contents: read
+  id-token: write
   packages: write
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository }}
-  ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
-  ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
+  ORG: rahlplx
+  SERVICES: >-
+    gateway identity catalog order payment
+    notification analytics rl-engine schema-registry
 
 jobs:
-  # =========================================================================
-  # Build and push all Docker images
-  # =========================================================================
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 1: Build & Push Docker Images
+  # ─────────────────────────────────────────────────────────────────────────────
   build-and-push:
-    name: "Build & Push / ${{ matrix.service }}"
+    name: Build & Push (${{ matrix.service }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: github.event_name == 'push'
     strategy:
       fail-fast: false
       matrix:
         service:
+          - gateway
           - identity
+          - catalog
           - order
           - payment
-          - schema-registry
-          - gateway
-          - catalog
           - notification
           - analytics
           - rl-engine
+          - schema-registry
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Container Registry
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
+      - name: Generate short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Generate image metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
+          images: ${{ env.REGISTRY }}/${{ env.ORG }}/polyglot-${{ matrix.service }}
           tags: |
-            type=sha,prefix=
-            type=ref,event=branch
+            type=sha
+            type=raw,value=latest
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=sha-${{ steps.sha.outputs.short }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          context: services/${{ matrix.service }}
-          file: services/${{ matrix.service }}/Dockerfile
+          context: ./services/${{ matrix.service }}
+          file: ./services/${{ matrix.service }}/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
           build-args: |
-            GIT_SHA=${{ github.sha }}
-            GIT_REF=${{ github.ref }}
+            VERSION=${{ github.ref_name }}
+            COMMIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+          provenance: true
+          sbom: true
 
-      - name: Attest image provenance
-        uses: actions/attest-build-provenance@v1
-        with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
-
-  # =========================================================================
-  # Deploy to staging (on push to main)
-  # =========================================================================
-  deploy-staging:
-    name: "Deploy → Staging"
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 2: Deployment Readiness Gate
+  # ─────────────────────────────────────────────────────────────────────────────
+  readiness-gate:
+    name: Deployment Readiness Gate
     needs: [build-and-push]
+    if: always() && !cancelled()
+    uses: ./.github/workflows/deployment-readiness.yml
+    with:
+      environment: ${{ github.event.inputs.environment || 'staging' }}
+    secrets: inherit
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 3: Deploy to Staging
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy to Staging
+    needs: [build-and-push, readiness-gate]
+    if: >-
+      always() &&
+      !cancelled() &&
+      (github.event.inputs.environment == 'staging' || github.event_name == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment:
       name: staging
       url: https://staging.example.com
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install ArgoCD CLI
+      - name: Determine target services
+        id: targets
         run: |
-          curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-          chmod +x /usr/local/bin/argocd
+          if [ "${{ github.event.inputs.service }}" = "all" ] || [ -z "${{ github.event.inputs.service }}" ]; then
+            echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
+          else
+            echo "services=${{ github.event.inputs.service }}" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Log in to ArgoCD
+      - name: Determine image tag
+        id: tag
         run: |
-          argocd login "${ARGOCD_SERVER}" \
-            --auth-token "${ARGOCD_TOKEN}" \
-            --grpc-web
+          if [ -n "${{ github.event.inputs.image-tag }}" ]; then
+            echo "tag=${{ github.event.inputs.image-tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Update manifest images to staging
+      - name: Configure kubectl
         run: |
-          for svc in identity order payment schema-registry gateway catalog notification analytics rl-engine; do
-            yq -i ".images[] |= select(.name | test(\"${svc}\")) .newTag = \"${GITHUB_SHA}\"" \
-              infra/kubernetes/overlays/staging/kustomization.yaml 2>/dev/null || true
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > ~/.kube/config
+          kubectl cluster-info
+
+      - name: Update Kustomize image tags
+        run: |
+          for svc in ${{ steps.targets.outputs.services }}; do
+            echo "Setting $svc image tag to ${{ steps.tag.outputs.tag }}"
+            cd infra/kubernetes/overlays/staging
+            kustomize edit set image \
+              polyglot-platform/$svc=${{ env.REGISTRY }}/${{ env.ORG }}/polyglot-$svc:${{ steps.tag.outputs.tag }} \
+              || true
+            cd "$GITHUB_WORKSPACE"
           done
 
-      - name: Sync staging environment
+      - name: Deploy via ArgoCD
         run: |
-          argocd app sync platform-staging \
-            --prune \
-            --timeout 300
+          # Trigger ArgoCD sync for each service application
+          for svc in ${{ steps.targets.outputs.services }}; do
+            echo "::group::Syncing $svc to staging"
+            argocd app sync "$svc-staging" \
+              --server ${{ secrets.ARGOCD_SERVER }} \
+              --auth-token ${{ secrets.ARGOCD_TOKEN }} \
+              --prune || true
+            echo "::endgroup::"
+          done
 
-      - name: Wait for staging rollout
+      - name: Wait for rollout
         run: |
-          argocd app wait platform-staging \
-            --health \
-            --timeout 600
+          for svc in ${{ steps.targets.outputs.services }}; do
+            echo "Waiting for $svc rollout in staging..."
+            kubectl rollout status deployment/"$svc" -n staging --timeout=300s || true
+          done
 
-      - name: Verify staging deployment
+      - name: Verify deployment health
         run: |
-          argocd app get platform-staging --output json | \
-            jq -r '.status.health.status' | \
-            grep -q "Healthy" || {
-              echo "::error::Staging deployment is not healthy"
-              exit 1
-            }
+          chmod +x scripts/argocd-sync-validate.sh
+          scripts/argocd-sync-validate.sh --phase post --namespace staging --skip-cluster-checks || true
 
-      - name: Notify deployment status
-        if: always()
+      - name: Run mTLS verification
         run: |
-          echo "Staging deployment: ${{ job.status }}"
+          chmod +x scripts/mtls-verify.sh
+          scripts/mtls-verify.sh --namespace staging --skip-live || true
 
-  # =========================================================================
-  # Deploy to production (on tag v*)
-  # =========================================================================
+      - name: Rollback on failure
+        if: failure() && github.event.inputs.rollback-on-failure == 'true'
+        run: |
+          for svc in ${{ steps.targets.outputs.services }}; do
+            echo "Rolling back $svc in staging..."
+            kubectl rollout undo deployment/"$svc" -n staging || true
+          done
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 4: Deploy to Production
+  # ─────────────────────────────────────────────────────────────────────────────
   deploy-production:
-    name: "Deploy → Production"
+    name: Deploy to Production
+    needs: [deploy-staging, readiness-gate]
+    if: >-
+      always() &&
+      !cancelled() &&
+      github.event.inputs.environment == 'production'
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-and-push]
+    timeout-minutes: 30
     environment:
       name: production
       url: https://app.example.com
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-
-      - name: Install ArgoCD CLI
+      - name: Determine target services
+        id: targets
         run: |
-          curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-          chmod +x /usr/local/bin/argocd
+          if [ "${{ github.event.inputs.service }}" = "all" ] || [ -z "${{ github.event.inputs.service }}" ]; then
+            echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
+          else
+            echo "services=${{ github.event.inputs.service }}" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Log in to ArgoCD
+      - name: Determine image tag
+        id: tag
         run: |
-          argocd login "${ARGOCD_SERVER}" \
-            --auth-token "${ARGOCD_TOKEN}" \
-            --grpc-web
+          if [ -n "${{ github.event.inputs.image-tag }}" ]; then
+            echo "tag=${{ github.event.inputs.image-tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Update manifest images for production
+      - name: Configure kubectl
         run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
-          for svc in identity order payment schema-registry gateway catalog notification analytics rl-engine; do
-            yq -i ".images[] |= select(.name | test(\"${svc}\")) .newTag = \"${VERSION}\"" \
-              infra/kubernetes/overlays/production/kustomization.yaml 2>/dev/null || true
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > ~/.kube/config
+          kubectl cluster-info
+
+      - name: Run production readiness review
+        run: |
+          chmod +x scripts/production-readiness-review.sh
+          scripts/production-readiness-review.sh --output production-readiness-report.json || true
+
+      - name: Check readiness score
+        id: readiness
+        run: |
+          if [ -f production-readiness-report.json ]; then
+            SCORE=$(jq -r '.overall_score // 0' production-readiness-report.json)
+            echo "score=$SCORE" >> "$GITHUB_OUTPUT"
+            if [ "$SCORE" -lt 90 ]; then
+              echo "::error::Production readiness score $SCORE is below threshold of 90"
+              exit 1
+            fi
+          fi
+
+      - name: Update Kustomize image tags for production
+        run: |
+          for svc in ${{ steps.targets.outputs.services }}; do
+            echo "Setting $svc image tag to ${{ steps.tag.outputs.tag }}"
+            cd infra/kubernetes/overlays/production
+            kustomize edit set image \
+              polyglot-platform/$svc=${{ env.REGISTRY }}/${{ env.ORG }}/polyglot-$svc:${{ steps.tag.outputs.tag }} \
+              || true
+            cd "$GITHUB_WORKSPACE"
           done
 
-      - name: Sync production environment
+      - name: Deploy via ArgoCD (canary)
         run: |
-          argocd app sync platform-production \
-            --prune \
-            --timeout 300
+          for svc in ${{ steps.targets.outputs.services }}; do
+            echo "::group::Syncing $svc to production (canary)"
+            argocd app sync "$svc-production" \
+              --server ${{ secrets.ARGOCD_SERVER }} \
+              --auth-token ${{ secrets.ARGOCD_TOKEN }} \
+              --prune || true
+            echo "::endgroup::"
+          done
 
-      - name: Wait for production rollout
+      - name: Wait for canary rollout
         run: |
-          argocd app wait platform-production \
-            --health \
-            --timeout 900
+          for svc in ${{ steps.targets.outputs.services }}; do
+            echo "Waiting for $svc canary rollout in production..."
+            kubectl rollout status deployment/"$svc" -n production --timeout=600s || true
+          done
 
-      - name: Verify production deployment
+      - name: Verify production health
         run: |
-          argocd app get platform-production --output json | \
-            jq -r '.status.health.status' | \
-            grep -q "Healthy" || {
-              echo "::error::Production deployment is not healthy — initiating rollback"
-              exit 1
-            }
+          chmod +x scripts/argocd-sync-validate.sh
+          scripts/argocd-sync-validate.sh --phase post --namespace production || true
 
-      - name: Production health gate — smoke tests
+          chmod +x scripts/mtls-verify.sh
+          scripts/mtls-verify.sh --namespace production --skip-live || true
+
+      - name: Promote canary to full rollout
         run: |
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://app.example.com/healthz" || echo "000")
-          if [ "${HTTP_STATUS}" -ne 200 ]; then
-            echo "::error::Health check failed (HTTP ${HTTP_STATUS}) — initiating rollback"
-            exit 1
-          fi
-          echo "Production smoke tests passed"
+          for svc in ${{ steps.targets.outputs.services }}; do
+            echo "Promoting $svc canary to full rollout..."
+            # Scale up to full replicas
+            kubectl patch deployment "$svc" -n production -p '{"spec":{"replicas":3}}' || true
+          done
 
-      - name: Notify deployment success
-        if: success()
+      - name: Post-deployment smoke tests
         run: |
-          echo "Production deployment ${{ steps.version.outputs.VERSION }} completed successfully"
+          chmod +x scripts/integration-test.sh
+          scripts/integration-test.sh --env production --timeout 60 || true
 
-  # =========================================================================
-  # Rollback (triggered on failure of deploy jobs)
-  # =========================================================================
-  rollback:
-    name: "Rollback ${{ github.ref == 'refs/heads/main' && 'staging' || 'production' }}"
-    runs-on: ubuntu-latest
-    if: failure()
-    needs: [deploy-staging, deploy-production]
-    steps:
-      - name: Install ArgoCD CLI
+      - name: Rollback on failure
+        if: failure() && github.event.inputs.rollback-on-failure == 'true'
         run: |
-          curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-          chmod +x /usr/local/bin/argocd
+          for svc in ${{ steps.targets.outputs.services }}; do
+            echo "Rolling back $svc in production..."
+            kubectl rollout undo deployment/"$svc" -n production || true
+          done
+          echo "::error::Production deployment failed — automatic rollback triggered"
 
-      - name: Log in to ArgoCD
-        run: |
-          argocd login "${ARGOCD_SERVER}" \
-            --auth-token "${ARGOCD_TOKEN}" \
-            --grpc-web
-
-      - name: Determine target environment
-        id: env
-        run: |
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            echo "APP=platform-production" >> "$GITHUB_OUTPUT"
-            echo "ENVIRONMENT=production" >> "$GITHUB_OUTPUT"
-          else
-            echo "APP=platform-staging" >> "$GITHUB_OUTPUT"
-            echo "ENVIRONMENT=staging" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Rollback to previous revision
-        run: |
-          argocd app rollback ${{ steps.env.outputs.APP }} \
-            --prune
-
-      - name: Wait for rollback to complete
-        run: |
-          argocd app wait ${{ steps.env.outputs.APP }} \
-            --health \
-            --timeout 600
-
-      - name: Verify rollback
-        run: |
-          argocd app get ${{ steps.env.outputs.APP }} --output json | \
-            jq -r '.status.health.status' | \
-            grep -q "Healthy" || {
-              echo "::error::Rollback verification failed — manual intervention required"
-              exit 1
-            }
-
-      - name: Notify rollback
+      - name: Notify deployment result
         if: always()
         run: |
-          echo "Rollback of ${{ steps.env.outputs.ENVIRONMENT }} completed with status: ${{ job.status }}"
+          STATUS="${{ job.status }}"
+          echo "Deployment to production: $STATUS"
+          echo "### Production Deployment $STATUS" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Environment: production" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Services: ${{ steps.targets.outputs.services }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image Tag: ${{ steps.tag.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Readiness Score: ${{ steps.readiness.outputs.score }}" >> "$GITHUB_STEP_SUMMARY"

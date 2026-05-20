@@ -1,0 +1,150 @@
+name: Detect Changes
+
+on:
+  workflow_call:
+    outputs:
+      go-services:
+        description: "JSON array of changed Go services"
+        value: ${{ jobs.detect.outputs.go-services }}
+      rust-services:
+        description: "JSON array of changed Rust services"
+        value: ${{ jobs.detect.outputs.rust-services }}
+      node-services:
+        description: "JSON array of changed Node.js services"
+        value: ${{ jobs.detect.outputs.node-services }}
+      kotlin-services:
+        description: "JSON array of changed Kotlin services"
+        value: ${{ jobs.detect.outputs.kotlin-services }}
+      python-services:
+        description: "JSON array of changed Python services"
+        value: ${{ jobs.detect.outputs.python-services }}
+      all-changed-services:
+        description: "JSON array of all changed services"
+        value: ${{ jobs.detect.outputs.all-changed-services }}
+      schemas-changed:
+        description: "Whether schema files changed"
+        value: ${{ jobs.detect.outputs.schemas-changed }}
+      infra-changed:
+        description: "Whether infrastructure files changed"
+        value: ${{ jobs.detect.outputs.infra-changed }}
+      scripts-changed:
+        description: "Whether scripts changed"
+        value: ${{ jobs.detect.outputs.scripts-changed }}
+
+jobs:
+  detect:
+    name: Detect Changed Services
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      go-services: ${{ steps.classify.outputs.go-services }}
+      rust-services: ${{ steps.classify.outputs.rust-services }}
+      node-services: ${{ steps.classify.outputs.node-services }}
+      kotlin-services: ${{ steps.classify.outputs.kotlin-services }}
+      python-services: ${{ steps.classify.outputs.python-services }}
+      all-changed-services: ${{ steps.classify.outputs.all-changed-services }}
+      schemas-changed: ${{ steps.classify.outputs.schemas-changed }}
+      infra-changed: ${{ steps.classify.outputs.infra-changed }}
+      scripts-changed: ${{ steps.classify.outputs.scripts-changed }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed files
+        id: changed
+        uses: tj-actions/changed-files@v44
+        with:
+          since_last_remote_commit: true
+          files_yaml: |
+            payment:
+              - services/payment/**
+            gateway:
+              - services/gateway/**
+            schema-registry:
+              - services/schema-registry/**
+            identity:
+              - services/identity/**
+            catalog:
+              - services/catalog/**
+            order:
+              - services/order/**
+            notification:
+              - services/notification/**
+            analytics:
+              - services/analytics/**
+            rl-engine:
+              - services/rl-engine/**
+            schemas:
+              - schemas/**
+            infra:
+              - infra/**
+              - .claude/engine/**
+            scripts:
+              - scripts/**
+
+      - name: Classify changed services by language
+        id: classify
+        run: |
+          # Go services
+          go_services=()
+          [[ "${{ steps.changed.outputs.payment_any_changed }}" == "true" ]] && go_services+=("payment")
+          [[ "${{ steps.changed.outputs.gateway_any_changed }}" == "true" ]] && go_services+=("gateway")
+          [[ "${{ steps.changed.outputs.schema-registry_any_changed }}" == "true" ]] && go_services+=("schema-registry")
+
+          # Rust services
+          rust_services=()
+          [[ "${{ steps.changed.outputs.identity_any_changed }}" == "true" ]] && rust_services+=("identity")
+
+          # Node.js services
+          node_services=()
+          [[ "${{ steps.changed.outputs.catalog_any_changed }}" == "true" ]] && node_services+=("catalog")
+
+          # Kotlin services
+          kotlin_services=()
+          [[ "${{ steps.changed.outputs.order_any_changed }}" == "true" ]] && kotlin_services+=("order")
+
+          # Python services
+          python_services=()
+          [[ "${{ steps.changed.outputs.notification_any_changed }}" == "true" ]] && python_services+=("notification")
+          [[ "${{ steps.changed.outputs.analytics_any_changed }}" == "true" ]] && python_services+=("analytics")
+          [[ "${{ steps.changed.outputs.rl-engine_any_changed }}" == "true" ]] && python_services+=("rl-engine")
+
+          # All changed services
+          all_services=()
+          for svc in "${go_services[@]}" "${rust_services[@]}" "${node_services[@]}" "${kotlin_services[@]}" "${python_services[@]}"; do
+            all_services+=("$svc")
+          done
+
+          # Helper to produce JSON array
+          to_json() {
+            local arr=("$@")
+            if [[ ${#arr[@]} -eq 0 ]]; then
+              echo "[]"
+            else
+              printf '%s\n' "${arr[@]}" | jq -R . | jq -s .
+            fi
+          }
+
+          echo "go-services=$(to_json "${go_services[@]}")" >> "$GITHUB_OUTPUT"
+          echo "rust-services=$(to_json "${rust_services[@]}")" >> "$GITHUB_OUTPUT"
+          echo "node-services=$(to_json "${node_services[@]}")" >> "$GITHUB_OUTPUT"
+          echo "kotlin-services=$(to_json "${kotlin_services[@]}")" >> "$GITHUB_OUTPUT"
+          echo "python-services=$(to_json "${python_services[@]}")" >> "$GITHUB_OUTPUT"
+          echo "all-changed-services=$(to_json "${all_services[@]}")" >> "$GITHUB_OUTPUT"
+          echo "schemas-changed=${{ steps.changed.outputs.schemas_any_changed }}" >> "$GITHUB_OUTPUT"
+          echo "infra-changed=${{ steps.changed.outputs.infra_any_changed }}" >> "$GITHUB_OUTPUT"
+          echo "scripts-changed=${{ steps.changed.outputs.scripts_any_changed }}" >> "$GITHUB_OUTPUT"
+
+          echo "### Changed Services" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Language | Services |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|----------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Go | $(to_json "${go_services[@]}") |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Rust | $(to_json "${rust_services[@]}") |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Node.js | $(to_json "${node_services[@]}") |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Kotlin | $(to_json "${kotlin_services[@]}") |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Python | $(to_json "${python_services[@]}") |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Schemas changed: ${{ steps.changed.outputs.schemas_any_changed }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Infra changed: ${{ steps.changed.outputs.infra_any_changed }}" >> "$GITHUB_STEP_SUMMARY"

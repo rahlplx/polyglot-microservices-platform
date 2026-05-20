@@ -1,0 +1,2127 @@
+# Enterprise SLO Definitions, Error Budget Tracking & Multi-Window Burn Rate Alerting
+# ──────────────────────────────────────────────────────────────────────────────────
+# Covers all 9 platform services with formal SLO definitions, recording rules for
+# SLI computation efficiency, Google SRE 2-window burn rate alerts, and error budget
+# consumption tracking at 50%/80%/95% thresholds.
+#
+# SLO Targets:
+# ┌──────────────────┬──────────────────┬───────────────┬──────────────────────┐
+# │ Service          │ Availability SLO │ Latency SLO   │ 30d Error Budget     │
+# ├──────────────────┼──────────────────┼───────────────┼──────────────────────┤
+# │ gateway          │ 99.95%           │ p99 < 500ms   │ 21.9 min downtime    │
+# │ identity         │ 99.99%           │ p99 < 200ms   │ 4.3 min downtime     │
+# │ catalog          │ 99.95%           │ p99 < 300ms   │ 21.9 min downtime    │
+# │ order            │ 99.95%           │ p99 < 1s      │ 21.9 min downtime    │
+# │ payment          │ 99.99%           │ p99 < 500ms   │ 4.3 min downtime     │
+# │ notification     │ 99.9%            │ p99 < 2s      │ 43.8 min downtime    │
+# │ analytics        │ 99.9%            │ p99 < 2s      │ 43.8 min downtime    │
+# │ rl-engine        │ 99.9%            │ p99 < 1s      │ 43.8 min downtime    │
+# │ schema-registry  │ 99.95%           │ p99 < 200ms   │ 21.9 min downtime    │
+# └──────────────────┴──────────────────┴───────────────┴──────────────────────┘
+#
+# Burn Rate Alert Strategy (Google SRE Chapter 6):
+#   Fast Burn (PAGE):  14.4x rate over 1h window AND 14.4x over 5m window
+#     → Consumes ~2% of 30d budget per hour → urgent intervention needed
+#   Slow Burn (TICKET): 6x rate over 6h window AND 6x over 30m window
+#     → Consumes ~5% of 30d budget per 6h → tracked, non-urgent
+#
+# NOTE: Latency histogram buckets MUST be configured in OTel SDK to include
+# the SLO threshold values (0.2, 0.3, 0.5, 1, 2 seconds). Add these to the
+# OTel histogram bucket overrides in each service's tracer provider config:
+#   e.g., ExplicitBucketBoundaries: [0.005, 0.01, 0.025, 0.05, 0.1, 0.2,
+#          0.3, 0.5, 0.75, 1, 2, 5, 10]
+#
+# Complements: infra/kubernetes/platform/prometheus-alerts.yaml (basic alerts)
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: slo-error-budgets
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    prometheus: k8s
+    role: slo-rules
+    severity: enterprise
+spec:
+  groups:
+    # ══════════════════════════════════════════════════════════════════════
+    # GROUP 1: SLI Recording Rules
+    # Pre-computes availability and latency ratios for efficient alert/dash queries
+    # ══════════════════════════════════════════════════════════════════════
+    - name: slo-recording-rules
+      rules:
+        # ──────────────────────────────────────────────────────────────────
+        # Gateway — 99.95% availability, p99 < 500ms
+        # ──────────────────────────────────────────────────────────────────
+        - record: slo:service_availability:ratio_rate5m
+          expr: |
+            sum(rate(http_requests_total{job="gateway", code!~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="gateway"}[5m]))
+          labels:
+            service: gateway
+            slo_type: availability
+            slo_target: "0.9995"
+
+        - record: slo:service_latency:ratio_rate5m
+          expr: |
+            sum(rate(http_request_duration_seconds_bucket{job="gateway", le="0.5"}[5m]))
+            /
+            sum(rate(http_request_duration_seconds_count{job="gateway"}[5m]))
+          labels:
+            service: gateway
+            slo_type: latency
+            slo_target: "0.99"
+            latency_threshold_ms: "500"
+
+        - record: slo:error_budget_consumed:ratio
+          expr: |
+            (1 -
+              sum(increase(http_requests_total{job="gateway", code!~"5.."}[30d]))
+              /
+              sum(increase(http_requests_total{job="gateway"}[30d]))
+            ) / (1 - 0.9995)
+          labels:
+            service: gateway
+            slo_type: availability
+
+        - record: slo:error_budget_remaining:ratio
+          expr: |
+            1 - slo:error_budget_consumed:ratio{service="gateway"}
+          labels:
+            service: gateway
+            slo_type: availability
+
+        # ──────────────────────────────────────────────────────────────────
+        # Identity — 99.99% availability, p99 < 200ms
+        # ──────────────────────────────────────────────────────────────────
+        - record: slo:service_availability:ratio_rate5m
+          expr: |
+            sum(rate(http_requests_total{job="identity", code!~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="identity"}[5m]))
+          labels:
+            service: identity
+            slo_type: availability
+            slo_target: "0.9999"
+
+        - record: slo:service_latency:ratio_rate5m
+          expr: |
+            sum(rate(http_request_duration_seconds_bucket{job="identity", le="0.2"}[5m]))
+            /
+            sum(rate(http_request_duration_seconds_count{job="identity"}[5m]))
+          labels:
+            service: identity
+            slo_type: latency
+            slo_target: "0.99"
+            latency_threshold_ms: "200"
+
+        - record: slo:error_budget_consumed:ratio
+          expr: |
+            (1 -
+              sum(increase(http_requests_total{job="identity", code!~"5.."}[30d]))
+              /
+              sum(increase(http_requests_total{job="identity"}[30d]))
+            ) / (1 - 0.9999)
+          labels:
+            service: identity
+            slo_type: availability
+
+        - record: slo:error_budget_remaining:ratio
+          expr: |
+            1 - slo:error_budget_consumed:ratio{service="identity"}
+          labels:
+            service: identity
+            slo_type: availability
+
+        # ──────────────────────────────────────────────────────────────────
+        # Catalog — 99.95% availability, p99 < 300ms
+        # ──────────────────────────────────────────────────────────────────
+        - record: slo:service_availability:ratio_rate5m
+          expr: |
+            sum(rate(http_requests_total{job="catalog", code!~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="catalog"}[5m]))
+          labels:
+            service: catalog
+            slo_type: availability
+            slo_target: "0.9995"
+
+        - record: slo:service_latency:ratio_rate5m
+          expr: |
+            sum(rate(http_request_duration_seconds_bucket{job="catalog", le="0.3"}[5m]))
+            /
+            sum(rate(http_request_duration_seconds_count{job="catalog"}[5m]))
+          labels:
+            service: catalog
+            slo_type: latency
+            slo_target: "0.99"
+            latency_threshold_ms: "300"
+
+        - record: slo:error_budget_consumed:ratio
+          expr: |
+            (1 -
+              sum(increase(http_requests_total{job="catalog", code!~"5.."}[30d]))
+              /
+              sum(increase(http_requests_total{job="catalog"}[30d]))
+            ) / (1 - 0.9995)
+          labels:
+            service: catalog
+            slo_type: availability
+
+        - record: slo:error_budget_remaining:ratio
+          expr: |
+            1 - slo:error_budget_consumed:ratio{service="catalog"}
+          labels:
+            service: catalog
+            slo_type: availability
+
+        # ──────────────────────────────────────────────────────────────────
+        # Order — 99.95% availability, p99 < 1s
+        # ──────────────────────────────────────────────────────────────────
+        - record: slo:service_availability:ratio_rate5m
+          expr: |
+            sum(rate(http_requests_total{job="order", code!~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="order"}[5m]))
+          labels:
+            service: order
+            slo_type: availability
+            slo_target: "0.9995"
+
+        - record: slo:service_latency:ratio_rate5m
+          expr: |
+            sum(rate(http_request_duration_seconds_bucket{job="order", le="1"}[5m]))
+            /
+            sum(rate(http_request_duration_seconds_count{job="order"}[5m]))
+          labels:
+            service: order
+            slo_type: latency
+            slo_target: "0.99"
+            latency_threshold_ms: "1000"
+
+        - record: slo:error_budget_consumed:ratio
+          expr: |
+            (1 -
+              sum(increase(http_requests_total{job="order", code!~"5.."}[30d]))
+              /
+              sum(increase(http_requests_total{job="order"}[30d]))
+            ) / (1 - 0.9995)
+          labels:
+            service: order
+            slo_type: availability
+
+        - record: slo:error_budget_remaining:ratio
+          expr: |
+            1 - slo:error_budget_consumed:ratio{service="order"}
+          labels:
+            service: order
+            slo_type: availability
+
+        # ──────────────────────────────────────────────────────────────────
+        # Payment — 99.99% availability, p99 < 500ms
+        # ──────────────────────────────────────────────────────────────────
+        - record: slo:service_availability:ratio_rate5m
+          expr: |
+            sum(rate(http_requests_total{job="payment", code!~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="payment"}[5m]))
+          labels:
+            service: payment
+            slo_type: availability
+            slo_target: "0.9999"
+
+        - record: slo:service_latency:ratio_rate5m
+          expr: |
+            sum(rate(http_request_duration_seconds_bucket{job="payment", le="0.5"}[5m]))
+            /
+            sum(rate(http_request_duration_seconds_count{job="payment"}[5m]))
+          labels:
+            service: payment
+            slo_type: latency
+            slo_target: "0.99"
+            latency_threshold_ms: "500"
+
+        - record: slo:error_budget_consumed:ratio
+          expr: |
+            (1 -
+              sum(increase(http_requests_total{job="payment", code!~"5.."}[30d]))
+              /
+              sum(increase(http_requests_total{job="payment"}[30d]))
+            ) / (1 - 0.9999)
+          labels:
+            service: payment
+            slo_type: availability
+
+        - record: slo:error_budget_remaining:ratio
+          expr: |
+            1 - slo:error_budget_consumed:ratio{service="payment"}
+          labels:
+            service: payment
+            slo_type: availability
+
+        # ──────────────────────────────────────────────────────────────────
+        # Notification — 99.9% availability, p99 < 2s
+        # ──────────────────────────────────────────────────────────────────
+        - record: slo:service_availability:ratio_rate5m
+          expr: |
+            sum(rate(http_requests_total{job="notification", code!~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="notification"}[5m]))
+          labels:
+            service: notification
+            slo_type: availability
+            slo_target: "0.999"
+
+        - record: slo:service_latency:ratio_rate5m
+          expr: |
+            sum(rate(http_request_duration_seconds_bucket{job="notification", le="2"}[5m]))
+            /
+            sum(rate(http_request_duration_seconds_count{job="notification"}[5m]))
+          labels:
+            service: notification
+            slo_type: latency
+            slo_target: "0.99"
+            latency_threshold_ms: "2000"
+
+        - record: slo:error_budget_consumed:ratio
+          expr: |
+            (1 -
+              sum(increase(http_requests_total{job="notification", code!~"5.."}[30d]))
+              /
+              sum(increase(http_requests_total{job="notification"}[30d]))
+            ) / (1 - 0.999)
+          labels:
+            service: notification
+            slo_type: availability
+
+        - record: slo:error_budget_remaining:ratio
+          expr: |
+            1 - slo:error_budget_consumed:ratio{service="notification"}
+          labels:
+            service: notification
+            slo_type: availability
+
+        # ──────────────────────────────────────────────────────────────────
+        # Analytics — 99.9% availability, p99 < 2s
+        # ──────────────────────────────────────────────────────────────────
+        - record: slo:service_availability:ratio_rate5m
+          expr: |
+            sum(rate(http_requests_total{job="analytics", code!~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="analytics"}[5m]))
+          labels:
+            service: analytics
+            slo_type: availability
+            slo_target: "0.999"
+
+        - record: slo:service_latency:ratio_rate5m
+          expr: |
+            sum(rate(http_request_duration_seconds_bucket{job="analytics", le="2"}[5m]))
+            /
+            sum(rate(http_request_duration_seconds_count{job="analytics"}[5m]))
+          labels:
+            service: analytics
+            slo_type: latency
+            slo_target: "0.99"
+            latency_threshold_ms: "2000"
+
+        - record: slo:error_budget_consumed:ratio
+          expr: |
+            (1 -
+              sum(increase(http_requests_total{job="analytics", code!~"5.."}[30d]))
+              /
+              sum(increase(http_requests_total{job="analytics"}[30d]))
+            ) / (1 - 0.999)
+          labels:
+            service: analytics
+            slo_type: availability
+
+        - record: slo:error_budget_remaining:ratio
+          expr: |
+            1 - slo:error_budget_consumed:ratio{service="analytics"}
+          labels:
+            service: analytics
+            slo_type: availability
+
+        # ──────────────────────────────────────────────────────────────────
+        # RL Engine — 99.9% availability, p99 < 1s
+        # ──────────────────────────────────────────────────────────────────
+        - record: slo:service_availability:ratio_rate5m
+          expr: |
+            sum(rate(http_requests_total{job="rl-engine", code!~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="rl-engine"}[5m]))
+          labels:
+            service: rl-engine
+            slo_type: availability
+            slo_target: "0.999"
+
+        - record: slo:service_latency:ratio_rate5m
+          expr: |
+            sum(rate(http_request_duration_seconds_bucket{job="rl-engine", le="1"}[5m]))
+            /
+            sum(rate(http_request_duration_seconds_count{job="rl-engine"}[5m]))
+          labels:
+            service: rl-engine
+            slo_type: latency
+            slo_target: "0.99"
+            latency_threshold_ms: "1000"
+
+        - record: slo:error_budget_consumed:ratio
+          expr: |
+            (1 -
+              sum(increase(http_requests_total{job="rl-engine", code!~"5.."}[30d]))
+              /
+              sum(increase(http_requests_total{job="rl-engine"}[30d]))
+            ) / (1 - 0.999)
+          labels:
+            service: rl-engine
+            slo_type: availability
+
+        - record: slo:error_budget_remaining:ratio
+          expr: |
+            1 - slo:error_budget_consumed:ratio{service="rl-engine"}
+          labels:
+            service: rl-engine
+            slo_type: availability
+
+        # ──────────────────────────────────────────────────────────────────
+        # Schema Registry — 99.95% availability, p99 < 200ms
+        # ──────────────────────────────────────────────────────────────────
+        - record: slo:service_availability:ratio_rate5m
+          expr: |
+            sum(rate(http_requests_total{job="schema-registry", code!~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="schema-registry"}[5m]))
+          labels:
+            service: schema-registry
+            slo_type: availability
+            slo_target: "0.9995"
+
+        - record: slo:service_latency:ratio_rate5m
+          expr: |
+            sum(rate(http_request_duration_seconds_bucket{job="schema-registry", le="0.2"}[5m]))
+            /
+            sum(rate(http_request_duration_seconds_count{job="schema-registry"}[5m]))
+          labels:
+            service: schema-registry
+            slo_type: latency
+            slo_target: "0.99"
+            latency_threshold_ms: "200"
+
+        - record: slo:error_budget_consumed:ratio
+          expr: |
+            (1 -
+              sum(increase(http_requests_total{job="schema-registry", code!~"5.."}[30d]))
+              /
+              sum(increase(http_requests_total{job="schema-registry"}[30d]))
+            ) / (1 - 0.9995)
+          labels:
+            service: schema-registry
+            slo_type: availability
+
+        - record: slo:error_budget_remaining:ratio
+          expr: |
+            1 - slo:error_budget_consumed:ratio{service="schema-registry"}
+          labels:
+            service: schema-registry
+            slo_type: availability
+
+    # ══════════════════════════════════════════════════════════════════════
+    # GROUP 2: Availability SLO Burn Rate Alerts
+    # Uses Google SRE 2-window pattern to distinguish fast (page) vs slow (ticket) burns
+    # ══════════════════════════════════════════════════════════════════════
+    - name: slo-availability
+      rules:
+        # ──────────────────────────────────────────────────────────────────
+        # Gateway — 99.95% availability (budget: 21.9 min / 30d)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: SLOAvailabilityFastBurn
+          expr: |
+            (
+              (1 - sum(rate(http_requests_total{job="gateway", code!~"5.."}[1h])) / sum(rate(http_requests_total{job="gateway"}[1h])))
+              / (1 - 0.9995)
+            ) >= 14.4
+            and
+            (
+              (1 - sum(rate(http_requests_total{job="gateway", code!~"5.."}[5m])) / sum(rate(http_requests_total{job="gateway"}[5m])))
+              / (1 - 0.9995)
+            ) >= 14.4
+          for: 2m
+          labels:
+            severity: page
+            team: platform
+            slo_type: availability
+            service: gateway
+            slo_target: "99.95%"
+            burn_rate_type: fast
+            runbook: docs/runbooks/gateway-runbook.md
+          annotations:
+            summary: "Gateway availability SLO fast burn (PAGE)"
+            description: >-
+              Gateway is burning through its 99.95% availability error budget at 14.4x rate.
+              Current 1h error rate is {{ $value | humanizePercentage }} of the allowed monthly rate.
+              At this pace, the entire 30d budget (21.9 min downtime) will be consumed in ~2 days.
+            action: >-
+              Check gateway pod health: kubectl get pods -n production -l app.kubernetes.io/name=gateway
+              Examine 5xx errors in Loki: {service="gateway"} | json | status >= 500
+              Check downstream service health and network connectivity.
+
+        - alert: SLOAvailabilitySlowBurn
+          expr: |
+            (
+              (1 - sum(rate(http_requests_total{job="gateway", code!~"5.."}[6h])) / sum(rate(http_requests_total{job="gateway"}[6h])))
+              / (1 - 0.9995)
+            ) >= 6
+            and
+            (
+              (1 - sum(rate(http_requests_total{job="gateway", code!~"5.."}[30m])) / sum(rate(http_requests_total{job="gateway"}[30m])))
+              / (1 - 0.9995)
+            ) >= 6
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo_type: availability
+            service: gateway
+            slo_target: "99.95%"
+            burn_rate_type: slow
+            runbook: docs/runbooks/gateway-runbook.md
+          annotations:
+            summary: "Gateway availability SLO slow burn (TICKET)"
+            description: >-
+              Gateway is burning through its 99.95% availability error budget at 6x rate.
+              Current 6h error rate indicates sustained degradation consuming ~5% of 30d budget per 6h.
+              Budget remaining: {{ with query "slo:error_budget_remaining:ratio{service='gateway'}" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+            action: >-
+              Review recent deployments and config changes. Check for gradual resource exhaustion.
+              Verify downstream dependencies are healthy. Schedule investigation during business hours.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Identity — 99.99% availability (budget: 4.3 min / 30d)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: SLOAvailabilityFastBurn
+          expr: |
+            (
+              (1 - sum(rate(http_requests_total{job="identity", code!~"5.."}[1h])) / sum(rate(http_requests_total{job="identity"}[1h])))
+              / (1 - 0.9999)
+            ) >= 14.4
+            and
+            (
+              (1 - sum(rate(http_requests_total{job="identity", code!~"5.."}[5m])) / sum(rate(http_requests_total{job="identity"}[5m])))
+              / (1 - 0.9999)
+            ) >= 14.4
+          for: 2m
+          labels:
+            severity: page
+            team: platform
+            slo_type: availability
+            service: identity
+            slo_target: "99.99%"
+            burn_rate_type: fast
+            runbook: docs/runbooks/identity-runbook.md
+          annotations:
+            summary: "Identity availability SLO fast burn (PAGE)"
+            description: >-
+              Identity is burning through its 99.99% availability error budget at 14.4x rate.
+              This is a CRITICAL service — the entire 30d budget is only 4.3 minutes of downtime.
+              At 14.4x burn, the budget will be exhausted in ~50 hours.
+            action: >-
+              Check SPIRE server health: kubectl get pods -n production -l app.kubernetes.io/name=spire-server
+              Verify SVID rotation is functioning. Check database connectivity for identity store.
+              Examine mTLS certificate expiry. Escalate immediately if auth is failing system-wide.
+
+        - alert: SLOAvailabilitySlowBurn
+          expr: |
+            (
+              (1 - sum(rate(http_requests_total{job="identity", code!~"5.."}[6h])) / sum(rate(http_requests_total{job="identity"}[6h])))
+              / (1 - 0.9999)
+            ) >= 6
+            and
+            (
+              (1 - sum(rate(http_requests_total{job="identity", code!~"5.."}[30m])) / sum(rate(http_requests_total{job="identity"}[30m])))
+              / (1 - 0.9999)
+            ) >= 6
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo_type: availability
+            service: identity
+            slo_target: "99.99%"
+            burn_rate_type: slow
+            runbook: docs/runbooks/identity-runbook.md
+          annotations:
+            summary: "Identity availability SLO slow burn (TICKET)"
+            description: >-
+              Identity is slowly burning its 99.99% availability error budget at 6x rate.
+              Budget remaining: {{ with query "slo:error_budget_remaining:ratio{service='identity'}" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+              With only 4.3 min budget per month, even slow burns require prompt attention.
+            action: >-
+              Review SVID rotation logs. Check for intermittent SPIRE server connectivity issues.
+              Examine identity service restarts. Plan investigation within current sprint.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Catalog — 99.95% availability (budget: 21.9 min / 30d)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: SLOAvailabilityFastBurn
+          expr: |
+            (
+              (1 - sum(rate(http_requests_total{job="catalog", code!~"5.."}[1h])) / sum(rate(http_requests_total{job="catalog"}[1h])))
+              / (1 - 0.9995)
+            ) >= 14.4
+            and
+            (
+              (1 - sum(rate(http_requests_total{job="catalog", code!~"5.."}[5m])) / sum(rate(http_requests_total{job="catalog"}[5m])))
+              / (1 - 0.9995)
+            ) >= 14.4
+          for: 2m
+          labels:
+            severity: page
+            team: platform
+            slo_type: availability
+            service: catalog
+            slo_target: "99.95%"
+            burn_rate_type: fast
+            runbook: docs/runbooks/catalog-runbook.md
+          annotations:
+            summary: "Catalog availability SLO fast burn (PAGE)"
+            description: >-
+              Catalog is burning through its 99.95% availability error budget at 14.4x rate.
+              At this pace, the entire 30d budget (21.9 min downtime) will be consumed in ~2 days.
+              Catalog failures cascade to order processing and search functionality.
+            action: >-
+              Check catalog pod health and database connectivity.
+              Examine search index health: kubectl logs -n production -l app.kubernetes.io/name=catalog
+              Check Meilisearch/Elasticsearch status. Verify PostgreSQL replica health.
+
+        - alert: SLOAvailabilitySlowBurn
+          expr: |
+            (
+              (1 - sum(rate(http_requests_total{job="catalog", code!~"5.."}[6h])) / sum(rate(http_requests_total{job="catalog"}[6h])))
+              / (1 - 0.9995)
+            ) >= 6
+            and
+            (
+              (1 - sum(rate(http_requests_total{job="catalog", code!~"5.."}[30m])) / sum(rate(http_requests_total{job="catalog"}[30m])))
+              / (1 - 0.9995)
+            ) >= 6
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo_type: availability
+            service: catalog
+            slo_target: "99.95%"
+            burn_rate_type: slow
+            runbook: docs/runbooks/catalog-runbook.md
+          annotations:
+            summary: "Catalog availability SLO slow burn (TICKET)"
+            description: >-
+              Catalog is slowly burning its 99.95% availability error budget at 6x rate.
+              Budget remaining: {{ with query "slo:error_budget_remaining:ratio{service='catalog'}" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+            action: >-
+              Review search index freshness. Check for intermittent database replica lag.
+              Investigate connection pool exhaustion under load. Schedule investigation.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Order — 99.95% availability (budget: 21.9 min / 30d)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: SLOAvailabilityFastBurn
+          expr: |
+            (
+              (1 - sum(rate(http_requests_total{job="order", code!~"5.."}[1h])) / sum(rate(http_requests_total{job="order"}[1h])))
+              / (1 - 0.9995)
+            ) >= 14.4
+            and
+            (
+              (1 - sum(rate(http_requests_total{job="order", code!~"5.."}[5m])) / sum(rate(http_requests_total{job="order"}[5m])))
+              / (1 - 0.9995)
+            ) >= 14.4
+          for: 2m
+          labels:
+            severity: page
+            team: platform
+            slo_type: availability
+            service: order
+            slo_target: "99.95%"
+            burn_rate_type: fast
+            runbook: docs/runbooks/order-runbook.md
+          annotations:
+            summary: "Order availability SLO fast burn (PAGE)"
+            description: >-
+              Order service is burning through its 99.95% availability error budget at 14.4x rate.
+              Order failures directly impact revenue. At this pace, the entire 30d budget
+              (21.9 min downtime) will be consumed in ~2 days.
+            action: >-
+              Check order pod health and JVM memory: kubectl get pods -n production -l app.kubernetes.io/name=order
+              Examine saga orchestration failures in Loki. Check payment and catalog downstream health.
+              Verify Kafka producer connectivity. Check database connection pool.
+
+        - alert: SLOAvailabilitySlowBurn
+          expr: |
+            (
+              (1 - sum(rate(http_requests_total{job="order", code!~"5.."}[6h])) / sum(rate(http_requests_total{job="order"}[6h])))
+              / (1 - 0.9995)
+            ) >= 6
+            and
+            (
+              (1 - sum(rate(http_requests_total{job="order", code!~"5.."}[30m])) / sum(rate(http_requests_total{job="order"}[30m])))
+              / (1 - 0.9995)
+            ) >= 6
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo_type: availability
+            service: order
+            slo_target: "99.95%"
+            burn_rate_type: slow
+            runbook: docs/runbooks/order-runbook.md
+          annotations:
+            summary: "Order availability SLO slow burn (TICKET)"
+            description: >-
+              Order service is slowly burning its 99.95% availability error budget at 6x rate.
+              Budget remaining: {{ with query "slo:error_budget_remaining:ratio{service='order'}" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+              Revenue-impacting service — prioritize investigation.
+            action: >-
+              Review saga compensation rates. Check for JVM GC pressure causing timeouts.
+              Investigate intermittent downstream failures. Plan fix within current sprint.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Payment — 99.99% availability (budget: 4.3 min / 30d)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: SLOAvailabilityFastBurn
+          expr: |
+            (
+              (1 - sum(rate(http_requests_total{job="payment", code!~"5.."}[1h])) / sum(rate(http_requests_total{job="payment"}[1h])))
+              / (1 - 0.9999)
+            ) >= 14.4
+            and
+            (
+              (1 - sum(rate(http_requests_total{job="payment", code!~"5.."}[5m])) / sum(rate(http_requests_total{job="payment"}[5m])))
+              / (1 - 0.9999)
+            ) >= 14.4
+          for: 2m
+          labels:
+            severity: page
+            team: platform
+            slo_type: availability
+            service: payment
+            slo_target: "99.99%"
+            burn_rate_type: fast
+            runbook: docs/runbooks/payment-runbook.md
+          annotations:
+            summary: "Payment availability SLO fast burn (PAGE)"
+            description: >-
+              Payment is burning through its 99.99% availability error budget at 14.4x rate.
+              CRITICAL revenue service — only 4.3 min budget per month. At this burn rate,
+              the budget will be exhausted in ~50 hours. Payment failures block order completion.
+            action: >-
+              Check circuit breaker state: resilience4j_circuitbreaker_state{service="payment"}
+              Verify external payment gateway connectivity. Check for 3DS authentication failures.
+              Examine payment token cache hit rate. Escalate to payment provider if needed.
+
+        - alert: SLOAvailabilitySlowBurn
+          expr: |
+            (
+              (1 - sum(rate(http_requests_total{job="payment", code!~"5.."}[6h])) / sum(rate(http_requests_total{job="payment"}[6h])))
+              / (1 - 0.9999)
+            ) >= 6
+            and
+            (
+              (1 - sum(rate(http_requests_total{job="payment", code!~"5.."}[30m])) / sum(rate(http_requests_total{job="payment"}[30m])))
+              / (1 - 0.9999)
+            ) >= 6
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo_type: availability
+            service: payment
+            slo_target: "99.99%"
+            burn_rate_type: slow
+            runbook: docs/runbooks/payment-runbook.md
+          annotations:
+            summary: "Payment availability SLO slow burn (TICKET)"
+            description: >-
+              Payment is slowly burning its 99.99% availability error budget at 6x rate.
+              Budget remaining: {{ with query "slo:error_budget_remaining:ratio{service='payment'}" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+              Revenue-critical service — prioritize even slow burns.
+            action: >-
+              Review circuit breaker open/close patterns. Check for intermittent gateway timeouts.
+              Verify payment provider SLA compliance. Plan investigation within 24 hours.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Notification — 99.9% availability (budget: 43.8 min / 30d)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: SLOAvailabilityFastBurn
+          expr: |
+            (
+              (1 - sum(rate(http_requests_total{job="notification", code!~"5.."}[1h])) / sum(rate(http_requests_total{job="notification"}[1h])))
+              / (1 - 0.999)
+            ) >= 14.4
+            and
+            (
+              (1 - sum(rate(http_requests_total{job="notification", code!~"5.."}[5m])) / sum(rate(http_requests_total{job="notification"}[5m])))
+              / (1 - 0.999)
+            ) >= 14.4
+          for: 2m
+          labels:
+            severity: page
+            team: platform
+            slo_type: availability
+            service: notification
+            slo_target: "99.9%"
+            burn_rate_type: fast
+            runbook: docs/runbooks/notification-runbook.md
+          annotations:
+            summary: "Notification availability SLO fast burn (PAGE)"
+            description: >-
+              Notification is burning through its 99.9% availability error budget at 14.4x rate.
+              At this pace, the entire 30d budget (43.8 min downtime) will be consumed in ~2 days.
+            action: >-
+              Check notification pod health and Python memory usage.
+              Verify Kafka consumer connectivity. Check email/SMS provider health.
+              Examine template rendering failures in logs.
+
+        - alert: SLOAvailabilitySlowBurn
+          expr: |
+            (
+              (1 - sum(rate(http_requests_total{job="notification", code!~"5.."}[6h])) / sum(rate(http_requests_total{job="notification"}[6h])))
+              / (1 - 0.999)
+            ) >= 6
+            and
+            (
+              (1 - sum(rate(http_requests_total{job="notification", code!~"5.."}[30m])) / sum(rate(http_requests_total{job="notification"}[30m])))
+              / (1 - 0.999)
+            ) >= 6
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo_type: availability
+            service: notification
+            slo_target: "99.9%"
+            burn_rate_type: slow
+            runbook: docs/runbooks/notification-runbook.md
+          annotations:
+            summary: "Notification availability SLO slow burn (TICKET)"
+            description: >-
+              Notification is slowly burning its 99.9% availability error budget at 6x rate.
+              Budget remaining: {{ with query "slo:error_budget_remaining:ratio{service='notification'}" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+            action: >-
+              Review delivery provider error rates. Check for Python GC pressure.
+              Investigate Kafka consumer lag. Schedule investigation.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Analytics — 99.9% availability (budget: 43.8 min / 30d)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: SLOAvailabilityFastBurn
+          expr: |
+            (
+              (1 - sum(rate(http_requests_total{job="analytics", code!~"5.."}[1h])) / sum(rate(http_requests_total{job="analytics"}[1h])))
+              / (1 - 0.999)
+            ) >= 14.4
+            and
+            (
+              (1 - sum(rate(http_requests_total{job="analytics", code!~"5.."}[5m])) / sum(rate(http_requests_total{job="analytics"}[5m])))
+              / (1 - 0.999)
+            ) >= 14.4
+          for: 2m
+          labels:
+            severity: page
+            team: platform
+            slo_type: availability
+            service: analytics
+            slo_target: "99.9%"
+            burn_rate_type: fast
+            runbook: docs/runbooks/analytics-runbook.md
+          annotations:
+            summary: "Analytics availability SLO fast burn (PAGE)"
+            description: >-
+              Analytics is burning through its 99.9% availability error budget at 14.4x rate.
+              At this pace, the entire 30d budget (43.8 min downtime) will be consumed in ~2 days.
+            action: >-
+              Check analytics pod health and Python memory pressure.
+              Verify database query engine health. Check for long-running queries blocking connections.
+              Examine CDC pipeline freshness.
+
+        - alert: SLOAvailabilitySlowBurn
+          expr: |
+            (
+              (1 - sum(rate(http_requests_total{job="analytics", code!~"5.."}[6h])) / sum(rate(http_requests_total{job="analytics"}[6h])))
+              / (1 - 0.999)
+            ) >= 6
+            and
+            (
+              (1 - sum(rate(http_requests_total{job="analytics", code!~"5.."}[30m])) / sum(rate(http_requests_total{job="analytics"}[30m])))
+              / (1 - 0.999)
+            ) >= 6
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo_type: availability
+            service: analytics
+            slo_target: "99.9%"
+            burn_rate_type: slow
+            runbook: docs/runbooks/analytics-runbook.md
+          annotations:
+            summary: "Analytics availability SLO slow burn (TICKET)"
+            description: >-
+              Analytics is slowly burning its 99.9% availability error budget at 6x rate.
+              Budget remaining: {{ with query "slo:error_budget_remaining:ratio{service='analytics'}" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+            action: >-
+              Review query performance trends. Check for memory leaks in Python process.
+              Investigate database connection pool issues. Schedule investigation.
+
+        # ──────────────────────────────────────────────────────────────────
+        # RL Engine — 99.9% availability (budget: 43.8 min / 30d)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: SLOAvailabilityFastBurn
+          expr: |
+            (
+              (1 - sum(rate(http_requests_total{job="rl-engine", code!~"5.."}[1h])) / sum(rate(http_requests_total{job="rl-engine"}[1h])))
+              / (1 - 0.999)
+            ) >= 14.4
+            and
+            (
+              (1 - sum(rate(http_requests_total{job="rl-engine", code!~"5.."}[5m])) / sum(rate(http_requests_total{job="rl-engine"}[5m])))
+              / (1 - 0.999)
+            ) >= 14.4
+          for: 2m
+          labels:
+            severity: page
+            team: platform
+            slo_type: availability
+            service: rl-engine
+            slo_target: "99.9%"
+            burn_rate_type: fast
+            runbook: docs/runbooks/rl-engine-runbook.md
+          annotations:
+            summary: "RL Engine availability SLO fast burn (PAGE)"
+            description: >-
+              RL Engine is burning through its 99.9% availability error budget at 14.4x rate.
+              RL Engine failures degrade circuit breaker tuning and rate limit policy quality.
+              At this pace, the entire 30d budget (43.8 min) will be consumed in ~2 days.
+            action: >-
+              Check rl-engine pod health and Python memory.
+              Verify knowledge base freshness and CDC pipeline health.
+              Examine model inference errors. Check Kafka consumer lag.
+
+        - alert: SLOAvailabilitySlowBurn
+          expr: |
+            (
+              (1 - sum(rate(http_requests_total{job="rl-engine", code!~"5.."}[6h])) / sum(rate(http_requests_total{job="rl-engine"}[6h])))
+              / (1 - 0.999)
+            ) >= 6
+            and
+            (
+              (1 - sum(rate(http_requests_total{job="rl-engine", code!~"5.."}[30m])) / sum(rate(http_requests_total{job="rl-engine"}[30m])))
+              / (1 - 0.999)
+            ) >= 6
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo_type: availability
+            service: rl-engine
+            slo_target: "99.9%"
+            burn_rate_type: slow
+            runbook: docs/runbooks/rl-engine-runbook.md
+          annotations:
+            summary: "RL Engine availability SLO slow burn (TICKET)"
+            description: >-
+              RL Engine is slowly burning its 99.9% availability error budget at 6x rate.
+              Budget remaining: {{ with query "slo:error_budget_remaining:ratio{service='rl-engine'}" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+            action: >-
+              Review knowledge base staleness. Check model retraining pipeline.
+              Investigate Python GC pressure patterns. Schedule investigation.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Schema Registry — 99.95% availability (budget: 21.9 min / 30d)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: SLOAvailabilityFastBurn
+          expr: |
+            (
+              (1 - sum(rate(http_requests_total{job="schema-registry", code!~"5.."}[1h])) / sum(rate(http_requests_total{job="schema-registry"}[1h])))
+              / (1 - 0.9995)
+            ) >= 14.4
+            and
+            (
+              (1 - sum(rate(http_requests_total{job="schema-registry", code!~"5.."}[5m])) / sum(rate(http_requests_total{job="schema-registry"}[5m])))
+              / (1 - 0.9995)
+            ) >= 14.4
+          for: 2m
+          labels:
+            severity: page
+            team: platform
+            slo_type: availability
+            service: schema-registry
+            slo_target: "99.95%"
+            burn_rate_type: fast
+            runbook: docs/runbooks/schema-registry-runbook.md
+          annotations:
+            summary: "Schema Registry availability SLO fast burn (PAGE)"
+            description: >-
+              Schema Registry is burning through its 99.95% availability error budget at 14.4x rate.
+              Schema Registry failures cascade to ALL services that depend on schema validation.
+              At this pace, the entire 30d budget (21.9 min) will be consumed in ~2 days.
+            action: >-
+              Check schema-registry pod health: kubectl get pods -n production -l app.kubernetes.io/name=schema-registry
+              Verify Kafka connectivity for schema storage backend.
+              Check for schema compatibility violation storms.
+
+        - alert: SLOAvailabilitySlowBurn
+          expr: |
+            (
+              (1 - sum(rate(http_requests_total{job="schema-registry", code!~"5.."}[6h])) / sum(rate(http_requests_total{job="schema-registry"}[6h])))
+              / (1 - 0.9995)
+            ) >= 6
+            and
+            (
+              (1 - sum(rate(http_requests_total{job="schema-registry", code!~"5.."}[30m])) / sum(rate(http_requests_total{job="schema-registry"}[30m])))
+              / (1 - 0.9995)
+            ) >= 6
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo_type: availability
+            service: schema-registry
+            slo_target: "99.95%"
+            burn_rate_type: slow
+            runbook: docs/runbooks/schema-registry-runbook.md
+          annotations:
+            summary: "Schema Registry availability SLO slow burn (TICKET)"
+            description: >-
+              Schema Registry is slowly burning its 99.95% availability error budget at 6x rate.
+              Budget remaining: {{ with query "slo:error_budget_remaining:ratio{service='schema-registry'}" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+            action: >-
+              Review schema registration patterns. Check for schema compatibility check failures.
+              Verify Go service memory and goroutine health. Schedule investigation.
+
+    # ══════════════════════════════════════════════════════════════════════
+    # GROUP 3: Latency SLO Burn Rate Alerts
+    # Tracks p99 latency against per-service thresholds using 2-window burn rates
+    # ══════════════════════════════════════════════════════════════════════
+    - name: slo-latency
+      rules:
+        # ──────────────────────────────────────────────────────────────────
+        # Gateway — p99 < 500ms latency SLO
+        # ──────────────────────────────────────────────────────────────────
+        - alert: SLOLatencyFastBurn
+          expr: |
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="gateway", le="0.5"}[1h])) / sum(rate(http_request_duration_seconds_count{job="gateway"}[1h])))
+              / (1 - 0.99)
+            ) >= 14.4
+            and
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="gateway", le="0.5"}[5m])) / sum(rate(http_request_duration_seconds_count{job="gateway"}[5m])))
+              / (1 - 0.99)
+            ) >= 14.4
+          for: 2m
+          labels:
+            severity: page
+            team: platform
+            slo_type: latency
+            service: gateway
+            slo_target: "p99<500ms"
+            burn_rate_type: fast
+            runbook: docs/runbooks/gateway-runbook.md
+          annotations:
+            summary: "Gateway latency SLO fast burn (PAGE)"
+            description: >-
+              Gateway p99 latency is burning through its SLO budget at 14.4x rate (>500ms threshold).
+              More than 1% of requests are exceeding 500ms, consuming the 30d latency budget rapidly.
+              Gateway latency degradation cascades to ALL downstream services and user experience.
+            action: >-
+              Check for CPU throttling: kubectl top pods -n production -l app.kubernetes.io/name=gateway
+              Review connection pool saturation. Check rate limiter queue depth.
+              Examine downstream service latency. Consider scaling gateway replicas.
+
+        - alert: SLOLatencySlowBurn
+          expr: |
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="gateway", le="0.5"}[6h])) / sum(rate(http_request_duration_seconds_count{job="gateway"}[6h])))
+              / (1 - 0.99)
+            ) >= 6
+            and
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="gateway", le="0.5"}[30m])) / sum(rate(http_request_duration_seconds_count{job="gateway"}[30m])))
+              / (1 - 0.99)
+            ) >= 6
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo_type: latency
+            service: gateway
+            slo_target: "p99<500ms"
+            burn_rate_type: slow
+            runbook: docs/runbooks/gateway-runbook.md
+          annotations:
+            summary: "Gateway latency SLO slow burn (TICKET)"
+            description: >-
+              Gateway p99 latency is slowly burning its SLO budget at 6x rate (>500ms threshold).
+              Sustained degradation consuming ~5% of 30d budget per 6h.
+            action: >-
+              Review traffic growth patterns. Check for resource contention.
+              Investigate route cache miss rates. Schedule capacity review.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Identity — p99 < 200ms latency SLO
+        # ──────────────────────────────────────────────────────────────────
+        - alert: SLOLatencyFastBurn
+          expr: |
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="identity", le="0.2"}[1h])) / sum(rate(http_request_duration_seconds_count{job="identity"}[1h])))
+              / (1 - 0.99)
+            ) >= 14.4
+            and
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="identity", le="0.2"}[5m])) / sum(rate(http_request_duration_seconds_count{job="identity"}[5m])))
+              / (1 - 0.99)
+            ) >= 14.4
+          for: 2m
+          labels:
+            severity: page
+            team: platform
+            slo_type: latency
+            service: identity
+            slo_target: "p99<200ms"
+            burn_rate_type: fast
+            runbook: docs/runbooks/identity-runbook.md
+          annotations:
+            summary: "Identity latency SLO fast burn (PAGE)"
+            description: >-
+              Identity p99 latency is burning through its SLO budget at 14.4x rate (>200ms threshold).
+              Slow identity responses block ALL authenticated requests across the platform.
+            action: >-
+              Check SPIRE server response times. Verify SVID cache hit rate.
+              Review Rust service CPU and memory. Check database query performance.
+
+        - alert: SLOLatencySlowBurn
+          expr: |
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="identity", le="0.2"}[6h])) / sum(rate(http_request_duration_seconds_count{job="identity"}[6h])))
+              / (1 - 0.99)
+            ) >= 6
+            and
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="identity", le="0.2"}[30m])) / sum(rate(http_request_duration_seconds_count{job="identity"}[30m])))
+              / (1 - 0.99)
+            ) >= 6
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo_type: latency
+            service: identity
+            slo_target: "p99<200ms"
+            burn_rate_type: slow
+            runbook: docs/runbooks/identity-runbook.md
+          annotations:
+            summary: "Identity latency SLO slow burn (TICKET)"
+            description: >-
+              Identity p99 latency is slowly burning its SLO budget at 6x rate (>200ms threshold).
+            action: >-
+              Review SVID rotation timing patterns. Check for trust bundle refresh delays.
+              Investigate database query plan regressions. Schedule investigation.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Catalog — p99 < 300ms latency SLO
+        # ──────────────────────────────────────────────────────────────────
+        - alert: SLOLatencyFastBurn
+          expr: |
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="catalog", le="0.3"}[1h])) / sum(rate(http_request_duration_seconds_count{job="catalog"}[1h])))
+              / (1 - 0.99)
+            ) >= 14.4
+            and
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="catalog", le="0.3"}[5m])) / sum(rate(http_request_duration_seconds_count{job="catalog"}[5m])))
+              / (1 - 0.99)
+            ) >= 14.4
+          for: 2m
+          labels:
+            severity: page
+            team: platform
+            slo_type: latency
+            service: catalog
+            slo_target: "p99<300ms"
+            burn_rate_type: fast
+            runbook: docs/runbooks/catalog-runbook.md
+          annotations:
+            summary: "Catalog latency SLO fast burn (PAGE)"
+            description: >-
+              Catalog p99 latency is burning through its SLO budget at 14.4x rate (>300ms threshold).
+              Slow catalog responses impact product search and order placement.
+            action: >-
+              Check Meilisearch/Elasticsearch query latency. Review database slow query log.
+              Check Node.js V8 heap usage and GC pauses. Verify search index health.
+              Consider scaling catalog replicas.
+
+        - alert: SLOLatencySlowBurn
+          expr: |
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="catalog", le="0.3"}[6h])) / sum(rate(http_request_duration_seconds_count{job="catalog"}[6h])))
+              / (1 - 0.99)
+            ) >= 6
+            and
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="catalog", le="0.3"}[30m])) / sum(rate(http_request_duration_seconds_count{job="catalog"}[30m])))
+              / (1 - 0.99)
+            ) >= 6
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo_type: latency
+            service: catalog
+            slo_target: "p99<300ms"
+            burn_rate_type: slow
+            runbook: docs/runbooks/catalog-runbook.md
+          annotations:
+            summary: "Catalog latency SLO slow burn (TICKET)"
+            description: >-
+              Catalog p99 latency is slowly burning its SLO budget at 6x rate (>300ms threshold).
+            action: >-
+              Review search index fragmentation. Check for growing database query times.
+              Investigate V8 heap pressure trends. Schedule performance review.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Order — p99 < 1s latency SLO
+        # ──────────────────────────────────────────────────────────────────
+        - alert: SLOLatencyFastBurn
+          expr: |
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="order", le="1"}[1h])) / sum(rate(http_request_duration_seconds_count{job="order"}[1h])))
+              / (1 - 0.99)
+            ) >= 14.4
+            and
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="order", le="1"}[5m])) / sum(rate(http_request_duration_seconds_count{job="order"}[5m])))
+              / (1 - 0.99)
+            ) >= 14.4
+          for: 2m
+          labels:
+            severity: page
+            team: platform
+            slo_type: latency
+            service: order
+            slo_target: "p99<1s"
+            burn_rate_type: fast
+            runbook: docs/runbooks/order-runbook.md
+          annotations:
+            summary: "Order latency SLO fast burn (PAGE)"
+            description: >-
+              Order p99 latency is burning through its SLO budget at 14.4x rate (>1s threshold).
+              Slow orders directly impact customer checkout experience and revenue.
+              JVM GC pauses or downstream service delays are likely culprits.
+            action: >-
+              Check JVM GC pauses and heap usage: check Grafana JVM dashboard.
+              Examine saga step latency breakdown in Tempo traces.
+              Verify payment service response times. Check database connection pool utilization.
+              Consider increasing JVM heap if GC pressure is the cause.
+
+        - alert: SLOLatencySlowBurn
+          expr: |
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="order", le="1"}[6h])) / sum(rate(http_request_duration_seconds_count{job="order"}[6h])))
+              / (1 - 0.99)
+            ) >= 6
+            and
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="order", le="1"}[30m])) / sum(rate(http_request_duration_seconds_count{job="order"}[30m])))
+              / (1 - 0.99)
+            ) >= 6
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo_type: latency
+            service: order
+            slo_target: "p99<1s"
+            burn_rate_type: slow
+            runbook: docs/runbooks/order-runbook.md
+          annotations:
+            summary: "Order latency SLO slow burn (TICKET)"
+            description: >-
+              Order p99 latency is slowly burning its SLO budget at 6x rate (>1s threshold).
+              Revenue-impacting — prioritize investigation.
+            action: >-
+              Review JVM GC tuning. Check for growing saga execution times.
+              Investigate downstream latency trends. Schedule JVM heap/profile analysis.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Payment — p99 < 500ms latency SLO
+        # ──────────────────────────────────────────────────────────────────
+        - alert: SLOLatencyFastBurn
+          expr: |
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="payment", le="0.5"}[1h])) / sum(rate(http_request_duration_seconds_count{job="payment"}[1h])))
+              / (1 - 0.99)
+            ) >= 14.4
+            and
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="payment", le="0.5"}[5m])) / sum(rate(http_request_duration_seconds_count{job="payment"}[5m])))
+              / (1 - 0.99)
+            ) >= 14.4
+          for: 2m
+          labels:
+            severity: page
+            team: platform
+            slo_type: latency
+            service: payment
+            slo_target: "p99<500ms"
+            burn_rate_type: fast
+            runbook: docs/runbooks/payment-runbook.md
+          annotations:
+            summary: "Payment latency SLO fast burn (PAGE)"
+            description: >-
+              Payment p99 latency is burning through its SLO budget at 14.4x rate (>500ms threshold).
+              CRITICAL — slow payments block order completion and revenue. External gateway
+              latency is the most common cause.
+            action: >-
+              Check external payment gateway response times.
+              Verify circuit breaker is not stuck in half-open state.
+              Examine 3DS challenge completion rates. Consider failover to secondary gateway.
+
+        - alert: SLOLatencySlowBurn
+          expr: |
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="payment", le="0.5"}[6h])) / sum(rate(http_request_duration_seconds_count{job="payment"}[6h])))
+              / (1 - 0.99)
+            ) >= 6
+            and
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="payment", le="0.5"}[30m])) / sum(rate(http_request_duration_seconds_count{job="payment"}[30m])))
+              / (1 - 0.99)
+            ) >= 6
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo_type: latency
+            service: payment
+            slo_target: "p99<500ms"
+            burn_rate_type: slow
+            runbook: docs/runbooks/payment-runbook.md
+          annotations:
+            summary: "Payment latency SLO slow burn (TICKET)"
+            description: >-
+              Payment p99 latency is slowly burning its SLO budget at 6x rate (>500ms threshold).
+              Revenue-critical — prioritize even slow burns.
+            action: >-
+              Review payment gateway SLA reports. Check for periodic gateway degradation.
+              Investigate token cache effectiveness. Plan optimization within current sprint.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Notification — p99 < 2s latency SLO
+        # ──────────────────────────────────────────────────────────────────
+        - alert: SLOLatencyFastBurn
+          expr: |
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="notification", le="2"}[1h])) / sum(rate(http_request_duration_seconds_count{job="notification"}[1h])))
+              / (1 - 0.99)
+            ) >= 14.4
+            and
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="notification", le="2"}[5m])) / sum(rate(http_request_duration_seconds_count{job="notification"}[5m])))
+              / (1 - 0.99)
+            ) >= 14.4
+          for: 2m
+          labels:
+            severity: page
+            team: platform
+            slo_type: latency
+            service: notification
+            slo_target: "p99<2s"
+            burn_rate_type: fast
+            runbook: docs/runbooks/notification-runbook.md
+          annotations:
+            summary: "Notification latency SLO fast burn (PAGE)"
+            description: >-
+              Notification p99 latency is burning through its SLO budget at 14.4x rate (>2s threshold).
+              The 2s threshold is generous — exceeding it suggests serious resource or provider issues.
+            action: >-
+              Check Python process memory and CPU. Examine Kafka consumer lag.
+              Verify email/SMS provider API response times. Check template rendering performance.
+
+        - alert: SLOLatencySlowBurn
+          expr: |
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="notification", le="2"}[6h])) / sum(rate(http_request_duration_seconds_count{job="notification"}[6h])))
+              / (1 - 0.99)
+            ) >= 6
+            and
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="notification", le="2"}[30m])) / sum(rate(http_request_duration_seconds_count{job="notification"}[30m])))
+              / (1 - 0.99)
+            ) >= 6
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo_type: latency
+            service: notification
+            slo_target: "p99<2s"
+            burn_rate_type: slow
+            runbook: docs/runbooks/notification-runbook.md
+          annotations:
+            summary: "Notification latency SLO slow burn (TICKET)"
+            description: >-
+              Notification p99 latency is slowly burning its SLO budget at 6x rate (>2s threshold).
+            action: >-
+              Review delivery provider latency trends. Check for Python memory growth patterns.
+              Investigate Kafka consumer throughput. Schedule investigation.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Analytics — p99 < 2s latency SLO
+        # ──────────────────────────────────────────────────────────────────
+        - alert: SLOLatencyFastBurn
+          expr: |
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="analytics", le="2"}[1h])) / sum(rate(http_request_duration_seconds_count{job="analytics"}[1h])))
+              / (1 - 0.99)
+            ) >= 14.4
+            and
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="analytics", le="2"}[5m])) / sum(rate(http_request_duration_seconds_count{job="analytics"}[5m])))
+              / (1 - 0.99)
+            ) >= 14.4
+          for: 2m
+          labels:
+            severity: page
+            team: platform
+            slo_type: latency
+            service: analytics
+            slo_target: "p99<2s"
+            burn_rate_type: fast
+            runbook: docs/runbooks/analytics-runbook.md
+          annotations:
+            summary: "Analytics latency SLO fast burn (PAGE)"
+            description: >-
+              Analytics p99 latency is burning through its SLO budget at 14.4x rate (>2s threshold).
+              Exceeding 2s suggests database query engine issues or resource exhaustion.
+            action: >-
+              Check for long-running queries: check database active connections.
+              Verify materialized view freshness. Review Python memory usage.
+              Consider query timeout enforcement and load shedding.
+
+        - alert: SLOLatencySlowBurn
+          expr: |
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="analytics", le="2"}[6h])) / sum(rate(http_request_duration_seconds_count{job="analytics"}[6h])))
+              / (1 - 0.99)
+            ) >= 6
+            and
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="analytics", le="2"}[30m])) / sum(rate(http_request_duration_seconds_count{job="analytics"}[30m])))
+              / (1 - 0.99)
+            ) >= 6
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo_type: latency
+            service: analytics
+            slo_target: "p99<2s"
+            burn_rate_type: slow
+            runbook: docs/runbooks/analytics-runbook.md
+          annotations:
+            summary: "Analytics latency SLO slow burn (TICKET)"
+            description: >-
+              Analytics p99 latency is slowly burning its SLO budget at 6x rate (>2s threshold).
+            action: >-
+              Review query performance trends. Check for data growth requiring partitioning.
+              Investigate Python GC pressure. Schedule capacity planning review.
+
+        # ──────────────────────────────────────────────────────────────────
+        # RL Engine — p99 < 1s latency SLO
+        # ──────────────────────────────────────────────────────────────────
+        - alert: SLOLatencyFastBurn
+          expr: |
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="rl-engine", le="1"}[1h])) / sum(rate(http_request_duration_seconds_count{job="rl-engine"}[1h])))
+              / (1 - 0.99)
+            ) >= 14.4
+            and
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="rl-engine", le="1"}[5m])) / sum(rate(http_request_duration_seconds_count{job="rl-engine"}[5m])))
+              / (1 - 0.99)
+            ) >= 14.4
+          for: 2m
+          labels:
+            severity: page
+            team: platform
+            slo_type: latency
+            service: rl-engine
+            slo_target: "p99<1s"
+            burn_rate_type: fast
+            runbook: docs/runbooks/rl-engine-runbook.md
+          annotations:
+            summary: "RL Engine latency SLO fast burn (PAGE)"
+            description: >-
+              RL Engine p99 latency is burning through its SLO budget at 14.4x rate (>1s threshold).
+              Slow RL responses degrade rate limiting and circuit breaker decisions.
+            action: >-
+              Check model inference latency. Verify knowledge base query performance.
+              Review Python CPU and memory usage. Check Kafka consumer processing time.
+
+        - alert: SLOLatencySlowBurn
+          expr: |
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="rl-engine", le="1"}[6h])) / sum(rate(http_request_duration_seconds_count{job="rl-engine"}[6h])))
+              / (1 - 0.99)
+            ) >= 6
+            and
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="rl-engine", le="1"}[30m])) / sum(rate(http_request_duration_seconds_count{job="rl-engine"}[30m])))
+              / (1 - 0.99)
+            ) >= 6
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo_type: latency
+            service: rl-engine
+            slo_target: "p99<1s"
+            burn_rate_type: slow
+            runbook: docs/runbooks/rl-engine-runbook.md
+          annotations:
+            summary: "RL Engine latency SLO slow burn (TICKET)"
+            description: >-
+              RL Engine p99 latency is slowly burning its SLO budget at 6x rate (>1s threshold).
+            action: >-
+              Review model inference performance trends. Check knowledge base growth.
+              Investigate Python GC patterns. Schedule model optimization review.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Schema Registry — p99 < 200ms latency SLO
+        # ──────────────────────────────────────────────────────────────────
+        - alert: SLOLatencyFastBurn
+          expr: |
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="schema-registry", le="0.2"}[1h])) / sum(rate(http_request_duration_seconds_count{job="schema-registry"}[1h])))
+              / (1 - 0.99)
+            ) >= 14.4
+            and
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="schema-registry", le="0.2"}[5m])) / sum(rate(http_request_duration_seconds_count{job="schema-registry"}[5m])))
+              / (1 - 0.99)
+            ) >= 14.4
+          for: 2m
+          labels:
+            severity: page
+            team: platform
+            slo_type: latency
+            service: schema-registry
+            slo_target: "p99<200ms"
+            burn_rate_type: fast
+            runbook: docs/runbooks/schema-registry-runbook.md
+          annotations:
+            summary: "Schema Registry latency SLO fast burn (PAGE)"
+            description: >-
+              Schema Registry p99 latency is burning through its SLO budget at 14.4x rate (>200ms threshold).
+              Slow schema lookups cascade to ALL services for serialization/deserialization.
+            action: >-
+              Check Go service goroutine count and memory. Verify Kafka backend connectivity.
+              Check for schema compatibility check storms. Review cache hit rate.
+
+        - alert: SLOLatencySlowBurn
+          expr: |
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="schema-registry", le="0.2"}[6h])) / sum(rate(http_request_duration_seconds_count{job="schema-registry"}[6h])))
+              / (1 - 0.99)
+            ) >= 6
+            and
+            (
+              (1 - sum(rate(http_request_duration_seconds_bucket{job="schema-registry", le="0.2"}[30m])) / sum(rate(http_request_duration_seconds_count{job="schema-registry"}[30m])))
+              / (1 - 0.99)
+            ) >= 6
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo_type: latency
+            service: schema-registry
+            slo_target: "p99<200ms"
+            burn_rate_type: slow
+            runbook: docs/runbooks/schema-registry-runbook.md
+          annotations:
+            summary: "Schema Registry latency SLO slow burn (TICKET)"
+            description: >-
+              Schema Registry p99 latency is slowly burning its SLO budget at 6x rate (>200ms threshold).
+            action: >-
+              Review cache effectiveness trends. Check for growing schema count impacting lookups.
+              Investigate Kafka topic partition distribution. Schedule performance review.
+
+    # ══════════════════════════════════════════════════════════════════════
+    # GROUP 4: Error Budget Consumption Tracking
+    # Tracks how much of the 30d error budget has been consumed per service
+    # Thresholds: 50% (info), 80% (warning), 95% (critical)
+    # ══════════════════════════════════════════════════════════════════════
+    - name: error-budget
+      rules:
+        # ──────────────────────────────────────────────────────────────────
+        # Gateway — 99.95% availability (30d budget: 21.9 min)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: ErrorBudget50PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="gateway"} >= 0.5
+          for: 5m
+          labels:
+            severity: info
+            team: platform
+            slo_type: availability
+            service: gateway
+            budget_threshold: "50%"
+            runbook: docs/runbooks/gateway-runbook.md
+          annotations:
+            summary: "Gateway has consumed 50% of 30d availability error budget"
+            description: >-
+              Gateway has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Budget remaining: {{ with query "slo:error_budget_remaining:ratio{service='gateway'}" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+              At current rate, SLO violation is projected within {{ with query "slo:error_budget_remaining:ratio{service='gateway'}" }}{{ . | first | value | printf "%.0f" }}{{ end }}% of the remaining budget period.
+            action: >-
+              Monitor trend. No immediate action required but review incident history.
+              Consider proactively addressing known issues to prevent budget exhaustion.
+
+        - alert: ErrorBudget80PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="gateway"} >= 0.8
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+            slo_type: availability
+            service: gateway
+            budget_threshold: "80%"
+            runbook: docs/runbooks/gateway-runbook.md
+          annotations:
+            summary: "Gateway has consumed 80% of 30d availability error budget"
+            description: >-
+              Gateway has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Only {{ with query "slo:error_budget_remaining:ratio{service='gateway'}" }}{{ . | first | value | humanizePercentage }}{{ end }} remains.
+              Any additional downtime will likely result in SLO violation.
+            action: >-
+              Prioritize reliability work. Freeze non-critical deployments.
+              Review all open incidents. Consider increasing redundancy or failover capacity.
+
+        - alert: ErrorBudget95PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="gateway"} >= 0.95
+          for: 1m
+          labels:
+            severity: critical
+            team: platform
+            slo_type: availability
+            service: gateway
+            budget_threshold: "95%"
+            runbook: docs/runbooks/gateway-runbook.md
+          annotations:
+            summary: "Gateway has consumed 95% of 30d availability error budget (CRITICAL)"
+            description: >-
+              Gateway has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              SLO violation is imminent. Only {{ with query "slo:error_budget_remaining:ratio{service='gateway'}" }}{{ . | first | value | humanizePercentage }}{{ end }} remains.
+              Freeze all deployments. Initiate incident response if not already active.
+            action: >-
+              EMERGENCY: Freeze all deployments to gateway and downstream services.
+              Activate incident response. Review all recent changes.
+              Consider rolling back recent deployments. Escalate to engineering leadership.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Identity — 99.99% availability (30d budget: 4.3 min)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: ErrorBudget50PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="identity"} >= 0.5
+          for: 5m
+          labels:
+            severity: info
+            team: platform
+            slo_type: availability
+            service: identity
+            budget_threshold: "50%"
+            runbook: docs/runbooks/identity-runbook.md
+          annotations:
+            summary: "Identity has consumed 50% of 30d availability error budget"
+            description: >-
+              Identity has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              With only 4.3 min total budget, even 50% consumption is concerning (2.15 min used).
+              Budget remaining: {{ with query "slo:error_budget_remaining:ratio{service='identity'}" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+            action: >-
+              Review SVID rotation reliability. Check for intermittent SPIRE server issues.
+              Monitor closely — the tight budget leaves little room for further errors.
+
+        - alert: ErrorBudget80PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="identity"} >= 0.8
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+            slo_type: availability
+            service: identity
+            budget_threshold: "80%"
+            runbook: docs/runbooks/identity-runbook.md
+          annotations:
+            summary: "Identity has consumed 80% of 30d availability error budget"
+            description: >-
+              Identity has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Only ~52 seconds of downtime remaining out of 4.3 min budget.
+              Identity failures block ALL authenticated requests.
+            action: >-
+              Prioritize identity service stability. Review all recent identity/spire changes.
+              Consider adding SPIRE server replicas. Verify failover mechanisms.
+
+        - alert: ErrorBudget95PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="identity"} >= 0.95
+          for: 1m
+          labels:
+            severity: critical
+            team: platform
+            slo_type: availability
+            service: identity
+            budget_threshold: "95%"
+            runbook: docs/runbooks/identity-runbook.md
+          annotations:
+            summary: "Identity has consumed 95% of 30d availability error budget (CRITICAL)"
+            description: >-
+              Identity has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Only ~13 seconds of downtime remaining! SLO violation is imminent.
+              Identity is a platform-wide dependency — escalate immediately.
+            action: >-
+              EMERGENCY: Activate incident response. All services are at risk.
+              Check SPIRE server cluster health immediately.
+              Consider emergency SPIRE server restart. Escalate to engineering leadership.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Catalog — 99.95% availability (30d budget: 21.9 min)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: ErrorBudget50PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="catalog"} >= 0.5
+          for: 5m
+          labels:
+            severity: info
+            team: platform
+            slo_type: availability
+            service: catalog
+            budget_threshold: "50%"
+            runbook: docs/runbooks/catalog-runbook.md
+          annotations:
+            summary: "Catalog has consumed 50% of 30d availability error budget"
+            description: >-
+              Catalog has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Budget remaining: {{ with query "slo:error_budget_remaining:ratio{service='catalog'}" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+            action: >-
+              Monitor trend. Review database and search index health.
+              Check for increasing error rates in Node.js application logs.
+
+        - alert: ErrorBudget80PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="catalog"} >= 0.8
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+            slo_type: availability
+            service: catalog
+            budget_threshold: "80%"
+            runbook: docs/runbooks/catalog-runbook.md
+          annotations:
+            summary: "Catalog has consumed 80% of 30d availability error budget"
+            description: >-
+              Catalog has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Only {{ with query "slo:error_budget_remaining:ratio{service='catalog'}" }}{{ . | first | value | humanizePercentage }}{{ end }} remains.
+            action: >-
+              Prioritize catalog reliability. Freeze non-critical catalog deployments.
+              Review search index health and database replica status.
+
+        - alert: ErrorBudget95PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="catalog"} >= 0.95
+          for: 1m
+          labels:
+            severity: critical
+            team: platform
+            slo_type: availability
+            service: catalog
+            budget_threshold: "95%"
+            runbook: docs/runbooks/catalog-runbook.md
+          annotations:
+            summary: "Catalog has consumed 95% of 30d availability error budget (CRITICAL)"
+            description: >-
+              Catalog has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              SLO violation is imminent. Catalog failures cascade to order placement.
+            action: >-
+              EMERGENCY: Freeze all catalog deployments. Activate incident response.
+              Check database and search engine health. Consider emergency replica addition.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Order — 99.95% availability (30d budget: 21.9 min)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: ErrorBudget50PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="order"} >= 0.5
+          for: 5m
+          labels:
+            severity: info
+            team: platform
+            slo_type: availability
+            service: order
+            budget_threshold: "50%"
+            runbook: docs/runbooks/order-runbook.md
+          annotations:
+            summary: "Order has consumed 50% of 30d availability error budget"
+            description: >-
+              Order has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Budget remaining: {{ with query "slo:error_budget_remaining:ratio{service='order'}" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+              Revenue-impacting service — monitor closely.
+            action: >-
+              Review JVM health and saga completion rates. Check downstream dependencies.
+              Monitor closely as order failures directly impact revenue.
+
+        - alert: ErrorBudget80PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="order"} >= 0.8
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+            slo_type: availability
+            service: order
+            budget_threshold: "80%"
+            runbook: docs/runbooks/order-runbook.md
+          annotations:
+            summary: "Order has consumed 80% of 30d availability error budget"
+            description: >-
+              Order has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Revenue-impacting service — only {{ with query "slo:error_budget_remaining:ratio{service='order'}" }}{{ . | first | value | humanizePercentage }}{{ end }} remains.
+            action: >-
+              Prioritize order service stability. Freeze all order service deployments.
+              Review JVM heap and GC configuration. Check saga compensation rates.
+
+        - alert: ErrorBudget95PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="order"} >= 0.95
+          for: 1m
+          labels:
+            severity: critical
+            team: platform
+            slo_type: availability
+            service: order
+            budget_threshold: "95%"
+            runbook: docs/runbooks/order-runbook.md
+          annotations:
+            summary: "Order has consumed 95% of 30d availability error budget (CRITICAL)"
+            description: >-
+              Order has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Revenue service SLO violation is IMMINENT. Escalate to business stakeholders.
+            action: >-
+              EMERGENCY: Activate incident response. Escalate to business stakeholders.
+              Freeze all deployments across order and payment services.
+              Consider emergency JVM heap increase. Review all saga failures.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Payment — 99.99% availability (30d budget: 4.3 min)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: ErrorBudget50PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="payment"} >= 0.5
+          for: 5m
+          labels:
+            severity: info
+            team: platform
+            slo_type: availability
+            service: payment
+            budget_threshold: "50%"
+            runbook: docs/runbooks/payment-runbook.md
+          annotations:
+            summary: "Payment has consumed 50% of 30d availability error budget"
+            description: >-
+              Payment has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              With only 4.3 min total budget, 50% consumption means ~2.15 min of downtime used.
+              Revenue-critical service — monitor closely.
+            action: >-
+              Review payment gateway health. Check circuit breaker open/close frequency.
+              Monitor external provider SLA compliance.
+
+        - alert: ErrorBudget80PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="payment"} >= 0.8
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+            slo_type: availability
+            service: payment
+            budget_threshold: "80%"
+            runbook: docs/runbooks/payment-runbook.md
+          annotations:
+            summary: "Payment has consumed 80% of 30d availability error budget"
+            description: >-
+              Payment has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Only ~52 seconds of downtime remaining! Revenue-critical service.
+            action: >-
+              Prioritize payment reliability. Review external gateway SLA.
+              Consider activating secondary payment provider. Freeze non-critical changes.
+
+        - alert: ErrorBudget95PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="payment"} >= 0.95
+          for: 1m
+          labels:
+            severity: critical
+            team: platform
+            slo_type: availability
+            service: payment
+            budget_threshold: "95%"
+            runbook: docs/runbooks/payment-runbook.md
+          annotations:
+            summary: "Payment has consumed 95% of 30d availability error budget (CRITICAL)"
+            description: >-
+              Payment has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Only ~13 seconds of downtime remaining! Revenue SLO violation is IMMINENT.
+              Escalate to business stakeholders immediately.
+            action: >-
+              EMERGENCY: Activate incident response. Escalate to business leadership.
+              Activate secondary payment provider if available.
+              Consider emergency circuit breaker configuration changes.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Notification — 99.9% availability (30d budget: 43.8 min)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: ErrorBudget50PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="notification"} >= 0.5
+          for: 5m
+          labels:
+            severity: info
+            team: platform
+            slo_type: availability
+            service: notification
+            budget_threshold: "50%"
+            runbook: docs/runbooks/notification-runbook.md
+          annotations:
+            summary: "Notification has consumed 50% of 30d availability error budget"
+            description: >-
+              Notification has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Budget remaining: {{ with query "slo:error_budget_remaining:ratio{service='notification'}" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+            action: >-
+              Review notification delivery provider health. Check Python service memory.
+              Monitor Kafka consumer processing rates.
+
+        - alert: ErrorBudget80PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="notification"} >= 0.8
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+            slo_type: availability
+            service: notification
+            budget_threshold: "80%"
+            runbook: docs/runbooks/notification-runbook.md
+          annotations:
+            summary: "Notification has consumed 80% of 30d availability error budget"
+            description: >-
+              Notification has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Only {{ with query "slo:error_budget_remaining:ratio{service='notification'}" }}{{ . | first | value | humanizePercentage }}{{ end }} remains.
+            action: >-
+              Prioritize notification reliability. Review delivery provider errors.
+              Check for Python memory leaks. Consider scaling replicas.
+
+        - alert: ErrorBudget95PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="notification"} >= 0.95
+          for: 1m
+          labels:
+            severity: critical
+            team: platform
+            slo_type: availability
+            service: notification
+            budget_threshold: "95%"
+            runbook: docs/runbooks/notification-runbook.md
+          annotations:
+            summary: "Notification has consumed 95% of 30d availability error budget (CRITICAL)"
+            description: >-
+              Notification has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              SLO violation is imminent. Transactional notifications may be delayed.
+            action: >-
+              EMERGENCY: Activate incident response. Check delivery provider status.
+              Consider switching to backup notification channel. Review Python memory urgently.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Analytics — 99.9% availability (30d budget: 43.8 min)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: ErrorBudget50PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="analytics"} >= 0.5
+          for: 5m
+          labels:
+            severity: info
+            team: platform
+            slo_type: availability
+            service: analytics
+            budget_threshold: "50%"
+            runbook: docs/runbooks/analytics-runbook.md
+          annotations:
+            summary: "Analytics has consumed 50% of 30d availability error budget"
+            description: >-
+              Analytics has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Budget remaining: {{ with query "slo:error_budget_remaining:ratio{service='analytics'}" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+            action: >-
+              Review query engine health. Check Python memory and CPU usage.
+              Verify CDC pipeline is feeding data correctly.
+
+        - alert: ErrorBudget80PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="analytics"} >= 0.8
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+            slo_type: availability
+            service: analytics
+            budget_threshold: "80%"
+            runbook: docs/runbooks/analytics-runbook.md
+          annotations:
+            summary: "Analytics has consumed 80% of 30d availability error budget"
+            description: >-
+              Analytics has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Only {{ with query "slo:error_budget_remaining:ratio{service='analytics'}" }}{{ . | first | value | humanizePercentage }}{{ end }} remains.
+            action: >-
+              Prioritize analytics reliability. Review database connection pool.
+              Check for memory leaks in Python process. Consider scaling.
+
+        - alert: ErrorBudget95PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="analytics"} >= 0.95
+          for: 1m
+          labels:
+            severity: critical
+            team: platform
+            slo_type: availability
+            service: analytics
+            budget_threshold: "95%"
+            runbook: docs/runbooks/analytics-runbook.md
+          annotations:
+            summary: "Analytics has consumed 95% of 30d availability error budget (CRITICAL)"
+            description: >-
+              Analytics has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              SLO violation is imminent. Dashboard and reporting functionality at risk.
+            action: >-
+              EMERGENCY: Activate incident response. Check database query engine.
+              Consider emergency Python process restart. Review memory configuration.
+
+        # ──────────────────────────────────────────────────────────────────
+        # RL Engine — 99.9% availability (30d budget: 43.8 min)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: ErrorBudget50PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="rl-engine"} >= 0.5
+          for: 5m
+          labels:
+            severity: info
+            team: platform
+            slo_type: availability
+            service: rl-engine
+            budget_threshold: "50%"
+            runbook: docs/runbooks/rl-engine-runbook.md
+          annotations:
+            summary: "RL Engine has consumed 50% of 30d availability error budget"
+            description: >-
+              RL Engine has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Budget remaining: {{ with query "slo:error_budget_remaining:ratio{service='rl-engine'}" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+              RL Engine degradation affects circuit breaker and rate limit policy quality.
+            action: >-
+              Review knowledge base freshness. Check model inference error rates.
+              Monitor Python process health and Kafka consumer lag.
+
+        - alert: ErrorBudget80PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="rl-engine"} >= 0.8
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+            slo_type: availability
+            service: rl-engine
+            budget_threshold: "80%"
+            runbook: docs/runbooks/rl-engine-runbook.md
+          annotations:
+            summary: "RL Engine has consumed 80% of 30d availability error budget"
+            description: >-
+              RL Engine has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Only {{ with query "slo:error_budget_remaining:ratio{service='rl-engine'}" }}{{ . | first | value | humanizePercentage }}{{ end }} remains.
+            action: >-
+              Prioritize RL Engine reliability. Review model serving pipeline.
+              Check for Python memory leaks. Consider knowledge base cleanup.
+
+        - alert: ErrorBudget95PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="rl-engine"} >= 0.95
+          for: 1m
+          labels:
+            severity: critical
+            team: platform
+            slo_type: availability
+            service: rl-engine
+            budget_threshold: "95%"
+            runbook: docs/runbooks/rl-engine-runbook.md
+          annotations:
+            summary: "RL Engine has consumed 95% of 30d availability error budget (CRITICAL)"
+            description: >-
+              RL Engine has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              SLO violation is imminent. Rate limiting and circuit breaker policies may degrade.
+            action: >-
+              EMERGENCY: Activate incident response. Check model serving infrastructure.
+              Consider emergency knowledge base rebuild. Review Python process configuration.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Schema Registry — 99.95% availability (30d budget: 21.9 min)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: ErrorBudget50PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="schema-registry"} >= 0.5
+          for: 5m
+          labels:
+            severity: info
+            team: platform
+            slo_type: availability
+            service: schema-registry
+            budget_threshold: "50%"
+            runbook: docs/runbooks/schema-registry-runbook.md
+          annotations:
+            summary: "Schema Registry has consumed 50% of 30d availability error budget"
+            description: >-
+              Schema Registry has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Budget remaining: {{ with query "slo:error_budget_remaining:ratio{service='schema-registry'}" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+              Schema Registry is a platform-wide dependency.
+            action: >-
+              Monitor trend. Check Kafka backend connectivity.
+              Review Go service health and goroutine counts.
+
+        - alert: ErrorBudget80PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="schema-registry"} >= 0.8
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+            slo_type: availability
+            service: schema-registry
+            budget_threshold: "80%"
+            runbook: docs/runbooks/schema-registry-runbook.md
+          annotations:
+            summary: "Schema Registry has consumed 80% of 30d availability error budget"
+            description: >-
+              Schema Registry has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              Only {{ with query "slo:error_budget_remaining:ratio{service='schema-registry'}" }}{{ . | first | value | humanizePercentage }}{{ end }} remains.
+              Platform-wide dependency — prioritize reliability.
+            action: >-
+              Prioritize schema registry reliability. Review Kafka topic health.
+              Check for schema compatibility violations. Consider cache warming.
+
+        - alert: ErrorBudget95PercentConsumed
+          expr: slo:error_budget_consumed:ratio{service="schema-registry"} >= 0.95
+          for: 1m
+          labels:
+            severity: critical
+            team: platform
+            slo_type: availability
+            service: schema-registry
+            budget_threshold: "95%"
+            runbook: docs/runbooks/schema-registry-runbook.md
+          annotations:
+            summary: "Schema Registry has consumed 95% of 30d availability error budget (CRITICAL)"
+            description: >-
+              Schema Registry has consumed {{ $value | humanizePercentage }} of its 30d error budget.
+              SLO violation is imminent. ALL services depend on schema validation.
+            action: >-
+              EMERGENCY: Activate incident response. Check Kafka backend immediately.
+              Consider emergency schema registry restart. Verify schema cache distribution.
+              Escalate to platform team lead.

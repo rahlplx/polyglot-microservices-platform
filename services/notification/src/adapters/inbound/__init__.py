@@ -13,10 +13,10 @@ import json
 import logging
 from typing import Any, Optional
 
-from ..domain.models import (
+from src.domain.models import (
     Notification, NotificationChannel, NotificationPriority,
 )
-from ..domain.ports import SendNotificationPort
+from src.domain.ports import SendNotificationPort
 
 logger = logging.getLogger(__name__)
 

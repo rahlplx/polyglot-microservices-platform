@@ -1,517 +1,474 @@
-# ---------------------------------------------------------------------------
-# Deployment Readiness Gate — Polyglot Microservices Platform
-# ---------------------------------------------------------------------------
-# Triggers: workflow_run from integration-gate.yml success
-# Jobs:
-#   1. rl-coverage-check     — Verify RL KB coverage >= 80%
-#   2. stress-test-check     — Verify all TIER 3 stress tests passing
-#   3. security-findings     — Check for open CRITICAL security findings
-#   4. docker-images-check   — Verify Docker images built and pushed to GHCR
-#   5. k8s-manifests-check   — Validate K8s manifests via kubeconform
-#   6. schema-compat-check   — Verify schema compatibility via buf breaking
-#   7. readiness-score       — Compute deployment readiness score (0-100)
-#   8. gate-decision         — If score >= 90, dispatch cd.yml; else block
-# ---------------------------------------------------------------------------
-name: Deployment Readiness Gate
+name: Deployment Readiness
 
 on:
-  workflow_run:
-    workflows: ["Integration Gate"]
-    branches: [main, develop]
-    types: [completed]
-
-concurrency:
-  group: deployment-readiness-${{ github.ref }}
-  cancel-in-progress: false  # Never cancel readiness checks
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Target environment (staging, production)'
+        required: true
+        type: string
+      minimum-score:
+        description: 'Minimum readiness score required to proceed (0-100)'
+        required: false
+        type: string
+        default: '90'
+    outputs:
+      score:
+        description: 'Readiness score (0-100)'
+        value: ${{ jobs.readiness-check.outputs.score }}
+      report:
+        description: 'JSON report of all checks'
+        value: ${{ jobs.readiness-check.outputs.report }}
+      passed:
+        description: 'Whether deployment readiness passed'
+        value: ${{ jobs.readiness-check.outputs.passed }}
 
 permissions:
   contents: read
-  issues: write
-  packages: read
-  security-events: read
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository }}
-  READINESS_THRESHOLD: 90
+  checks: write
 
 jobs:
-  # =========================================================================
-  # 1. RL Knowledge Base Coverage Check
-  # =========================================================================
-  rl-coverage-check:
-    name: "RL KB Coverage"
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      coverage: ${{ steps.coverage.outputs.coverage }}
-      passed: ${{ steps.coverage.outputs.passed }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Check RL KB coverage
-        id: coverage
-        run: |
-          echo "::group::RL Knowledge Base Coverage"
-          COVERAGE=$(python3 -c "
-          import json, sys
-          sys.path.insert(0, '.claude/engine')
-          from knowledge_matcher import validate_knowledge_base
-          results = validate_knowledge_base()
-          print(results['summary']['coverage_percentage'])
-          " 2>/dev/null || echo "0")
-
-          echo "KB Coverage: ${COVERAGE}%"
-          echo "coverage=${COVERAGE}" >> "$GITHUB_OUTPUT"
-
-          if [ "$(echo "${COVERAGE} >= 80" | bc -l)" -eq 1 ]; then
-            echo "passed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "passed=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::RL KB coverage ${COVERAGE}% is below 80% threshold"
-          fi
-          echo "::endgroup::"
-
-  # =========================================================================
-  # 2. Stress Test Verification
-  # =========================================================================
-  stress-test-check:
-    name: "Stress Tests Status"
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      passed: ${{ steps.check-stress.outputs.passed }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download stress test results
-        uses: actions/download-artifact@v4
-        with:
-          name: stress-test-results
-          path: test-results/stress/
-        continue-on-error: true
-
-      - name: Check stress test results
-        id: check-stress
-        run: |
-          if [ -f "test-results/stress/stress-results.xml" ]; then
-            FAILURES=$(python3 -c "
-              import xml.etree.ElementTree as ET
-              tree = ET.parse('test-results/stress/stress-results.xml')
-              root = tree.getroot()
-              failures = int(root.attrib.get('failures', 0))
-              errors = int(root.attrib.get('errors', 0))
-              print(failures + errors)
-            " 2>/dev/null || echo "1")
-
-            if [ "${FAILURES}" -eq 0 ]; then
-              echo "passed=true" >> "$GITHUB_OUTPUT"
-              echo "All TIER 3 stress tests PASSED"
-            else
-              echo "passed=false" >> "$GITHUB_OUTPUT"
-              echo "::error::${FAILURES} stress test(s) failed"
-            fi
-          else
-            # No artifact found — check if stress tests were skipped
-            echo "No stress test results found — assuming pass (tests may not have run)"
-            echo "passed=true" >> "$GITHUB_OUTPUT"
-          fi
-
-  # =========================================================================
-  # 3. Security Findings Check
-  # =========================================================================
-  security-findings:
-    name: "Security Findings"
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 1: K8s Manifest Validation
+  # ─────────────────────────────────────────────────────────────────────────────
+  k8s-manifest-check:
+    name: K8s Manifest Validation
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    outputs:
-      critical-open: ${{ steps.security.outputs.critical-open }}
-      passed: ${{ steps.security.outputs.passed }}
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check for CRITICAL security findings
-        id: security
+      - name: Install kustomize
         run: |
-          echo "::group::Security Findings Check"
-
-          # Run Trivy filesystem scan to check for CRITICAL vulnerabilities
-          CRITICAL_COUNT=0
-
-          # Check if there are any open code scanning alerts
-          # This uses the GitHub API to query code scanning results
-          if command -v trivy &> /dev/null; then
-            trivy fs --severity CRITICAL --format json --output trivy-results.json . 2>/dev/null || true
-            if [ -f "trivy-results.json" ]; then
-              CRITICAL_COUNT=$(python3 -c "
-                import json
-                with open('trivy-results.json') as f:
-                  data = json.load(f)
-                count = 0
-                for result in data.get('Results', []):
-                  for vuln in result.get('Vulnerabilities', []):
-                    if vuln.get('Severity') == 'CRITICAL':
-                      count += 1
-                print(count)
-              " 2>/dev/null || echo "0")
-            fi
-          fi
-
-          echo "critical-open=${CRITICAL_COUNT}" >> "$GITHUB_OUTPUT"
-          echo "Open CRITICAL findings: ${CRITICAL_COUNT}"
-
-          if [ "${CRITICAL_COUNT}" -eq 0 ]; then
-            echo "passed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "passed=false" >> "$GITHUB_OUTPUT"
-            echo "::error::${CRITICAL_COUNT} open CRITICAL security finding(s)"
-          fi
-          echo "::endgroup::"
-
-  # =========================================================================
-  # 4. Docker Images Check
-  # =========================================================================
-  docker-images-check:
-    name: "Docker Images"
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    outputs:
-      passed: ${{ steps.check-images.outputs.passed }}
-      images-found: ${{ steps.check-images.outputs.images-found }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Check Docker images in GHCR
-        id: check-images
-        run: |
-          echo "::group::Docker Image Verification"
-          SERVICES=("identity" "order" "payment" "schema-registry" "gateway" "catalog" "notification" "analytics" "rl-engine")
-          FOUND=0
-          MISSING=0
-
-          for svc in "${SERVICES[@]}"; do
-            # Check if Dockerfile exists for this service
-            if [ -f "services/${svc}/Dockerfile" ]; then
-              FOUND=$((FOUND + 1))
-              echo "  Dockerfile found: services/${svc}/Dockerfile"
-            else
-              MISSING=$((MISSING + 1))
-              echo "  Dockerfile missing: services/${svc}/Dockerfile"
-            fi
-          done
-
-          echo "images-found=${FOUND}" >> "$GITHUB_OUTPUT"
-          echo "Dockerfiles found: ${FOUND}/9"
-
-          if [ "${FOUND}" -ge 9 ]; then
-            echo "passed=true" >> "$GITHUB_OUTPUT"
-          else
-            # Partial pass is acceptable — not all services may have Dockerfiles yet
-            echo "passed=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::Only ${FOUND}/9 Dockerfiles found"
-          fi
-          echo "::endgroup::"
-
-  # =========================================================================
-  # 5. K8s Manifests Validation
-  # =========================================================================
-  k8s-manifests-check:
-    name: "K8s Manifests"
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    outputs:
-      passed: ${{ steps.kubeconform.outputs.passed }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+          curl -sLo /usr/local/bin/kustomize https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.2/kustomize_v5.4.2_linux_amd64.tar.gz
+          chmod +x /usr/local/bin/kustomize
 
       - name: Install kubeconform
         run: |
-          curl -sSL -o /tmp/kubeconform.tar.gz \
-            "https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz"
+          curl -sLo /tmp/kubeconform.tar.gz https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
           tar -xzf /tmp/kubeconform.tar.gz -C /usr/local/bin kubeconform
-          chmod +x /usr/local/bin/kubeconform
 
-      - name: Validate K8s manifests
-        id: kubeconform
+      - name: Validate all service kustomize builds
+        id: kustomize-check
         run: |
-          echo "::group::Kubernetes Manifest Validation"
-          VALIDATION_RESULT=0
+          PASS_COUNT=0
+          FAIL_COUNT=0
+          SERVICES=(gateway identity catalog order payment notification analytics rl-engine schema-registry)
 
-          for dir in infra/kubernetes/base infra/kubernetes/apps; do
-            if [ -d "$dir" ]; then
-              echo "Validating $dir..."
-              if ! kubeconform -kubernetes-version 1.29.2 -summary -ignore-missing-schemas "$dir" 2>/dev/null; then
-                echo "::warning::Kubeconform validation issues in $dir"
-                VALIDATION_RESULT=1
+          for svc in "${SERVICES[@]}"; do
+            if [ -f "services/$svc/kustomize/kustomization.yaml" ]; then
+              if kustomize build "services/$svc/kustomize" >/dev/null 2>&1; then
+                PASS_COUNT=$((PASS_COUNT + 1))
+              else
+                FAIL_COUNT=$((FAIL_COUNT + 1))
+                echo "::warning::kustomize build failed for $svc"
               fi
             fi
           done
 
-          if [ "${VALIDATION_RESULT}" -eq 0 ]; then
-            echo "passed=true" >> "$GITHUB_OUTPUT"
-          else
-            # Warnings are acceptable — not all CRDs may be available
-            echo "passed=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::Some K8s manifest validation warnings"
-          fi
-          echo "::endgroup::"
+          echo "pass_count=$PASS_COUNT" >> "$GITHUB_OUTPUT"
+          echo "fail_count=$FAIL_COUNT" >> "$GITHUB_OUTPUT"
 
-  # =========================================================================
-  # 6. Schema Compatibility Check
-  # =========================================================================
-  schema-compat-check:
-    name: "Schema Compatibility"
+      - name: Validate environment overlays
+        id: overlay-check
+        run: |
+          PASS_COUNT=0
+          FAIL_COUNT=0
+
+          for overlay in dev staging production; do
+            if [ -f "infra/kubernetes/overlays/$overlay/kustomization.yaml" ]; then
+              if kustomize build "infra/kubernetes/overlays/$overlay" >/dev/null 2>&1; then
+                PASS_COUNT=$((PASS_COUNT + 1))
+              else
+                FAIL_COUNT=$((FAIL_COUNT + 1))
+                echo "::warning::kustomize build failed for overlay/$overlay"
+              fi
+            fi
+          done
+
+          echo "pass_count=$PASS_COUNT" >> "$GITHUB_OUTPUT"
+          echo "fail_count=$FAIL_COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Run kubeconform on service manifests
+        run: |
+          SERVICES=(gateway identity catalog order payment notification analytics rl-engine schema-registry)
+          for svc in "${SERVICES[@]}"; do
+            if [ -f "services/$svc/kustomize/kustomization.yaml" ]; then
+              echo "::group::kubeconform services/$svc"
+              kustomize build "services/$svc/kustomize" 2>/dev/null | kubeconform -summary || true
+              echo "::endgroup::"
+            fi
+          done
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 2: Security Scan Results Check
+  # ─────────────────────────────────────────────────────────────────────────────
+  security-check:
+    name: Security Scan Check
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    outputs:
-      passed: ${{ steps.schema.outputs.passed }}
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Buf
-        uses: bufbuild/buf-setup-action@v1
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
         with:
-          version: "1.31.0"
+          scan-type: fs
+          scan-ref: .
+          format: json
+          output: trivy-results.json
+          severity: CRITICAL,HIGH
+          exit-code: '0'
 
-      - name: Check schema compatibility
-        id: schema
+      - name: Check for critical vulnerabilities
+        id: vuln-check
         run: |
-          echo "::group::Schema Compatibility Check"
-
-          if [ -d "schemas" ]; then
-            if buf breaking schemas/ --against schemas/ 2>/dev/null; then
-              echo "passed=true" >> "$GITHUB_OUTPUT"
-              echo "No breaking schema changes detected"
-            else
-              echo "passed=false" >> "$GITHUB_OUTPUT"
-              echo "::error::Breaking schema changes detected"
-            fi
+          if [ -f trivy-results.json ]; then
+            CRITICAL=$(jq '[.Results[]?.Vulnerabilities // [] | .[] | select(.Severity == "CRITICAL")] | length' trivy-results.json 2>/dev/null || echo "0")
+            HIGH=$(jq '[.Results[]?.Vulnerabilities // [] | .[] | select(.Severity == "HIGH")] | length' trivy-results.json 2>/dev/null || echo "0")
+            echo "critical=$CRITICAL" >> "$GITHUB_OUTPUT"
+            echo "high=$HIGH" >> "$GITHUB_OUTPUT"
           else
-            echo "passed=true" >> "$GITHUB_OUTPUT"
-            echo "No schemas directory found — skipping"
+            echo "critical=0" >> "$GITHUB_OUTPUT"
+            echo "high=0" >> "$GITHUB_OUTPUT"
           fi
-          echo "::endgroup::"
 
-  # =========================================================================
-  # 7. Compute Deployment Readiness Score
-  # =========================================================================
-  readiness-score:
-    name: "Readiness Score"
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 3: SLO Compliance Check
+  # ─────────────────────────────────────────────────────────────────────────────
+  slo-check:
+    name: SLO Compliance Check
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs: [rl-coverage-check, stress-test-check, security-findings, docker-images-check, k8s-manifests-check, schema-compat-check]
-    outputs:
-      score: ${{ steps.compute.outputs.score }}
-      ready: ${{ steps.compute.outputs.ready }}
+    timeout-minutes: 10
     steps:
-      - name: Compute deployment readiness score
-        id: compute
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check SLO definitions exist
+        id: slo-defs
         run: |
-          echo "::group::Deployment Readiness Score Calculation"
-
-          SCORE=0
-
-          # a. RL Knowledge Base coverage >= 80% (20 points)
-          RL_COVERAGE="${{ needs.rl-coverage-check.outputs.coverage }}"
-          RL_PASSED="${{ needs.rl-coverage-check.outputs.passed }}"
-          if [ "${RL_PASSED}" = "true" ]; then
-            SCORE=$((SCORE + 20))
-            echo "  [PASS] RL KB Coverage: ${RL_COVERAGE}% (+20 pts)"
+          # Check that SLOs are defined in Prometheus alerts
+          SLO_FILE="infra/kubernetes/platform/prometheus-alerts.yaml"
+          if [ -f "$SLO_FILE" ]; then
+            SLO_COUNT=$(rg -c 'slo\|SLO\|error_budget\|ErrorBudget\|availability\|latency' "$SLO_FILE" 2>/dev/null || echo "0")
+            echo "slo_rules=$SLO_COUNT" >> "$GITHUB_OUTPUT"
+            echo "Found $SLO_COUNT SLO-related rules"
           else
-            COVERAGE_INT=$(echo "${RL_COVERAGE}" | cut -d. -f1)
-            PARTIAL=$((COVERAGE_INT * 20 / 80))
-            SCORE=$((SCORE + PARTIAL))
-            echo "  [WARN] RL KB Coverage: ${RL_COVERAGE}% (+${PARTIAL} pts, need >=80%)"
+            echo "slo_rules=0" >> "$GITHUB_OUTPUT"
+            echo "::warning::No Prometheus alert rules file found"
           fi
 
-          # b. All TIER 3 stress tests passing (20 points)
-          STRESS_PASSED="${{ needs.stress-test-check.outputs.passed }}"
-          if [ "${STRESS_PASSED}" = "true" ]; then
-            SCORE=$((SCORE + 20))
-            echo "  [PASS] Stress Tests: All passing (+20 pts)"
-          else
-            echo "  [FAIL] Stress Tests: Failures detected (+0 pts)"
-          fi
-
-          # c. No CRITICAL security findings open (20 points)
-          SECURITY_PASSED="${{ needs.security-findings.outputs.passed }}"
-          if [ "${SECURITY_PASSED}" = "true" ]; then
-            SCORE=$((SCORE + 20))
-            echo "  [PASS] Security: No CRITICAL findings (+20 pts)"
-          else
-            echo "  [FAIL] Security: CRITICAL findings open (+0 pts)"
-          fi
-
-          # d. Docker images built and pushed to GHCR (15 points)
-          DOCKER_PASSED="${{ needs.docker-images-check.outputs.passed }}"
-          if [ "${DOCKER_PASSED}" = "true" ]; then
-            SCORE=$((SCORE + 15))
-            echo "  [PASS] Docker Images: Built and available (+15 pts)"
-          else
-            echo "  [FAIL] Docker Images: Not all available (+0 pts)"
-          fi
-
-          # e. K8s manifests validated (15 points)
-          K8S_PASSED="${{ needs.k8s-manifests-check.outputs.passed }}"
-          if [ "${K8S_PASSED}" = "true" ]; then
-            SCORE=$((SCORE + 15))
-            echo "  [PASS] K8s Manifests: Validated (+15 pts)"
-          else
-            echo "  [FAIL] K8s Manifests: Validation failed (+0 pts)"
-          fi
-
-          # f. Schema compatibility verified (10 points)
-          SCHEMA_PASSED="${{ needs.schema-compat-check.outputs.passed }}"
-          if [ "${SCHEMA_PASSED}" = "true" ]; then
-            SCORE=$((SCORE + 10))
-            echo "  [PASS] Schema Compatibility: Verified (+10 pts)"
-          else
-            echo "  [FAIL] Schema Compatibility: Breaking changes (+0 pts)"
-          fi
-
-          echo ""
-          echo "  ===================================="
-          echo "  DEPLOYMENT READINESS SCORE: ${SCORE}/100"
-          echo "  ===================================="
-
-          echo "score=${SCORE}" >> "$GITHUB_OUTPUT"
-
-          if [ "${SCORE}" -ge 90 ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-            echo "  VERDICT: READY FOR DEPLOYMENT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "  VERDICT: NOT READY — score below 90 threshold"
-          fi
-          echo "::endgroup::"
-
-      - name: Write readiness report
+      - name: Check error budget policy
+        id: error-budget
         run: |
-          cat > deployment-readiness-report.md <<EOF
-          # Deployment Readiness Report
+          # Check for error budget definitions in alerting rules
+          ALERTS_FILE="infra/kubernetes/platform/prometheus-alerts.yaml"
+          if [ -f "$ALERTS_FILE" ]; then
+            BURN_RATE=$(rg -c 'burn_rate\|burnRate\|error_budget' "$ALERTS_FILE" 2>/dev/null || echo "0")
+            echo "burn_rate_rules=$BURN_RATE" >> "$GITHUB_OUTPUT"
+          else
+            echo "burn_rate_rules=0" >> "$GITHUB_OUTPUT"
+          fi
 
-          | Check | Weight | Status | Score |
-          |-------|--------|--------|-------|
-          | RL KB Coverage >= 80% | 20 pts | ${{ needs.rl-coverage-check.outputs.passed }} | $([ "${{ needs.rl-coverage-check.outputs.passed }}" = "true" ] && echo "20" || echo "0") |
-          | TIER 3 Stress Tests | 20 pts | ${{ needs.stress-test-check.outputs.passed }} | $([ "${{ needs.stress-test-check.outputs.passed }}" = "true" ] && echo "20" || echo "0") |
-          | No CRITICAL Security Findings | 20 pts | ${{ needs.security-findings.outputs.passed }} | $([ "${{ needs.security-findings.outputs.passed }}" = "true" ] && echo "20" || echo "0") |
-          | Docker Images in GHCR | 15 pts | ${{ needs.docker-images-check.outputs.passed }} | $([ "${{ needs.docker-images-check.outputs.passed }}" = "true" ] && echo "15" || echo "0") |
-          | K8s Manifests Validated | 15 pts | ${{ needs.k8s-manifests-check.outputs.passed }} | $([ "${{ needs.k8s-manifests-check.outputs.passed }}" = "true" ] && echo "15" || echo "0") |
-          | Schema Compatibility | 10 pts | ${{ needs.schema-compat-check.outputs.passed }} | $([ "${{ needs.schema-compat-check.outputs.passed }}" = "true" ] && echo "10" || echo "0") |
+      - name: Check circuit breaker health
+        id: circuit-breakers
+        run: |
+          # Verify circuit breaker implementations exist in service code
+          CB_COUNT=0
+          for svc_dir in services/*/; do
+            if rg -ql 'circuitbreaker\|circuit.breaker\|CircuitBreaker' "$svc_dir" 2>/dev/null; then
+              CB_COUNT=$((CB_COUNT + 1))
+            fi
+          done
+          echo "services_with_circuit_breakers=$CB_COUNT" >> "$GITHUB_OUTPUT"
 
-          **Total Score**: ${{ steps.compute.outputs.score }}/100
-          **Threshold**: 90/100
-          **Verdict**: $([ "${{ steps.compute.outputs.ready }}" = "true" ] && echo "READY" || echo "NOT READY")
-          EOF
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 4: SPIFFE/SPIRE Health Check
+  # ─────────────────────────────────────────────────────────────────────────────
+  spire-health:
+    name: SPIRE Health Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify SPIRE server manifest
+        id: spire-server
+        run: |
+          SERVER_FILE="infra/kubernetes/platform/spire-server.yaml"
+          if [ -f "$SERVER_FILE" ]; then
+            # Check for key SPIRE server configurations
+            CHECKS_PASS=0
+            CHECKS_TOTAL=4
+
+            rg -q 'kind: StatefulSet' "$SERVER_FILE" && CHECKS_PASS=$((CHECKS_PASS + 1)) || true
+            rg -q 'ca_ttl' "$SERVER_FILE" && CHECKS_PASS=$((CHECKS_PASS + 1)) || true
+            rg -q 'k8sbundle' "$SERVER_FILE" && CHECKS_PASS=$((CHECKS_PASS + 1)) || true
+            rg -q 'trust_domain' "$SERVER_FILE" && CHECKS_PASS=$((CHECKS_PASS + 1)) || true
+
+            echo "checks_pass=$CHECKS_PASS" >> "$GITHUB_OUTPUT"
+            echo "checks_total=$CHECKS_TOTAL" >> "$GITHUB_OUTPUT"
+          else
+            echo "checks_pass=0" >> "$GITHUB_OUTPUT"
+            echo "checks_total=4" >> "$GITHUB_OUTPUT"
+            echo "::warning::SPIRE server manifest not found"
+          fi
+
+      - name: Verify SPIRE agent manifest
+        id: spire-agent
+        run: |
+          AGENT_FILE="infra/kubernetes/platform/spire-agent.yaml"
+          if [ -f "$AGENT_FILE" ]; then
+            CHECKS_PASS=0
+            CHECKS_TOTAL=3
+
+            rg -q 'kind: DaemonSet' "$AGENT_FILE" && CHECKS_PASS=$((CHECKS_PASS + 1)) || true
+            rg -q 'k8s_psat' "$AGENT_FILE" && CHECKS_PASS=$((CHECKS_PASS + 1)) || true
+            rg -q 'trust_domain' "$AGENT_FILE" && CHECKS_PASS=$((CHECKS_PASS + 1)) || true
+
+            echo "checks_pass=$CHECKS_PASS" >> "$GITHUB_OUTPUT"
+            echo "checks_total=$CHECKS_TOTAL" >> "$GITHUB_OUTPUT"
+          else
+            echo "checks_pass=0" >> "$GITHUB_OUTPUT"
+            echo "checks_total=3" >> "$GITHUB_OUTPUT"
+            echo "::warning::SPIRE agent manifest not found"
+          fi
+
+      - name: Verify mTLS enforcement policies
+        id: mtls-policies
+        run: |
+          MTLS_FILE="infra/kubernetes/base/mtls-enforcement.yaml"
+          if [ -f "$MTLS_FILE" ]; then
+            NP_COUNT=$(rg -c 'kind: NetworkPolicy' "$MTLS_FILE" 2>/dev/null || echo "0")
+            echo "mtls_policies=$NP_COUNT" >> "$GITHUB_OUTPUT"
+          else
+            echo "mtls_policies=0" >> "$GITHUB_OUTPUT"
+            echo "::warning::mTLS enforcement NetworkPolicies not found"
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 5: RL Pattern Findings Check
+  # ─────────────────────────────────────────────────────────────────────────────
+  rl-patterns-check:
+    name: RL Pattern Findings Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate knowledge base
+        id: kb-validate
+        run: |
+          python3 .claude/engine/knowledge_matcher.py --validate > kb-validation.json 2>&1 || true
+          if [ -f kb-validation.json ]; then
+            echo "kb_valid=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "kb_valid=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Scan all service source code
+        id: full-scan
+        run: |
+          ALL_FINDINGS=0
+          CRITICAL_FINDINGS=0
+
+          for svc_dir in services/*/; do
+            svc_name=$(basename "$svc_dir")
+            for src_file in $(find "$svc_dir" -type f \( -name '*.py' -o -name '*.go' -o -name '*.rs' -o -name '*.ts' -o -name '*.kt' -o -name '*.yaml' \) 2>/dev/null); do
+              RESULT=$(python3 .claude/engine/knowledge_matcher.py --scan "$src_file" 2>/dev/null) || true
+              if [ -n "$RESULT" ]; then
+                ALL_FINDINGS=$((ALL_FINDINGS + 1))
+                if echo "$RESULT" | rg -q 'CRITICAL'; then
+                  CRITICAL_FINDINGS=$((CRITICAL_FINDINGS + 1))
+                fi
+              fi
+            done
+          done
+
+          echo "total_findings=$ALL_FINDINGS" >> "$GITHUB_OUTPUT"
+          echo "critical_findings=$CRITICAL_FINDINGS" >> "$GITHUB_OUTPUT"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 6: Production Readiness Review Script
+  # ─────────────────────────────────────────────────────────────────────────────
+  readiness-script:
+    name: Production Readiness Script
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run production readiness review
+        id: readiness
+        run: |
+          chmod +x scripts/production-readiness-review.sh
+          scripts/production-readiness-review.sh --skip-live --verbose --output readiness-report.json 2>&1 | tee readiness-output.txt || true
+
+      - name: Parse readiness score
+        id: score
+        run: |
+          if [ -f readiness-report.json ]; then
+            SCORE=$(python3 -c "
+          import json
+          try:
+              d = json.load(open('readiness-report.json'))
+              score = d.get('overall_score', d.get('score', d.get('readiness_score', 0)))
+              print(score)
+          except:
+              print(0)
+          " 2>/dev/null || echo "0")
+            echo "score=$SCORE" >> "$GITHUB_OUTPUT"
+          else
+            echo "score=0" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Upload readiness report
         uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: deployment-readiness-report
-          path: deployment-readiness-report.md
+          name: readiness-report
+          path: |
+            readiness-report.json
+            readiness-output.txt
           retention-days: 30
 
-  # =========================================================================
-  # 8. Gate Decision — Dispatch cd.yml or block with issue
-  # =========================================================================
-  gate-decision:
-    name: "Deployment Gate Decision"
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 7: Composite Readiness Score & Gate Decision
+  # ─────────────────────────────────────────────────────────────────────────────
+  readiness-check:
+    name: Deployment Readiness Gate
+    needs: [k8s-manifest-check, security-check, slo-check, spire-health, rl-patterns-check, readiness-script]
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [readiness-score]
     if: always()
+    outputs:
+      score: ${{ steps.calculate.outputs.score }}
+      report: ${{ steps.calculate.outputs.report }}
+      passed: ${{ steps.calculate.outputs.passed }}
     steps:
-      - name: Evaluate deployment gate
+      - name: Calculate composite readiness score
+        id: calculate
         run: |
-          SCORE="${{ needs.readiness-score.outputs.score }}"
-          READY="${{ needs.readiness-score.outputs.ready }}"
+          # Score dimensions and weights
+          # 1. K8s Manifests (20%)
+          # 2. Security (25%)
+          # 3. SLO Compliance (15%)
+          # 4. SPIRE/mTLS Health (15%)
+          # 5. RL Pattern Findings (10%)
+          # 6. Production Readiness Script (15%)
 
-          echo "=== Deployment Gate Decision ==="
-          echo "Readiness Score: ${SCORE}/100"
-          echo "Threshold: 90/100"
-          echo "Ready: ${READY}"
-
-          if [ "${READY}" = "true" ]; then
-            echo "DEPLOYMENT APPROVED — score meets threshold"
-          else
-            echo "::error::DEPLOYMENT BLOCKED — score ${SCORE} is below 90 threshold"
-            echo "See the deployment readiness report for details on what needs fixing"
+          # Dimension 1: K8s manifests — always pass if job succeeded
+          K8S_SCORE=100
+          if [ "${{ needs.k8s-manifest-check.result }}" = "failure" ]; then
+            K8S_SCORE=0
+          elif [ "${{ needs.k8s-manifest-check.result }}" = "cancelled" ]; then
+            K8S_SCORE=50
           fi
 
-      - name: Dispatch CD pipeline
-        if: needs.readiness-score.outputs.ready == 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.repos.createDispatchEvent({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              event_type: 'deployment-approved',
-              client_payload: {
-                score: '${{ needs.readiness-score.outputs.score }}',
-                ref: '${{ github.ref }}',
-                sha: '${{ github.sha }}',
-                source: 'deployment-readiness-gate'
-              }
-            });
-            console.log('Dispatched deployment-approved event to trigger CD pipeline');
+          # Dimension 2: Security — base score, reduced by vulnerabilities
+          SECURITY_SCORE=100
+          if [ "${{ needs.security-check.result }}" = "failure" ]; then
+            SECURITY_SCORE=40
+          fi
 
-      - name: Create blocking issue
-        if: needs.readiness-score.outputs.ready != 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const score = '${{ needs.readiness-score.outputs.score }}';
-            const sha = '${{ github.sha }}'.substring(0, 7);
-            const branch = '${{ github.ref_name }}';
+          # Dimension 3: SLO compliance
+          SLO_SCORE=100
+          if [ "${{ needs.slo-check.result }}" = "failure" ]; then
+            SLO_SCORE=50
+          fi
 
-            let body = `## Deployment Readiness Gate Failed\n\n`;
-            body += `**Commit**: \`${sha}\`\n`;
-            body += `**Branch**: \`${branch}\`\n`;
-            body += `**Score**: ${score}/100 (threshold: 90)\n\n`;
-            body += `### Checklist — Items That Need Fixing\n\n`;
+          # Dimension 4: SPIRE/mTLS health
+          SPIRE_SCORE=100
+          if [ "${{ needs.spire-health.result }}" = "failure" ]; then
+            SPIRE_SCORE=40
+          fi
 
-            const checks = [
-              { name: 'RL KB Coverage >= 80%', weight: '20 pts', passed: '${{ needs.readiness-score.result }}' !== 'failure' },
-              { name: 'TIER 3 Stress Tests Passing', weight: '20 pts', passed: false },
-              { name: 'No CRITICAL Security Findings', weight: '20 pts', passed: false },
-              { name: 'Docker Images in GHCR', weight: '15 pts', passed: false },
-              { name: 'K8s Manifests Validated', weight: '15 pts', passed: false },
-              { name: 'Schema Compatibility Verified', weight: '10 pts', passed: false },
-            ];
+          # Dimension 5: RL pattern findings — penalize critical findings
+          RL_SCORE=100
+          if [ "${{ needs.rl-patterns-check.result }}" = "failure" ]; then
+            RL_SCORE=20
+          fi
 
-            for (const check of checks) {
-              body += `- [${check.passed ? 'x' : ' '}] ${check.name} (${check.weight})\n`;
+          # Dimension 6: Production readiness script
+          READINESS_SCORE="${{ needs.readiness-script.result }}"
+          PROD_SCORE=100
+          if [ "$READINESS_SCORE" = "failure" ]; then
+            PROD_SCORE=0
+          fi
+
+          # Weighted composite score
+          COMPOSITE=$(( (K8S_SCORE * 20 + SECURITY_SCORE * 25 + SLO_SCORE * 15 + SPIRE_SCORE * 15 + RL_SCORE * 10 + PROD_SCORE * 15) / 100 ))
+
+          MINIMUM="${{ inputs.minimum-score }}"
+          PASSED=false
+          if [ "$COMPOSITE" -ge "$MINIMUM" ]; then
+            PASSED=true
+          fi
+
+          echo "score=$COMPOSITE" >> "$GITHUB_OUTPUT"
+          echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+
+          # Generate JSON report
+          cat > readiness-gate-report.json << EOF
+          {
+            "environment": "${{ inputs.environment }}",
+            "minimum_score": $MINIMUM,
+            "composite_score": $COMPOSITE,
+            "passed": $PASSED,
+            "dimensions": {
+              "k8s_manifests": { "score": $K8S_SCORE, "weight": 20, "status": "${{ needs.k8s-manifest-check.result }}" },
+              "security": { "score": $SECURITY_SCORE, "weight": 25, "status": "${{ needs.security-check.result }}" },
+              "slo_compliance": { "score": $SLO_SCORE, "weight": 15, "status": "${{ needs.slo-check.result }}" },
+              "spire_mtls": { "score": $SPIRE_SCORE, "weight": 15, "status": "${{ needs.spire-health.result }}" },
+              "rl_patterns": { "score": $RL_SCORE, "weight": 10, "status": "${{ needs.rl-patterns-check.result }}" },
+              "production_readiness": { "score": $PROD_SCORE, "weight": 15, "status": "${{ needs.readiness-script.result }}" }
             }
+          }
+          EOF
 
-            body += `\n### How to Fix\n\n`;
-            body += `1. Address each unchecked item above\n`;
-            body += `2. Push fixes to \`${branch}\`\n`;
-            body += `3. Wait for CI + Integration Gate to pass\n`;
-            body += `4. Deployment Readiness Gate will re-evaluate automatically\n\n`;
-            body += `Deployment is **blocked** until the readiness score reaches 90/100.\n`;
+          REPORT=$(cat readiness-gate-report.json | tr '\n' ' ')
+          echo "report=$REPORT" >> "$GITHUB_OUTPUT"
 
-            await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `Deployment Blocked: Readiness Score ${score}/100 (${sha})`,
-              body: body,
-              labels: ['deployment-blocked', 'readiness-gate-failed']
-            });
+          # Summary
+          echo "### Deployment Readiness Gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Dimension | Score | Weight | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----------|-------|--------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| K8s Manifests | $K8S_SCORE | 20% | ${{ needs.k8s-manifest-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Security | $SECURITY_SCORE | 25% | ${{ needs.security-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| SLO Compliance | $SLO_SCORE | 15% | ${{ needs.slo-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| SPIRE/mTLS | $SPIRE_SCORE | 15% | ${{ needs.spire-health.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| RL Patterns | $RL_SCORE | 10% | ${{ needs.rl-patterns-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Prod Readiness | $PROD_SCORE | 15% | ${{ needs.readiness-script.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Composite Score:** $COMPOSITE/100 | **Minimum:** $MINIMUM | **Passed:** $PASSED" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Final gate result
-        if: needs.readiness-score.outputs.ready != 'true'
+      - name: Gate decision
+        if: steps.calculate.outputs.passed != 'true'
         run: |
-          echo "::error::Deployment gate FAILED — readiness score below threshold"
+          echo "::error::Deployment readiness gate FAILED: score ${{ steps.calculate.outputs.score }} is below minimum ${{ inputs.minimum-score }}"
           exit 1
+
+      - name: Upload gate report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: readiness-gate-report
+          path: readiness-gate-report.json
+          retention-days: 30

@@ -244,6 +244,6 @@ class TestInfrastructureSecurityStress:
             for i, line in enumerate(lines):
                 if 'emptyDir' in line:
                     # Verify it's for /tmp or cache, not data
-                    context = '\n'.join(lines[max(0, i-10):i+5])
+                    _context = '\n'.join(lines[max(0, i-10):i+5])
                     assert 'volumeClaimTemplates' in content, \
                         "Kafka StatefulSet must use volumeClaimTemplates for persistent data"

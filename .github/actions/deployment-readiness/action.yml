@@ -1,0 +1,387 @@
+name: 'Deployment Readiness Check'
+description: |
+  Scores deployment readiness across multiple dimensions for the polyglot
+  microservices platform. Evaluates K8s manifests, security, test coverage,
+  SLO compliance, RL pattern findings, and production readiness review.
+  Outputs a composite score (0-100) and a detailed JSON report.
+
+inputs:
+  environment:
+    description: 'Target environment (staging, production)'
+    required: true
+  minimum-score:
+    description: 'Minimum readiness score required to pass (0-100)'
+    required: false
+    default: '90'
+  project-root:
+    description: 'Project root directory (defaults to GITHUB_WORKSPACE)'
+    required: false
+    default: ''
+  skip-live:
+    description: 'Skip live cluster checks (offline/validation mode only)'
+    required: false
+    default: 'true'
+  fail-on-blocking:
+    description: 'Fail the action if score is below minimum'
+    required: false
+    default: 'true'
+
+outputs:
+  score:
+    description: 'Readiness score (0-100)'
+    value: ${{ steps.score.outputs.score }}
+  report:
+    description: 'JSON report of all checks'
+    value: ${{ steps.report.outputs.report }}
+  passed:
+    description: 'Whether the readiness check passed (score >= minimum)'
+    value: ${{ steps.result.outputs.passed }}
+
+runs:
+  using: 'composite'
+  steps:
+    # ───────────────────────────────────────────────────────────────────────────
+    # Step 1: K8s Manifest Validation
+    # ───────────────────────────────────────────────────────────────────────────
+    - name: Validate K8s manifests
+      id: k8s
+      shell: bash
+      run: |
+        ROOT="${{ inputs.project-root || github.workspace }}"
+        K8S_SCORE=0
+        TOTAL=0
+        PASS=0
+
+        # Check service kustomize directories
+        SERVICES=(gateway identity catalog order payment notification analytics rl-engine schema-registry)
+
+        if command -v kustomize &>/dev/null; then
+          for svc in "${SERVICES[@]}"; do
+            if [ -f "$ROOT/services/$svc/kustomize/kustomization.yaml" ]; then
+              TOTAL=$((TOTAL + 1))
+              if kustomize build "$ROOT/services/$svc/kustomize" >/dev/null 2>&1; then
+                PASS=$((PASS + 1))
+              fi
+            fi
+          done
+
+          # Check overlays
+          for overlay in dev staging production; do
+            if [ -f "$ROOT/infra/kubernetes/overlays/$overlay/kustomization.yaml" ]; then
+              TOTAL=$((TOTAL + 1))
+              if kustomize build "$ROOT/infra/kubernetes/overlays/$overlay" >/dev/null 2>&1; then
+                PASS=$((PASS + 1))
+              fi
+            fi
+          done
+        else
+          # Fallback: check YAML validity
+          for f in $(find "$ROOT/infra/kubernetes" "$ROOT/services" -name '*.yaml' 2>/dev/null | head -50); do
+            TOTAL=$((TOTAL + 1))
+            if python3 -c "import yaml; list(yaml.safe_load_all(open('$f')))" 2>/dev/null; then
+              PASS=$((PASS + 1))
+            fi
+          done
+        fi
+
+        if [ "$TOTAL" -gt 0 ]; then
+          K8S_SCORE=$((PASS * 100 / TOTAL))
+        else
+          K8S_SCORE=50
+        fi
+
+        echo "score=$K8S_SCORE" >> "$GITHUB_OUTPUT"
+        echo "k8s_pass=$PASS" >> "$GITHUB_OUTPUT"
+        echo "k8s_total=$TOTAL" >> "$GITHUB_OUTPUT"
+
+    # ───────────────────────────────────────────────────────────────────────────
+    # Step 2: Security Scan Assessment
+    # ───────────────────────────────────────────────────────────────────────────
+    - name: Security assessment
+      id: security
+      shell: bash
+      run: |
+        ROOT="${{ inputs.project-root || github.workspace }}"
+        SECURITY_SCORE=100
+
+        # Check for hardcoded secrets
+        HARDCODED=0
+        for pattern in 'password\s*[:=]\s*["\x27][^"\x27]{4,}' 'api[_-]?key\s*[:=]\s*["\x27][^"\x27]{4,}' 'secret[_-]?key\s*[:=]\s*["\x27][^"\x27]{4,}'; do
+          if rg -l "$pattern" "$ROOT/infra/kubernetes" --glob '*.yaml' 2>/dev/null | head -1 | grep -q .; then
+            HARDCODED=$((HARDCODED + 1))
+          fi
+        done
+
+        # Check for :latest tags
+        LATEST_COUNT=0
+        while IFS= read -r line; do
+          if echo "$line" | rg -q ':latest\b'; then
+            LATEST_COUNT=$((LATEST_COUNT + 1))
+          fi
+        done < <(rg 'image:' "$ROOT/infra/kubernetes" --no-heading 2>/dev/null || true)
+
+        # Check for privileged containers
+        PRIVILEGED=0
+        PRIVILEGED=$(rg -c 'privileged:\s*true' "$ROOT/infra/kubernetes" "$ROOT/services" --glob '*.yaml' 2>/dev/null || echo "0")
+
+        # Calculate score
+        SECURITY_SCORE=$((SECURITY_SCORE - HARDCODED * 30 - LATEST_COUNT * 10 - PRIVILEGED * 20))
+        if [ "$SECURITY_SCORE" -lt 0 ]; then
+          SECURITY_SCORE=0
+        fi
+
+        echo "score=$SECURITY_SCORE" >> "$GITHUB_OUTPUT"
+
+    # ───────────────────────────────────────────────────────────────────────────
+    # Step 3: Test Coverage Assessment
+    # ───────────────────────────────────────────────────────────────────────────
+    - name: Test coverage assessment
+      id: coverage
+      shell: bash
+      run: |
+        ROOT="${{ inputs.project-root || github.workspace }}"
+        COVERAGE_SCORE=50  # Default if no coverage data available
+
+        # Check for test directories
+        TEST_DIRS=0
+        TEST_FILES=0
+        for svc_dir in "$ROOT"/services/*/; do
+          if [ -d "$svc_dir/tests" ]; then
+            TEST_DIRS=$((TEST_DIRS + 1))
+            TEST_FILES=$((TEST_FILES + $(find "$svc_dir/tests" -name '*.go' -o -name '*.py' -o -name '*.ts' -o -name '*.kt' -o -name '*.rs' 2>/dev/null | wc -l)))
+          fi
+        done
+
+        if [ "$TEST_DIRS" -ge 9 ]; then
+          COVERAGE_SCORE=80
+        elif [ "$TEST_DIRS" -ge 6 ]; then
+          COVERAGE_SCORE=60
+        elif [ "$TEST_DIRS" -ge 3 ]; then
+          COVERAGE_SCORE=40
+        fi
+
+        # Bonus for high test file count
+        if [ "$TEST_FILES" -ge 30 ]; then
+          COVERAGE_SCORE=$((COVERAGE_SCORE + 20))
+        elif [ "$TEST_FILES" -ge 15 ]; then
+          COVERAGE_SCORE=$((COVERAGE_SCORE + 10))
+        fi
+
+        if [ "$COVERAGE_SCORE" -gt 100 ]; then
+          COVERAGE_SCORE=100
+        fi
+
+        echo "score=$COVERAGE_SCORE" >> "$GITHUB_OUTPUT"
+        echo "test_dirs=$TEST_DIRS" >> "$GITHUB_OUTPUT"
+        echo "test_files=$TEST_FILES" >> "$GITHUB_OUTPUT"
+
+    # ───────────────────────────────────────────────────────────────────────────
+    # Step 4: SLO Compliance Assessment
+    # ───────────────────────────────────────────────────────────────────────────
+    - name: SLO compliance assessment
+      id: slo
+      shell: bash
+      run: |
+        ROOT="${{ inputs.project-root || github.workspace }}"
+        SLO_SCORE=50
+
+        # Check Prometheus alert rules
+        ALERTS_FILE="$ROOT/infra/kubernetes/platform/prometheus-alerts.yaml"
+        if [ -f "$ALERTS_FILE" ]; then
+          ALERT_COUNT=$(rg -c 'alert:' "$ALERTS_FILE" 2>/dev/null || echo "0")
+          if [ "$ALERT_COUNT" -ge 10 ]; then
+            SLO_SCORE=90
+          elif [ "$ALERT_COUNT" -ge 5 ]; then
+            SLO_SCORE=70
+          else
+            SLO_SCORE=40
+          fi
+        fi
+
+        # Check for circuit breaker implementations
+        CB_COUNT=0
+        for svc_dir in "$ROOT"/services/*/; do
+          if rg -ql 'circuitbreaker\|circuit.breaker\|CircuitBreaker' "$svc_dir" 2>/dev/null; then
+            CB_COUNT=$((CB_COUNT + 1))
+          fi
+        done
+        if [ "$CB_COUNT" -ge 5 ]; then
+          SLO_SCORE=$((SLO_SCORE + 10))
+        fi
+
+        if [ "$SLO_SCORE" -gt 100 ]; then
+          SLO_SCORE=100
+        fi
+
+        echo "score=$SLO_SCORE" >> "$GITHUB_OUTPUT"
+
+    # ───────────────────────────────────────────────────────────────────────────
+    # Step 5: RL Pattern Findings Assessment
+    # ───────────────────────────────────────────────────────────────────────────
+    - name: RL pattern findings assessment
+      id: rl-patterns
+      shell: bash
+      run: |
+        ROOT="${{ inputs.project-root || github.workspace }}"
+        RL_SCORE=100
+
+        if [ -f "$ROOT/.claude/engine/knowledge_matcher.py" ]; then
+          # Validate knowledge base
+          python3 "$ROOT/.claude/engine/knowledge_matcher.py" --validate >/dev/null 2>&1 || RL_SCORE=$((RL_SCORE - 20))
+
+          # Count critical findings across all services
+          CRITICAL_FINDINGS=0
+          for src_file in $(find "$ROOT/services" -type f \( -name '*.py' -o -name '*.go' -o -name '*.rs' -o -name '*.ts' -o -name '*.kt' -o -name '*.yaml' \) 2>/dev/null | head -100); do
+            if python3 "$ROOT/.claude/engine/knowledge_matcher.py" --scan "$src_file" 2>/dev/null | rg -q 'CRITICAL'; then
+              CRITICAL_FINDINGS=$((CRITICAL_FINDINGS + 1))
+            fi
+          done
+
+          RL_SCORE=$((RL_SCORE - CRITICAL_FINDINGS * 10))
+        else
+          RL_SCORE=70  # Knowledge matcher not available
+        fi
+
+        if [ "$RL_SCORE" -lt 0 ]; then
+          RL_SCORE=0
+        fi
+
+        echo "score=$RL_SCORE" >> "$GITHUB_OUTPUT"
+
+    # ───────────────────────────────────────────────────────────────────────────
+    # Step 6: Production Readiness Review Script
+    # ───────────────────────────────────────────────────────────────────────────
+    - name: Production readiness review
+      id: prod-readiness
+      shell: bash
+      run: |
+        ROOT="${{ inputs.project-root || github.workspace }}"
+        PROD_SCORE=50
+
+        if [ -f "$ROOT/scripts/production-readiness-review.sh" ]; then
+          chmod +x "$ROOT/scripts/production-readiness-review.sh"
+
+          SKIP_FLAG=""
+          if [ "${{ inputs.skip-live }}" = "true" ]; then
+            SKIP_FLAG="--skip-live"
+          fi
+
+          "$ROOT/scripts/production-readiness-review.sh" $SKIP_FLAG --output "$ROOT/action-readiness-report.json" 2>/dev/null || true
+
+          if [ -f "$ROOT/action-readiness-report.json" ]; then
+            PROD_SCORE=$(python3 -c "
+          import json
+          try:
+              d = json.load(open('$ROOT/action-readiness-report.json'))
+              print(d.get('overall_score', d.get('score', d.get('readiness_score', 50))))
+          except:
+              print(50)
+          " 2>/dev/null || echo "50")
+          fi
+        fi
+
+        echo "score=$PROD_SCORE" >> "$GITHUB_OUTPUT"
+
+    # ───────────────────────────────────────────────────────────────────────────
+    # Step 7: Calculate Composite Score
+    # ───────────────────────────────────────────────────────────────────────────
+    - name: Calculate composite score
+      id: score
+      shell: bash
+      run: |
+        K8S_SCORE=${{ steps.k8s.outputs.score }}
+        SECURITY_SCORE=${{ steps.security.outputs.score }}
+        COVERAGE_SCORE=${{ steps.coverage.outputs.score }}
+        SLO_SCORE=${{ steps.slo.outputs.score }}
+        RL_SCORE=${{ steps.rl-patterns.outputs.score }}
+        PROD_SCORE=${{ steps.prod-readiness.outputs.score }}
+
+        # Weighted average
+        # K8s: 20%, Security: 25%, Coverage: 10%, SLO: 15%, RL: 10%, Prod: 20%
+        COMPOSITE=$(( (K8S_SCORE * 20 + SECURITY_SCORE * 25 + COVERAGE_SCORE * 10 + SLO_SCORE * 15 + RL_SCORE * 10 + PROD_SCORE * 20) / 100 ))
+
+        echo "score=$COMPOSITE" >> "$GITHUB_OUTPUT"
+        echo "Composite readiness score: $COMPOSITE"
+
+    # ───────────────────────────────────────────────────────────────────────────
+    # Step 8: Generate Report
+    # ───────────────────────────────────────────────────────────────────────────
+    - name: Generate JSON report
+      id: report
+      shell: bash
+      run: |
+        K8S_SCORE=${{ steps.k8s.outputs.score }}
+        SECURITY_SCORE=${{ steps.security.outputs.score }}
+        COVERAGE_SCORE=${{ steps.coverage.outputs.score }}
+        SLO_SCORE=${{ steps.slo.outputs.score }}
+        RL_SCORE=${{ steps.rl-patterns.outputs.score }}
+        PROD_SCORE=${{ steps.prod-readiness.outputs.score }}
+        COMPOSITE=${{ steps.score.outputs.score }}
+        MINIMUM="${{ inputs.minimum-score }}"
+        PASSED="false"
+        if [ "$COMPOSITE" -ge "$MINIMUM" ]; then
+          PASSED="true"
+        fi
+
+        REPORT=$(cat <<ENDJSON | tr '\n' ' '
+        {
+          "environment": "${{ inputs.environment }}",
+          "minimum_score": $MINIMUM,
+          "composite_score": $COMPOSITE,
+          "passed": $PASSED,
+          "dimensions": {
+            "k8s_manifests": { "score": $K8S_SCORE, "weight": 20 },
+            "security": { "score": $SECURITY_SCORE, "weight": 25 },
+            "test_coverage": { "score": $COVERAGE_SCORE, "weight": 10 },
+            "slo_compliance": { "score": $SLO_SCORE, "weight": 15 },
+            "rl_patterns": { "score": $RL_SCORE, "weight": 10 },
+            "production_readiness": { "score": $PROD_SCORE, "weight": 20 }
+          }
+        }
+        ENDJSON
+        )
+
+        echo "report=$REPORT" >> "$GITHUB_OUTPUT"
+
+    # ───────────────────────────────────────────────────────────────────────────
+    # Step 9: Result Decision
+    # ───────────────────────────────────────────────────────────────────────────
+    - name: Evaluate result
+      id: result
+      shell: bash
+      run: |
+        COMPOSITE=${{ steps.score.outputs.score }}
+        MINIMUM="${{ inputs.minimum-score }}"
+
+        if [ "$COMPOSITE" -ge "$MINIMUM" ]; then
+          echo "passed=true" >> "$GITHUB_OUTPUT"
+          echo "✅ Deployment readiness PASSED: score $COMPOSITE >= minimum $MINIMUM"
+        else
+          echo "passed=false" >> "$GITHUB_OUTPUT"
+          echo "❌ Deployment readiness FAILED: score $COMPOSITE < minimum $MINIMUM"
+
+          if [ "${{ inputs.fail-on-blocking }}" = "true" ]; then
+            echo "::error::Deployment readiness score ($COMPOSITE) is below minimum ($MINIMUM)"
+            exit 1
+          fi
+        fi
+
+    # ───────────────────────────────────────────────────────────────────────────
+    # Step 10: Summary
+    # ───────────────────────────────────────────────────────────────────────────
+    - name: Write summary
+      shell: bash
+      if: always()
+      run: |
+        echo "### Deployment Readiness Check" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "| Dimension | Score | Weight |" >> "$GITHUB_STEP_SUMMARY"
+        echo "|-----------|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+        echo "| K8s Manifests | ${{ steps.k8s.outputs.score }} | 20% |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| Security | ${{ steps.security.outputs.score }} | 25% |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| Test Coverage | ${{ steps.coverage.outputs.score }} | 10% |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| SLO Compliance | ${{ steps.slo.outputs.score }} | 15% |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| RL Patterns | ${{ steps.rl-patterns.outputs.score }} | 10% |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| Production Readiness | ${{ steps.prod-readiness.outputs.score }} | 20% |" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "**Composite Score:** ${{ steps.score.outputs.score }}/100 | **Minimum:** ${{ inputs.minimum-score }} | **Passed:** ${{ steps.result.outputs.passed }}" >> "$GITHUB_STEP_SUMMARY"

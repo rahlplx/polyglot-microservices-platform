@@ -28,6 +28,7 @@ from .conftest import (
     KafkaHelper,
     PostgresHelper,
     OTelTraceHelper,
+    SpireApiClient,
     SERVICE_REGISTRY,
     KAFKA_TOPICS,
     wait_for_condition,
@@ -374,8 +375,6 @@ def test_resilience_leader_election(
     verifies that a new leader is elected and SVID issuance continues
     without interruption.
     """
-    from .conftest import SpireApiClient
-
     # Step 1: Verify SPIRE server is healthy before test
     healthy, msg = spire_client.server_healthcheck()
     assert healthy, f"SPIRE server should be healthy before test: {msg}"

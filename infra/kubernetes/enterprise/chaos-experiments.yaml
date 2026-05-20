@@ -1,0 +1,947 @@
+# =============================================================================
+# Enterprise Chaos Engineering Experiments
+# Polyglot Microservices Platform — Chaos Mesh Definitions
+# =============================================================================
+# Namespace: production
+# 9 Services: gateway, identity, catalog, order, payment, notification,
+#             analytics, rl-engine, schema-registry
+# Platform:   Kafka + Debezium CDC, SPIFFE/SPIRE, OTel, PDBs, HPAs
+# =============================================================================
+# Apply:  kubectl apply -f infra/kubernetes/enterprise/chaos-experiments.yaml
+# Delete: kubectl delete -f infra/kubernetes/enterprise/chaos-experiments.yaml
+# =============================================================================
+
+# =============================================================================
+# 1. POD CHAOS EXPERIMENTS
+# =============================================================================
+
+---
+# gateway-pod-kill: Kill random gateway pod, verify PDB maintains availability
+# Hypothesis: Gateway remains available (PDB maxUnavailable=1) and HPA scales up
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: gateway-pod-kill
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/category: pod
+    chaos.example.org/severity: medium
+    chaos.example.org/blast-radius: single-service
+spec:
+  action: pod-kill
+  mode: one
+  duration: "30s"
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app.kubernetes.io/name: gateway
+  scheduler:
+    cron: ""
+  gracePeriod: 5
+
+---
+# order-pod-kill: Kill order pod during saga execution, verify saga recovery
+# Hypothesis: Saga orchestrator recovers in-progress sagas from event store
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: order-pod-kill
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/category: pod
+    chaos.example.org/severity: high
+    chaos.example.org/blast-radius: single-service
+    chaos.example.org/validates: saga-recovery
+spec:
+  action: pod-kill
+  mode: one
+  duration: "30s"
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app.kubernetes.io/name: order
+  scheduler:
+    cron: ""
+  gracePeriod: 5
+
+---
+# payment-pod-kill: Kill payment pod during transaction, verify circuit breaker + retry
+# Hypothesis: Circuit breaker opens, order service retries with backoff, payment recovers
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: payment-pod-kill
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/category: pod
+    chaos.example.org/severity: critical
+    chaos.example.org/blast-radius: single-service
+    chaos.example.org/validates: circuit-breaker-retry
+spec:
+  action: pod-kill
+  mode: one
+  duration: "30s"
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app.kubernetes.io/name: payment
+  scheduler:
+    cron: ""
+  gracePeriod: 5
+
+---
+# kafka-broker-kill: Kill one Kafka broker, verify consumer rebalancing
+# Hypothesis: Remaining 2 brokers maintain quorum, consumers rebalance within 30s
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: kafka-broker-kill
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/category: pod
+    chaos.example.org/severity: critical
+    chaos.example.org/blast-radius: platform
+    chaos.example.org/validates: kafka-rebalancing
+spec:
+  action: pod-kill
+  mode: one
+  duration: "60s"
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app.kubernetes.io/name: kafka
+  scheduler:
+    cron: ""
+  gracePeriod: 10
+
+---
+# spire-agent-kill: Kill SPIRE agent on a node, verify SVID rotation recovery
+# Hypothesis: DaemonSet restarts agent, SVIDs remain valid (1h TTL), new agent re-attests
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: spire-agent-kill
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/category: pod
+    chaos.example.org/severity: critical
+    chaos.example.org/blast-radius: platform
+    chaos.example.org/validates: svid-rotation-recovery
+spec:
+  action: pod-kill
+  mode: one
+  duration: "45s"
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app.kubernetes.io/name: spire-agent
+  scheduler:
+    cron: ""
+  gracePeriod: 5
+
+---
+# multi-service-pod-kill: Kill pods in gateway + order + payment simultaneously
+# Tests cascading failure scenario — blast radius encompasses the order flow
+# Hypothesis: Remaining replicas handle traffic, circuit breakers protect downstream
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: multi-service-pod-kill
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/category: pod
+    chaos.example.org/severity: critical
+    chaos.example.org/blast-radius: multi-service
+    chaos.example.org/validates: cascading-failure-recovery
+spec:
+  action: pod-kill
+  mode: one
+  duration: "60s"
+  selector:
+    namespaces:
+      - production
+    expressionSelectors:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - gateway
+          - order
+          - payment
+  scheduler:
+    cron: ""
+  gracePeriod: 3
+
+# =============================================================================
+# 2. NETWORK CHAOS EXPERIMENTS
+# =============================================================================
+
+---
+# order-to-payment-latency: Inject 500ms latency between order and payment
+# Hypothesis: Order service circuit breaker detects elevated latency, retries with backoff,
+#             payment responds within timeout budget (2s)
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: order-to-payment-latency
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/category: network
+    chaos.example.org/severity: medium
+    chaos.example.org/blast-radius: service-pair
+    chaos.example.org/validates: circuit-breaker-latency
+spec:
+  action: delay
+  mode: all
+  duration: "120s"
+  delay:
+    latency: "500ms"
+    correlation: "50"
+    jitter: "100ms"
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app.kubernetes.io/name: order
+  direction: to
+  target:
+    selector:
+      namespaces:
+        - production
+      labelSelectors:
+        app.kubernetes.io/name: payment
+    mode: all
+
+---
+# gateway-to-services-partition: Network partition between gateway and backend services
+# Hypothesis: Gateway returns 503 for affected services, returns cached catalog data,
+#             health checks reflect degraded state in OTel metrics
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: gateway-to-services-partition
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/category: network
+    chaos.example.org/severity: critical
+    chaos.example.org/blast-radius: multi-service
+    chaos.example.org/validates: partition-tolerance
+spec:
+  action: partition
+  mode: all
+  duration: "60s"
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app.kubernetes.io/name: gateway
+  direction: to
+  target:
+    selector:
+      namespaces:
+        - production
+      expressionSelectors:
+        - key: app.kubernetes.io/name
+          operator: In
+          values:
+            - identity
+            - catalog
+            - order
+            - payment
+    mode: all
+
+---
+# kafka-producer-latency: Inject latency to Kafka producer calls
+# Hypothesis: Producers handle latency within delivery timeout, consumers continue
+#             processing available records, no data loss
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: kafka-producer-latency
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/category: network
+    chaos.example.org/severity: high
+    chaos.example.org/blast-radius: platform
+    chaos.example.org/validates: kafka-producer-resilience
+spec:
+  action: delay
+  mode: all
+  duration: "90s"
+  delay:
+    latency: "300ms"
+    correlation: "30"
+    jitter: "50ms"
+  selector:
+    namespaces:
+      - production
+    expressionSelectors:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - order
+          - cdc-relay
+          - notification
+  direction: to
+  target:
+    selector:
+      namespaces:
+        - production
+      labelSelectors:
+        app.kubernetes.io/name: kafka
+    mode: all
+
+---
+# dns-resolution-failure: Simulate DNS resolution failures for service discovery
+# Hypothesis: Services with cached DNS entries continue operating, new lookups fail
+#             gracefully, retry logic handles transient DNS errors
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: dns-resolution-failure
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/category: network
+    chaos.example.org/severity: high
+    chaos.example.org/blast-radius: platform
+    chaos.example.org/validates: dns-resilience
+spec:
+  action: delay
+  mode: all
+  duration: "45s"
+  delay:
+    latency: "5s"
+    correlation: "80"
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app.kubernetes.io/name: gateway
+  direction: to
+  target:
+    selector:
+      namespaces:
+        - kube-system
+      labelSelectors:
+        k8s-app: kube-dns
+    mode: all
+
+---
+# cross-zone-partition: Simulate zone failure with network partition
+# Targets pods with zone=topology-kubernetes-io-zone annotation
+# Hypothesis: Topology spread constraints maintain service availability,
+#             Kafka consumers rebalance across remaining zones
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: cross-zone-partition
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/category: network
+    chaos.example.org/severity: critical
+    chaos.example.org/blast-radius: zone
+    chaos.example.org/validates: zone-fault-tolerance
+spec:
+  action: partition
+  mode: all
+  duration: "90s"
+  selector:
+    namespaces:
+      - production
+    expressionSelectors:
+      - key: topology.kubernetes.io/zone
+        operator: In
+        values:
+          - zone-1
+  direction: both
+  target:
+    selector:
+      namespaces:
+        - production
+      expressionSelectors:
+        - key: topology.kubernetes.io/zone
+          operator: In
+          values:
+            - zone-2
+            - zone-3
+    mode: all
+
+# =============================================================================
+# 3. STRESS CHAOS EXPERIMENTS
+# =============================================================================
+
+---
+# payment-cpu-stress: CPU stress on payment pods to trigger HPA
+# Hypothesis: HPA detects CPU > 70% threshold, scales payment to 3+ replicas
+#             within 90s stabilization window
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: payment-cpu-stress
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/category: stress
+    chaos.example.org/severity: medium
+    chaos.example.org/blast-radius: single-service
+    chaos.example.org/validates: hpa-scaling
+spec:
+  mode: one
+  duration: "180s"
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app.kubernetes.io/name: payment
+  stressors:
+    cpu:
+      workers: 4
+      load: 80
+  scheduler:
+    cron: ""
+
+---
+# analytics-memory-stress: Memory stress on analytics to test OOM handling
+# Hypothesis: Pod is OOMKilled, replacement starts, no data loss from
+#             in-flight processing (event sourcing recovery)
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: analytics-memory-stress
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/category: stress
+    chaos.example.org/severity: high
+    chaos.example.org/blast-radius: single-service
+    chaos.example.org/validates: oom-handling
+spec:
+  mode: one
+  duration: "120s"
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app.kubernetes.io/name: analytics
+  stressors:
+    memory:
+      workers: 2
+      size: "512MB"
+  scheduler:
+    cron: ""
+
+---
+# gateway-io-stress: I/O stress on gateway to test request queuing
+# Hypothesis: Gateway queue absorbs I/O pressure, requests complete within
+#             99th percentile latency budget (500ms), no request drops
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: gateway-io-stress
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/category: stress
+    chaos.example.org/severity: medium
+    chaos.example.org/blast-radius: single-service
+    chaos.example.org/validates: io-pressure-handling
+spec:
+  mode: one
+  duration: "120s"
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app.kubernetes.io/name: gateway
+  stressors:
+    io:
+      workers: 2
+  scheduler:
+    cron: ""
+
+# =============================================================================
+# 4. TIME CHAOS EXPERIMENTS
+# =============================================================================
+
+---
+# order-clock-skew: 5s clock skew on order service pods
+# Tests distributed system time sensitivity — saga timeouts, TTL calculations,
+# Kafka timestamp ordering, and SPIRE SVID expiry checks
+# Hypothesis: Order service handles clock skew gracefully via server-assigned
+#             timestamps; saga timeout logic is not clock-skew sensitive
+apiVersion: chaos-mesh.org/v1alpha1
+kind: TimeChaos
+metadata:
+  name: order-clock-skew
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/category: time
+    chaos.example.org/severity: high
+    chaos.example.org/blast-radius: single-service
+    chaos.example.org/validates: clock-skew-tolerance
+spec:
+  mode: all
+  duration: "90s"
+  timeOffset: "-5s"
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app.kubernetes.io/name: order
+  scheduler:
+    cron: ""
+
+# =============================================================================
+# 5. HTTP CHAOS EXPERIMENTS
+# =============================================================================
+
+---
+# payment-5xx-injection: Inject 50% 500 errors on payment service
+# Hypothesis: Order service circuit breaker opens after 50% error rate,
+#             fallback returns payment-pending status, saga suspends and retries
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: payment-5xx-injection
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/category: http
+    chaos.example.org/severity: high
+    chaos.example.org/blast-radius: single-service
+    chaos.example.org/validates: circuit-breaker-error-threshold
+spec:
+  mode: all
+  duration: "90s"
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app.kubernetes.io/name: payment
+  target: Response
+  port: 9090
+  method:
+    - POST
+    - PUT
+    - PATCH
+  abort: false
+  errorCode: 500
+  error:
+    body:
+      type: RGBA
+      value: "500"
+  delay:
+    type: RGBA
+    value: "0"
+  replaceHeaders:
+    headers:
+      - key: X-Chaos-Injected
+        value: "true"
+  replaceBody:
+    body:
+      type: RGBA
+      value: '{"error":"chaos_injected","code":500,"message":"Internal Server Error — Chaos Mesh fault injection active"}'
+  patch:
+    headers:
+      - key: X-Chaos-Mesh
+        value: "payment-5xx-injection"
+
+---
+# catalog-slow-responses: Inject 2s delays on 30% of catalog responses
+# Hypothesis: Gateway degrades gracefully, catalog responses within 99th %ile
+#             budget (3s including gateway overhead), no cascade to order flow
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: catalog-slow-responses
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/category: http
+    chaos.example.org/severity: medium
+    chaos.example.org/blast-radius: single-service
+    chaos.example.org/validates: latency-degradation
+spec:
+  mode: all
+  duration: "120s"
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app.kubernetes.io/name: catalog
+  target: Response
+  port: 9090
+  delay:
+    type: RGBA
+    value: "2s"
+  abort: false
+  replace:
+    headers:
+      - key: X-Chaos-Injected
+        value: "true"
+  patch:
+    headers:
+      - key: X-Chaos-Mesh
+        value: "catalog-slow-responses"
+
+# =============================================================================
+# 6. SCHEDULED EXPERIMENT WORKFLOW (CronJob)
+# =============================================================================
+# Weekly chaos game day — runs subset of experiments during off-peak hours
+# Schedule: Sundays 02:00 UTC
+# Flow: Preflight → Steady-State → Execute → Validate → Rollback if needed → Report
+# =============================================================================
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chaos-workflow-config
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/component: workflow-config
+data:
+  # Experiments to run during scheduled game day
+  EXPERIMENTS: |
+    gateway-pod-kill
+    order-pod-kill
+    payment-pod-kill
+    order-to-payment-latency
+    payment-5xx-injection
+    catalog-slow-responses
+    payment-cpu-stress
+    order-clock-skew
+  # SLO thresholds for steady-state validation
+  SLO_ERROR_RATE_THRESHOLD: "0.01"
+  SLO_P99_LATENCY_MS: "500"
+  SLO_AVAILABILITY_PCT: "99.9"
+  # Slack webhook for results publishing
+  SLACK_WEBHOOK_URL: "https://hooks.slack.com/services/REPLACE_ME"
+  SLACK_CHANNEL: "#chaos-engineering"
+  # Observation window after each experiment (seconds)
+  OBSERVATION_WINDOW_SECS: "60"
+  # Maximum concurrent experiments
+  MAX_CONCURRENT: "1"
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: chaos-workflow-runner
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/component: workflow-runner
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: chaos-workflow-runner
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/component: workflow-runner
+rules:
+  # Least-privilege: read workload state
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list"]
+  # Least-privilege: Chaos Mesh CRDs only
+  - apiGroups: ["chaos-mesh.org"]
+    resources: ["podchaos", "networkchaos", "stresschaos", "timechaos", "httpchaos"]
+    verbs: ["get", "list", "create", "delete"]
+  # ConfigMap access for reading workflow policy
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: chaos-workflow-runner
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/component: workflow-runner
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: chaos-workflow-runner
+subjects:
+  - kind: ServiceAccount
+    name: chaos-workflow-runner
+    namespace: production
+
+---
+# CronJob: Weekly chaos game day
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: chaos-game-day
+  namespace: production
+  labels:
+    chaos-mesh: enabled
+    app.kubernetes.io/part-of: polyglot-microservices
+    chaos.example.org/component: scheduled-workflow
+spec:
+  schedule: "0 2 * * 0"  # Sundays at 02:00 UTC
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  startingDeadlineSeconds: 300
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 3600  # 1 hour max runtime
+      template:
+        metadata:
+          labels:
+            chaos-mesh: enabled
+            app.kubernetes.io/part-of: polyglot-microservices
+            chaos.example.org/component: game-day-job
+        spec:
+          serviceAccountName: chaos-workflow-runner
+          restartPolicy: Never
+          containers:
+            - name: chaos-runner
+              image: bitnami/kubectl:1.29  # kubectl + bash
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -euo pipefail
+
+                  echo "============================================================"
+                  echo "  CHAOS GAME DAY — $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+                  echo "============================================================"
+
+                  CONFIGMAP="chaos-workflow-config"
+                  NAMESPACE="production"
+                  RESULTS_FILE="/tmp/chaos-gameday-results.txt"
+
+                  # Load config
+                  EXPERIMENTS=$(kubectl get configmap ${CONFIGMAP} -n ${NAMESPACE} -o jsonpath='{.data.EXPERIMENTS}')
+                  SLO_ERROR_RATE=$(kubectl get configmap ${CONFIGMAP} -n ${NAMESPACE} -o jsonpath='{.data.SLO_ERROR_RATE_THRESHOLD}')
+                  SLO_P99_MS=$(kubectl get configmap ${CONFIGMAP} -n ${NAMESPACE} -o jsonpath='{.data.SLO_P99_LATENCY_MS}')
+                  SLO_AVAILABILITY=$(kubectl get configmap ${CONFIGMAP} -n ${NAMESPACE} -o jsonpath='{.data.SLO_AVAILABILITY_PCT}')
+                  OBSERVATION_SECS=$(kubectl get configmap ${CONFIGMAP} -n ${NAMESPACE} -o jsonpath='{.data.OBSERVATION_WINDOW_SECS}')
+                  SLACK_URL=$(kubectl get configmap ${CONFIGMAP} -n ${NAMESPACE} -o jsonpath='{.data.SLACK_WEBHOOK_URL}')
+
+                  PASS=0
+                  FAIL=0
+                  SKIPPED=0
+                  FAILED_EXPERIMENTS=""
+
+                  # ── Phase 1: Pre-flight Checks ──────────────────────────
+                  echo ""
+                  echo "── Phase 1: Pre-flight Health Checks ──"
+                  SERVICES="gateway identity catalog order payment notification analytics rl-engine schema-registry"
+                  ALL_HEALTHY=true
+
+                  for svc in ${SERVICES}; do
+                    READY=$(kubectl get deployment ${svc} -n ${NAMESPACE} -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+                    DESIRED=$(kubectl get deployment ${svc} -n ${NAMESPACE} -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "1")
+                    if [ "${READY}" != "${DESIRED}" ]; then
+                      echo "  WARN: ${svc} — ${READY}/${DESIRED} replicas ready"
+                      ALL_HEALTHY=false
+                    else
+                      echo "  OK:   ${svc} — ${READY}/${DESIRED} replicas ready"
+                    fi
+                  done
+
+                  if [ "${ALL_HEALTHY}" = false ]; then
+                    echo "ABORT: Not all services healthy. Skipping game day."
+                    exit 1
+                  fi
+                  echo "  All services healthy — proceeding."
+
+                  # ── Phase 2: Steady-State Hypothesis ───────────────────
+                  echo ""
+                  echo "── Phase 2: Steady-State Baseline ──"
+                  echo "  SLO Thresholds:"
+                  echo "    Error Rate < ${SLO_ERROR_RATE}"
+                  echo "    P99 Latency < ${SLO_P99_MS}ms"
+                  echo "    Availability > ${SLO_AVAILABILITY}%"
+                  echo "  Recording baseline metrics..."
+
+                  # Query Prometheus for baseline (assumes prometheus service)
+                  BASELINE_ERROR_RATE=$(kubectl exec -n ${NAMESPACE} svc/prometheus -- \
+                    wget -qO- 'http://localhost:9090/api/v1/query?query=sum(rate(http_server_errors_total{namespace="production"}[5m]))/sum(rate(http_server_requests_total{namespace="production"}[5m]))' 2>/dev/null | grep -oP '"value":\["[^"]+","([^"]+)"\]' | head -1 | grep -oP '\d+\.\d+' || echo "0")
+                  echo "  Baseline Error Rate: ${BASELINE_ERROR_RATE}"
+
+                  # ── Phase 3: Execute Experiments ────────────────────────
+                  echo ""
+                  echo "── Phase 3: Experiment Execution ──"
+
+                  for exp_name in ${EXPERIMENTS}; do
+                    echo ""
+                    echo "  ── Running: ${exp_name} ──"
+
+                    # Apply the experiment
+                    if ! kubectl get ${exp_name} -n ${NAMESPACE} &>/dev/null; then
+                      echo "    Experiment ${exp_name} not found — skipping."
+                      SKIPPED=$((SKIPPED + 1))
+                      continue
+                    fi
+
+                    # Activate: patch scheduler to run now
+                    kubectl annotate ${exp_name} -n ${NAMESPACE} \
+                      chaos-mesh.org/starting-time="$(date -u '+%Y-%m-%dT%H:%M:%SZ')" --overwrite 2>/dev/null || true
+
+                    # Wait for experiment to reach Running phase
+                    echo "    Waiting for experiment to start..."
+                    for i in $(seq 1 30); do
+                      STATUS=$(kubectl get ${exp_name} -n ${NAMESPACE} -o jsonpath='{.status.experiment.phase}' 2>/dev/null || echo "Unknown")
+                      if [ "${STATUS}" = "Running" ] || [ "${STATUS}" = "Finished" ] || [ "${STATUS}" = "Failed" ]; then
+                        break
+                      fi
+                      sleep 2
+                    done
+
+                    # Wait for experiment duration + observation window
+                    DURATION=$(kubectl get ${exp_name} -n ${NAMESPACE} -o jsonpath='{.spec.duration}' 2>/dev/null || echo "60s")
+                    DURATION_SECS=$(echo "${DURATION}" | sed 's/s//')
+                    TOTAL_WAIT=$((DURATION_SECS + OBSERVATION_SECS))
+                    echo "    Waiting ${TOTAL_WAIT}s (experiment + observation)..."
+                    sleep ${TOTAL_WAIT}
+
+                    # ── Phase 4: Post-Experiment Validation ──────────────
+                    echo ""
+                    echo "  ── Validating: ${exp_name} ──"
+
+                    # Check if all services are still healthy
+                    POST_HEALTHY=true
+                    for svc in ${SERVICES}; do
+                      READY=$(kubectl get deployment ${svc} -n ${NAMESPACE} -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+                      if [ "${READY}" = "0" ]; then
+                        echo "    CRITICAL: ${svc} has 0 ready replicas!"
+                        POST_HEALTHY=false
+                      fi
+                    done
+
+                    # Query error rate post-experiment
+                    POST_ERROR_RATE=$(kubectl exec -n ${NAMESPACE} svc/prometheus -- \
+                      wget -qO- 'http://localhost:9090/api/v1/query?query=sum(rate(http_server_errors_total{namespace="production"}[2m]))/sum(rate(http_server_requests_total{namespace="production"}[2m]))' 2>/dev/null | grep -oP '"value":\["[^"]+","([^"]+)"\]' | head -1 | grep -oP '\d+\.\d+' || echo "0")
+
+                    EXPERIMENT_RESULT="PASS"
+                    if [ "${POST_HEALTHY}" = false ]; then
+                      EXPERIMENT_RESULT="FAIL"
+                    fi
+
+                    if [ "${EXPERIMENT_RESULT}" = "PASS" ]; then
+                      echo "    Result: PASS"
+                      PASS=$((PASS + 1))
+                    else
+                      echo "    Result: FAIL"
+                      FAIL=$((FAIL + 1))
+                      FAILED_EXPERIMENTS="${FAILED_EXPERIMENTS} ${exp_name}"
+
+                      # ── Phase 5: Rollback ──────────────────────────────
+                      echo "    Rolling back — deleting all active chaos experiments..."
+                      kubectl delete podchaos,networkchaos,stresschaos,timechaos,httpchaos \
+                        -l chaos-mesh=enabled -n ${NAMESPACE} --wait=true 2>/dev/null || true
+                      echo "    Rollback complete. Stopping further experiments."
+                      break
+                    fi
+                  done
+
+                  # ── Phase 6: Results Reporting ──────────────────────────
+                  echo ""
+                  echo "============================================================"
+                  echo "  CHAOS GAME DAY RESULTS"
+                  echo "  Timestamp: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+                  echo "  PASS:    ${PASS}"
+                  echo "  FAIL:    ${FAIL}"
+                  echo "  SKIPPED: ${SKIPPED}"
+                  if [ -n "${FAILED_EXPERIMENTS}" ]; then
+                    echo "  FAILED: ${FAILED_EXPERIMENTS}"
+                  fi
+                  echo "============================================================"
+
+                  # Publish to Slack
+                  if [ "${SLACK_URL}" != "https://hooks.slack.com/services/REPLACE_ME" ]; then
+                    COLOR="good"
+                    if [ "${FAIL}" -gt 0 ]; then COLOR="danger"; fi
+                    PAYLOAD=$(cat <<SLACK_EOF
+                  {
+                    "channel": "#chaos-engineering",
+                    "attachments": [{
+                      "color": "${COLOR}",
+                      "title": "Chaos Game Day Results — $(date -u '+%Y-%m-%d')",
+                      "fields": [
+                        {"title": "Passed", "value": "${PASS}", "short": true},
+                        {"title": "Failed", "value": "${FAIL}", "short": true},
+                        {"title": "Skipped", "value": "${SKIPPED}", "short": true},
+                        {"title": "Failed Experiments", "value": "${FAILED_EXPERIMENTS:-None}", "short": false}
+                      ],
+                      "footer": "Polyglot Microservices Chaos Engineering",
+                      "ts": $(date +%s)
+                    }]
+                  }
+                  SLACK_EOF
+                  )
+                    curl -s -X POST -H 'Content-type: application/json' --data "${PAYLOAD}" "${SLACK_URL}" || true
+                  fi
+
+                  # Cleanup: remove all active chaos experiments
+                  echo "Cleaning up chaos experiments..."
+                  kubectl delete podchaos,networkchaos,stresschaos,timechaos,httpchaos \
+                    -l chaos-mesh=enabled -n ${NAMESPACE} --wait=false 2>/dev/null || true
+
+                  if [ "${FAIL}" -gt 0 ]; then
+                    exit 1
+                  fi
+                  exit 0
+              env:
+                - name: NAMESPACE
+                  value: "production"
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
