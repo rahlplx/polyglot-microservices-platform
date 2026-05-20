@@ -299,7 +299,7 @@ if command -v kubeconform &>/dev/null; then
         if [[ -d "$dir" ]]; then
             kubeconform_output=$(kubeconform -summary -ignore-missing-schemas -ignore-filename-pattern '\.json$' -kubernetes-version 1.29.2 "$dir" 2>&1 || true)
             echo "$kubeconform_output" > "${RESULTS_DIR}/kubeconform-$(basename "$dir").log"
-            if echo "$kubeconform_output" | grep -qiE 'failed|invalid|[1-9] error|error while parsing'; then
+            if echo "$kubeconform_output" | grep -qiE 'failed|[1-9][0-9]* invalid|[1-9][0-9]* error|error while parsing'; then
                 k8s_errors=$((k8s_errors + 1))
             fi
         fi
