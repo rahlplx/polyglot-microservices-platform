@@ -19,9 +19,6 @@ from typing import Optional
 
 from ..domain.models.notification import NotificationChannel
 from ..domain.ports.outbound.channel_sender import ChannelSenderPort
-from ..domain.ports.outbound.delivery_tracker import DeliveryTrackerPort
-from ..domain.ports.outbound.template_store import TemplateRepositoryPort
-from ..domain.ports.outbound.preference_store import PreferenceRepositoryPort
 from ..domain.services.delivery_optimizer import DeliveryOptimizer
 from ..domain.services.notification_service import NotificationService
 from ..domain.services.preference_service import PreferenceService

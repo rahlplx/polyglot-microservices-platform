@@ -16,30 +16,24 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Optional
 
 from ..models.notification import (
     Notification,
     NotificationChannel,
-    NotificationPriority,
     NotificationStatus,
 )
-from ..models.delivery import DeliveryAttempt, DeliveryReceipt, DeliveryStatus, TrackingEvent, TrackingEventType
-from ..models.template import RenderedTemplate
+from ..models.delivery import DeliveryAttempt, DeliveryStatus
 from ..models.preference import NotificationPreference
 from ..ports.inbound.send_notification import (
-    SendNotificationPort,
     SendNotificationRequest,
     SendNotificationResponse,
-    GetDeliveryStatusPort,
     GetDeliveryStatusRequest,
     GetDeliveryStatusResponse,
-    GetPreferencesPort,
     GetPreferencesRequest,
     GetPreferencesResponse,
 )
-from ..ports.outbound.channel_sender import ChannelSenderPort, DeliveryRequest, DeliveryResponse
-from ..ports.outbound.delivery_tracker import DeliveryTrackerPort, PageRequest, Page, DeliveryModel
+from ..ports.outbound.channel_sender import ChannelSenderPort, DeliveryRequest
+from ..ports.outbound.delivery_tracker import DeliveryTrackerPort
 from ..ports.outbound.template_store import TemplateRepositoryPort
 from ..ports.outbound.preference_store import PreferenceRepositoryPort
 

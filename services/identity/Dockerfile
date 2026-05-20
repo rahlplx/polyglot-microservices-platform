@@ -84,5 +84,8 @@ ENV IDENTITY_GRPC_BIND_ADDR=0.0.0.0:9090 \
     IDENTITY_LOG_LEVEL=info \
     IDENTITY_OTLP_ENDPOINT=http://otel-collector:4317
 
+# Run as non-root user (nobody in scratch context)
+USER 65534:65534
+
 # Entry point
 ENTRYPOINT ["/bin/identity-service"]

@@ -76,7 +76,7 @@ func (s *SPIFFEIdentity) Start(ctx context.Context) error {
                 slog.String("trust_domain", s.config.TrustDomain),
         )
 
-        source, err := workloadapi.NewX509Source(
+        source, err := workloadapi.NewX509Source(ctx,
                 workloadapi.WithClientOptions(
                         workloadapi.WithAddr(s.config.WorkloadAPIAddr),
                 ),

@@ -21,13 +21,11 @@ browser-based dashboard access and JWT authentication for API consumers.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import signal
-import sys
 import threading
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from .config import AnalyticsConfig

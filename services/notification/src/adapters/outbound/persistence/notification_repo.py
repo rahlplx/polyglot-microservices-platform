@@ -28,13 +28,11 @@ from sqlalchemy import (
     Boolean,
     ForeignKey,
     Index,
-    JSON,
     select,
-    update,
     insert,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -48,14 +46,11 @@ from ....domain.models.notification import (
 )
 from ....domain.models.delivery import (
     DeliveryAttempt,
-    DeliveryReceipt,
-    DeliveryStatus,
     TrackingEvent,
     TrackingEventType,
 )
 from ....domain.ports.outbound.delivery_tracker import (
     DeliveryModel,
-    DeliveryTrackerPort,
     Page,
     PageRequest,
 )
@@ -183,7 +178,6 @@ class DeliveryModelRecord(Base):
 
 
 # Need Float import
-from sqlalchemy import Float
 
 
 class NotificationRepository:

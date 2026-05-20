@@ -16,12 +16,9 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from sqlalchemy import Column, DateTime, Integer, String, Text, Boolean, func, select, Index
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ....domain.models.template import Template
-from ....domain.ports.outbound.template_store import TemplateRepositoryPort
 
 logger = logging.getLogger(__name__)
 

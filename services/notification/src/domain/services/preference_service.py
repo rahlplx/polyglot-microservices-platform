@@ -16,17 +16,14 @@ ensures consistent behavior across all notification delivery paths.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from ..models.notification import NotificationChannel
 from ..models.preference import (
     ChannelOptIn,
     ChannelPreference,
     NotificationPreference,
-    QuietHours,
 )
 from ..ports.outbound.preference_store import PreferenceRepositoryPort
-from ..services.notification_service import PreferencesNotConfiguredError
 
 logger = logging.getLogger(__name__)
 

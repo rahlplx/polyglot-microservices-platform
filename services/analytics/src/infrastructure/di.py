@@ -17,13 +17,12 @@ starts processing requests.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from ..domain.services.analytics_service import AnalyticsService
 from ..domain.services.aggregation_service import AggregationService
 from ..domain.services.dashboard_service import DashboardService
 from ..domain.services.report_service import ReportService
-from ..adapters.inbound.event_consumer import EventConsumer, EventTransformer
+from ..adapters.inbound.event_consumer import EventConsumer
 from ..adapters.inbound.grpc_handler import GrpcHandler
 from ..adapters.outbound.persistence.clickhouse_repo import ClickHouseTimeSeriesRepository
 from ..adapters.outbound.persistence.postgres_repo import PostgresEventRepository

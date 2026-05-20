@@ -16,11 +16,10 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Optional
+from typing import Optional
 
 from ....domain.models.notification import NotificationChannel
 from ....domain.ports.outbound.channel_sender import (
-    ChannelSenderPort,
     DeliveryRequest,
     DeliveryResponse,
 )

@@ -27,7 +27,7 @@ from typing import Any
 import grpc
 
 from ...domain.models.aggregation import AggregationFunction, AggregationWindow
-from ...domain.models.report import Granularity, ReportFormat, ReportType, TimeRange
+from ...domain.models.report import ReportFormat, ReportType, TimeRange
 from ...domain.services.analytics_service import AnalyticsService
 from ...domain.services.dashboard_service import DashboardService
 from ...domain.services.report_service import ReportService

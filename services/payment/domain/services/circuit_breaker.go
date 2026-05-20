@@ -163,3 +163,16 @@ func (cb *CircuitBreakerService) transitionTo(newState models.CircuitState) {
                 cb.onStateChange(from, newState)
         }
 }
+
+// RecordFailureForTest exports the unexported recordFailure method for unit testing.
+// This allows tests to directly manipulate the failure counter without executing
+// a function through the circuit breaker.
+func (cb *CircuitBreakerService) RecordFailureForTest() {
+        cb.recordFailure()
+}
+
+// RecordSuccessForTest exports the unexported recordSuccess method for unit testing.
+// This allows tests to verify that a successful request resets the failure counter.
+func (cb *CircuitBreakerService) RecordSuccessForTest() {
+        cb.recordSuccess()
+}

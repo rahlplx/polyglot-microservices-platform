@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - kafka.yaml
+  - spire-server.yaml
+  - spire-agent.yaml
+  - spire-federation-policy.yaml
+  - otel-collector.yaml
+  - otel-gateway.yaml
+  - prometheus.yaml
+  - prometheus-alerts.yaml
+  - grafana.yaml
+  - grafana-datasources.yaml
+  - grafana-dashboards-config.yaml
+  - loki.yaml
+  - tempo.yaml
+  - debezium.yaml

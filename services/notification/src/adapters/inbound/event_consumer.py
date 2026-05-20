@@ -17,10 +17,9 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 from ...domain.models.notification import (
     NotificationChannel,
@@ -30,7 +29,6 @@ from ...domain.models.notification import (
 )
 from ...domain.ports.inbound.send_notification import (
     SendNotificationRequest,
-    SendNotificationResponse,
 )
 from ...domain.services.notification_service import NotificationService, NotificationError
 

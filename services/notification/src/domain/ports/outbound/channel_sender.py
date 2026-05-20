@@ -16,7 +16,6 @@ to interact with the template engine.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Optional, Protocol, runtime_checkable
 
 from ...models.notification import NotificationChannel

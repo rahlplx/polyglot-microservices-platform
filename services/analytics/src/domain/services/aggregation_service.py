@@ -18,11 +18,10 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import datetime, timezone
 
 from ..models.aggregation import AggregatedDataPoint, AggregationFunction, AggregationWindow
-from ..models.metric import DataPoint, TimeSeries
+from ..models.metric import DataPoint
 from ..models.report import TimeRange
 from ..ports.outbound.time_series_store import TimeSeriesRepository
 

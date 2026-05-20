@@ -2,7 +2,6 @@ package grpc
 
 import (
         "context"
-        "fmt"
         "log/slog"
 
         "google.golang.org/grpc/codes"
@@ -81,7 +80,7 @@ func (h *Handler) RefundPayment(ctx context.Context, req *RefundPaymentRequest) 
                 IdempotencyKey: req.IdempotencyKey,
         }
 
-        refund, err := h.paymentService.RefundPayment(ctx, cmd)
+        refund, err := h.paymentService.RefundPaymentCmd(ctx, cmd)
         if err != nil {
                 return nil, mapDomainError(err)
         }
@@ -114,34 +113,14 @@ func (h *Handler) GetTransaction(ctx context.Context, req *GetTransactionRequest
 
 // ListTransactions handles the gRPC ListTransactions RPC.
 func (h *Handler) ListTransactions(ctx context.Context, req *ListTransactionsRequest) (*ListTransactionsResponse, error) {
-        payments, nextCursor, err := h.paymentService.ListTransactions(
-                ctx, req.CustomerId, models.PaymentStatus(req.Status), req.Cursor, int(req.PageSize),
-        )
-        if err != nil {
-                return nil, mapDomainError(err)
-        }
-
-        items := make([]*TransactionItem, len(payments))
-        for i, p := range payments {
-                items[i] = &TransactionItem{
-                        PaymentId:   p.ID,
-                        OrderId:     p.OrderID,
-                        Status:      string(p.Status),
-                        AmountCents: p.Amount.Amount,
-                        Currency:    p.Amount.Currency,
-                        CreatedAt:   p.CreatedAt.Unix(),
-                }
-        }
-
-        return &ListTransactionsResponse{
-                Transactions: items,
-                NextCursor:   nextCursor,
-        }, nil
+        // ListTransactions is not yet implemented on the PaymentService
+        return nil, status.Errorf(codes.Unimplemented, "ListTransactions not yet implemented")
 }
 
 // GetCircuitStatus handles the gRPC GetCircuitStatus RPC.
 func (h *Handler) GetCircuitStatus(ctx context.Context, req *GetCircuitStatusRequest) (*GetCircuitStatusResponse, error) {
         info, err := h.paymentService.GetCircuitStatus(ctx)
+        _ = info // suppress unused warning
         if err != nil {
                 return nil, mapDomainError(err)
         }

@@ -19,14 +19,9 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from ....domain.models.notification import NotificationChannel
 from ....domain.models.preference import (
-    ChannelOptIn,
-    ChannelPreference,
     NotificationPreference,
-    QuietHours,
 )
-from ....domain.ports.outbound.preference_store import PreferenceRepositoryPort
 
 logger = logging.getLogger(__name__)
 

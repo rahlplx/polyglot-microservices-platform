@@ -14,17 +14,12 @@ interceptors for authentication, logging, and OpenTelemetry tracing.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
-from ...domain.models.delivery import DeliveryStatus
-from ...domain.models.notification import NotificationChannel
 from ...domain.ports.inbound.send_notification import (
     GetDeliveryStatusPort,
     GetDeliveryStatusRequest,
-    GetDeliveryStatusResponse,
     GetPreferencesPort,
     GetPreferencesRequest,
-    GetPreferencesResponse,
 )
 from ...domain.services.notification_service import NotificationNotFoundError
 

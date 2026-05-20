@@ -17,7 +17,6 @@ flexible deployment across development, staging, and production environments.
 
 from __future__ import annotations
 
-from typing import Any
 
 import logging
 

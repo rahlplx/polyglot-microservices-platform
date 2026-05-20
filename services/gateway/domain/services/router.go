@@ -7,6 +7,7 @@ package services
 import (
         "context"
         "fmt"
+        "io"
         "log/slog"
         "strings"
         "sync"
@@ -46,7 +47,7 @@ func NewRouterService(
         logger *slog.Logger,
 ) *RouterService {
         if logger == nil {
-                logger = slog.New(slog.NewTextHandler(nil, nil))
+                logger = slog.New(slog.NewTextHandler(io.Discard, nil))
         }
         if routes == nil {
                 routes = make(map[string]models.Route)

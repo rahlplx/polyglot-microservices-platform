@@ -1,306 +1,47 @@
-# Dev Overlay — 1 replica, reduced resources, debug logging
-# For local development and fast iteration cycles
----
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 metadata:
   name: dev-overlay
-
 resources:
-  - ../../base
-  - ../../platform
-
+- ../../base
+- ../../platform
 namespace: production
-
-# Common labels for all resources in dev overlay
 commonLabels:
   environment: dev
   app.kubernetes.io/environment: dev
-
-# Images — use dev-tagged images
 images:
-  - name: gateway
-    newName: ghcr.io/example/gateway
-    newTag: dev
-  - name: identity
-    newName: ghcr.io/example/identity
-    newTag: dev
-  - name: catalog
-    newName: ghcr.io/example/catalog
-    newTag: dev
-  - name: order
-    newName: ghcr.io/example/order
-    newTag: dev
-  - name: payment
-    newName: ghcr.io/example/payment
-    newTag: dev
-  - name: notification
-    newName: ghcr.io/example/notification
-    newTag: dev
-  - name: analytics
-    newName: ghcr.io/example/analytics
-    newTag: dev
-  - name: cdc-relay
-    newName: ghcr.io/example/cdc-relay
-    newTag: dev
-  - name: schema-registry
-    newName: ghcr.io/example/schema-registry
-    newTag: dev
-
-# Replicas — single replica for cost optimization
-replicas:
-  - name: gateway
-    count: 1
-  - name: identity
-    count: 1
-  - name: catalog
-    count: 1
-  - name: order
-    count: 1
-  - name: payment
-    count: 1
-  - name: notification
-    count: 1
-  - name: analytics
-    count: 1
-  - name: cdc-relay
-    count: 1
-  - name: schema-registry
-    count: 1
-  - name: otel-gateway
-    count: 1
-  - name: spire-server
-    count: 1
-  - name: kafka
-    count: 1
-  - name: zookeeper
-    count: 1
-
-# Resource patches — reduced resources for dev
-patches:
-  # Gateway: reduced from 100m/500m, 128Mi/512Mi
-  - target:
-      kind: Deployment
-      name: gateway
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: gateway
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: gateway
-                resources:
-                  requests:
-                    cpu: 50m
-                    memory: 64Mi
-                  limits:
-                    cpu: 250m
-                    memory: 256Mi
-  # Identity: reduced from 100m/300m, 256Mi/512Mi
-  - target:
-      kind: Deployment
-      name: identity
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: identity
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: identity
-                resources:
-                  requests:
-                    cpu: 50m
-                    memory: 128Mi
-                  limits:
-                    cpu: 200m
-                    memory: 256Mi
-  # Catalog: reduced from 200m/1000m, 256Mi/1Gi
-  - target:
-      kind: Deployment
-      name: catalog
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: catalog
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: catalog
-                resources:
-                  requests:
-                    cpu: 100m
-                    memory: 128Mi
-                  limits:
-                    cpu: 500m
-                    memory: 512Mi
-  # Order: reduced from 500m/2000m, 512Mi/2Gi
-  - target:
-      kind: Deployment
-      name: order
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: order
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: order
-                resources:
-                  requests:
-                    cpu: 200m
-                    memory: 256Mi
-                  limits:
-                    cpu: 1000m
-                    memory: 1Gi
-  # Payment: reduced from 200m/1000m, 256Mi/1Gi
-  - target:
-      kind: Deployment
-      name: payment
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: payment
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: payment
-                resources:
-                  requests:
-                    cpu: 100m
-                    memory: 128Mi
-                  limits:
-                    cpu: 500m
-                    memory: 512Mi
-  # Notification: reduced from 100m/500m, 256Mi/512Mi
-  - target:
-      kind: Deployment
-      name: notification
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: notification
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: notification
-                resources:
-                  requests:
-                    cpu: 50m
-                    memory: 128Mi
-                  limits:
-                    cpu: 250m
-                    memory: 256Mi
-  # Analytics: reduced from 500m/2000m, 1Gi/4Gi
-  - target:
-      kind: Deployment
-      name: analytics
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: analytics
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: analytics
-                resources:
-                  requests:
-                    cpu: 200m
-                    memory: 512Mi
-                  limits:
-                    cpu: 1000m
-                    memory: 2Gi
-  # CDC Relay: reduced from 500m/2000m, 1Gi/4Gi
-  - target:
-      kind: Deployment
-      name: cdc-relay
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: cdc-relay
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: cdc-relay
-                resources:
-                  requests:
-                    cpu: 200m
-                    memory: 512Mi
-                  limits:
-                    cpu: 1000m
-                    memory: 2Gi
-  # Schema Registry: reduced from 100m/300m, 128Mi/256Mi
-  - target:
-      kind: Deployment
-      name: schema-registry
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: schema-registry
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: schema-registry
-                resources:
-                  requests:
-                    cpu: 50m
-                    memory: 64Mi
-                  limits:
-                    cpu: 200m
-                    memory: 128Mi
-
-# ConfigMap replacements — debug logging
+- name: gateway
+  newName: ghcr.io/example/gateway
+  newTag: dev
+- name: identity
+  newName: ghcr.io/example/identity
+  newTag: dev
+- name: catalog
+  newName: ghcr.io/example/catalog
+  newTag: dev
+- name: order
+  newName: ghcr.io/example/order
+  newTag: dev
+- name: payment
+  newName: ghcr.io/example/payment
+  newTag: dev
+- name: notification
+  newName: ghcr.io/example/notification
+  newTag: dev
+- name: analytics
+  newName: ghcr.io/example/analytics
+  newTag: dev
+- name: cdc-relay
+  newName: ghcr.io/example/cdc-relay
+  newTag: dev
+- name: schema-registry
+  newName: ghcr.io/example/schema-registry
+  newTag: dev
 configMapGenerator:
-  - name: environment-config
-    literals:
-      - LOG_LEVEL=DEBUG
-      - OTEL_TRACES_SAMPLER=always_on
-      - OTEL_METRICS_EXPORT_INTERVAL=10000
-      - SPIRE_TRUST_DOMAIN=trust.dev.example.org
-    behavior: create
+- name: environment-config
+  literals:
+  - LOG_LEVEL=DEBUG
+  - OTEL_TRACES_SAMPLER=always_on
+  - OTEL_METRICS_EXPORT_INTERVAL=10000
+  - SPIRE_TRUST_DOMAIN=trust.dev.example.org
+  behavior: create

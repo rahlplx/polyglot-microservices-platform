@@ -24,7 +24,6 @@ from typing import Any, Optional
 
 from ....domain.models.notification import NotificationChannel
 from ....domain.ports.outbound.channel_sender import (
-    ChannelSenderPort,
     DeliveryRequest,
     DeliveryResponse,
 )

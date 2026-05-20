@@ -18,8 +18,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, Protocol, runtime_checkable
 
-from ...models.notification import Notification, NotificationStatus
-from ...models.delivery import DeliveryAttempt, DeliveryReceipt, TrackingEvent
+from ...models.notification import Notification
+from ...models.delivery import DeliveryAttempt, TrackingEvent
 
 
 @dataclass(frozen=True)

@@ -19,7 +19,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from ...domain.ports.outbound.event_store import EventRepository
 
 logger = logging.getLogger(__name__)
 

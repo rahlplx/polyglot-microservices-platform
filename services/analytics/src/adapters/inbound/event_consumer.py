@@ -23,7 +23,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from ...domain.models.metric import DataPoint, Metric, MetricType
+from ...domain.models.metric import Metric, MetricType
 from ...domain.ports.outbound.time_series_store import TimeSeriesRepository
 from ...domain.ports.outbound.event_store import EventRepository
 

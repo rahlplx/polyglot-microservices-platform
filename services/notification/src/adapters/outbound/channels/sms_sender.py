@@ -16,11 +16,10 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Optional
+from typing import Optional
 
 from ....domain.models.notification import NotificationChannel
 from ....domain.ports.outbound.channel_sender import (
-    ChannelSenderPort,
     DeliveryRequest,
     DeliveryResponse,
 )
@@ -182,7 +181,7 @@ class SmsSenderAdapter:
             "To": request.recipient_address,
             "From": self._from_number,
             "Body": message_body,
-            "StatusCallback": f"/api/v1/notifications/webhooks/twilio",
+            "StatusCallback": "/api/v1/notifications/webhooks/twilio",
         }
 
         base_url = self._acl_sidecar_url or "http://localhost:8081"

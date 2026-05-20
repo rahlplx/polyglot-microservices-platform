@@ -18,7 +18,6 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Optional
 
 
 class RateLimitStrategy(str, Enum):
@@ -303,9 +302,9 @@ class RateLimitStatus:
         Returns:
             Dictionary of HTTP header names to string values.
         """
-        headers: dict[str, str] = {
+        headers = {
             "X-RateLimit-Limit": str(self.limit),
-            "X-RateLimit-Remaining": str(remaining := self.remaining),
+            "X-RateLimit-Remaining": str(self.remaining),
             "X-RateLimit-Reset": str(int(self.reset_at.timestamp())),
         }
         if not self.allowed and self.retry_after_ms > 0:

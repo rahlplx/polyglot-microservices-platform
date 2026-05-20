@@ -49,7 +49,7 @@ func (s *PaymentService) ProcessPayment(ctx context.Context, cmd ProcessPaymentC
 
 	// Idempotency check: if a payment with this key already exists, return it.
 	if cmd.IdempotencyKey != "" {
-		existing, err := s.repo.GetPaymentByIdempotencyKey(ctx, cmd.IdempotencyKey)
+		existing, err := s.repo.FindByIdempotencyKey(ctx, cmd.IdempotencyKey)
 		if err != nil {
 			s.logger.WarnContext(ctx, "idempotency check failed", "error", err)
 		}
@@ -76,29 +76,30 @@ func (s *PaymentService) ProcessPayment(ctx context.Context, cmd ProcessPaymentC
 	}
 
 	// Persist the pending payment.
-	if err := s.repo.SavePayment(ctx, payment); err != nil {
+	if err := s.repo.Save(ctx, payment); err != nil {
 		return nil, fmt.Errorf("failed to save pending payment: %w", err)
 	}
 
 	// Authorize through gateway (protected by circuit breaker).
-	result, err := s.circuit.Execute(ctx, func() (interface{}, error) {
-		txnID, err := s.gateway.Authorize(ctx, payment)
+	var gatewayTxnID string
+	err := s.circuit.Execute(ctx, func(ctx context.Context) error {
+		var err error
+		gatewayTxnID, err = s.gateway.Authorize(ctx, payment)
 		if err != nil {
-			return nil, fmt.Errorf("gateway authorization failed: %w", err)
+			return fmt.Errorf("gateway authorization failed: %w", err)
 		}
-		return txnID, nil
+		return nil
 	})
 
 	if err != nil {
 		// Circuit is open or gateway failed — transition to FAILED.
 		_ = payment.TransitionTo(models.PaymentStatusFailed)
-		_ = s.repo.UpdatePayment(ctx, payment)
+		_ = s.repo.Save(ctx, payment)
 		_ = s.publisher.PublishPaymentEvent(ctx, "payment.failed", payment)
 		return nil, fmt.Errorf("payment processing failed: %w", err)
 	}
 
 	// Authorization successful — transition to AUTHORIZED.
-	gatewayTxnID := result.(string)
 	payment.GatewayTxnID = gatewayTxnID
 	if err := payment.TransitionTo(models.PaymentStatusAuthorized); err != nil {
 		return nil, fmt.Errorf("invalid state transition after authorization: %w", err)
@@ -113,7 +114,7 @@ func (s *PaymentService) ProcessPayment(ctx context.Context, cmd ProcessPaymentC
 	}
 
 	// Persist the updated payment state.
-	if err := s.repo.UpdatePayment(ctx, payment); err != nil {
+	if err := s.repo.Save(ctx, payment); err != nil {
 		return nil, fmt.Errorf("failed to update payment: %w", err)
 	}
 
@@ -128,8 +129,8 @@ func (s *PaymentService) ProcessPayment(ctx context.Context, cmd ProcessPaymentC
 // This is called automatically for certain payment methods or can be
 // triggered manually through the capture API endpoint.
 func (s *PaymentService) capturePayment(ctx context.Context, payment *models.Payment) error {
-	_, err := s.circuit.Execute(ctx, func() (interface{}, error) {
-		return nil, s.gateway.Capture(ctx, payment)
+	err := s.circuit.Execute(ctx, func(ctx context.Context) error {
+		return s.gateway.Capture(ctx, payment)
 	})
 	if err != nil {
 		return fmt.Errorf("gateway capture failed: %w", err)
@@ -148,11 +149,11 @@ func (s *PaymentService) capturePayment(ctx context.Context, payment *models.Pay
 // RefundPayment processes a refund against a completed payment.
 // It validates the payment is in a refundable state, calculates the remaining
 // refundable balance, and delegates to the payment gateway via the circuit breaker.
-func (s *PaymentService) RefundPayment(ctx context.Context, cmd RefundPaymentCommand) (*models.Refund, error) {
+func (s *PaymentService) RefundPaymentCmd(ctx context.Context, cmd RefundPaymentCommand) (*models.Refund, error) {
 	s.logger.InfoContext(ctx, "processing refund", "payment_id", cmd.PaymentID, "amount", cmd.Amount)
 
 	// Retrieve the original payment.
-	payment, err := s.repo.GetPayment(ctx, cmd.PaymentID)
+	payment, err := s.repo.FindByID(ctx, cmd.PaymentID)
 	if err != nil {
 		return nil, fmt.Errorf("payment not found: %w", err)
 	}
@@ -178,21 +179,22 @@ func (s *PaymentService) RefundPayment(ctx context.Context, cmd RefundPaymentCom
 	}
 
 	// Process refund through gateway (protected by circuit breaker).
-	result, err := s.circuit.Execute(ctx, func() (interface{}, error) {
-		gatewayRefundID, err := s.gateway.Refund(ctx, refund, payment)
+	var gatewayRefundID string
+	gatewayErr := s.circuit.Execute(ctx, func(ctx context.Context) error {
+		var err error
+		gatewayRefundID, err = s.gateway.Refund(ctx, refund, payment)
 		if err != nil {
-			return nil, fmt.Errorf("gateway refund failed: %w", err)
+			return fmt.Errorf("gateway refund failed: %w", err)
 		}
-		return gatewayRefundID, nil
+		return nil
 	})
 
-	if err != nil {
+	if gatewayErr != nil {
 		_ = refund.TransitionTo(models.RefundStatusFailed)
 		_ = s.repo.SaveRefund(ctx, refund)
-		return nil, fmt.Errorf("refund processing failed: %w", err)
+		return nil, fmt.Errorf("refund processing failed: %w", gatewayErr)
 	}
 
-	gatewayRefundID := result.(string)
 	refund.GatewayRefundID = gatewayRefundID
 	_ = refund.TransitionTo(models.RefundStatusProcessed)
 
@@ -203,7 +205,7 @@ func (s *PaymentService) RefundPayment(ctx context.Context, cmd RefundPaymentCom
 
 	// Transition payment to REFUNDED state.
 	_ = payment.TransitionTo(models.PaymentStatusRefunded)
-	_ = s.repo.UpdatePayment(ctx, payment)
+	_ = s.repo.Save(ctx, payment)
 
 	// Publish refund event.
 	_ = s.publisher.PublishRefundEvent(ctx, "refund.processed", refund)
@@ -214,24 +216,16 @@ func (s *PaymentService) RefundPayment(ctx context.Context, cmd RefundPaymentCom
 
 // GetTransaction retrieves a payment transaction by ID.
 func (s *PaymentService) GetTransaction(ctx context.Context, paymentID string) (*models.Payment, error) {
-	payment, err := s.repo.GetPayment(ctx, paymentID)
+	payment, err := s.repo.FindByID(ctx, paymentID)
 	if err != nil {
 		return nil, fmt.Errorf("payment not found: %w", err)
 	}
 	return payment, nil
 }
 
-// ListTransactions retrieves a filtered, paginated list of payments.
-func (s *PaymentService) ListTransactions(ctx context.Context, customerID string, status models.PaymentStatus, cursor string, pageSize int) ([]*models.Payment, string, error) {
-	if pageSize <= 0 || pageSize > 100 {
-		pageSize = 20
-	}
-	return s.repo.ListPayments(ctx, customerID, status, cursor, pageSize)
-}
-
 // GetCircuitStatus returns the current state of a circuit breaker.
-func (s *PaymentService) GetCircuitStatus(ctx context.Context) (*models.CircuitBreakerInfo, error) {
-	return s.circuit.GetState(ctx)
+func (s *PaymentService) GetCircuitStatus(ctx context.Context) (models.CircuitBreakerInfo, error) {
+	return s.circuit.GetState(ctx), nil
 }
 
 // Command types (imported from inbound ports, re-declared here for service use).

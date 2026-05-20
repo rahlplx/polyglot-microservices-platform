@@ -1,469 +1,112 @@
-# Production Overlay — 3+ replicas, full resources, strict SLOs
-# Production-grade deployment with full HA, resource budgets, and SLO enforcement
-# Resource budgets from docs/performance-budget.md Section 4
----
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 metadata:
   name: production-overlay
-
 resources:
-  - ../../base
-  - ../../platform
-
+- ../../base
+- ../../platform
 namespace: production
-
-# Common labels for all resources in production overlay
 commonLabels:
   environment: production
   app.kubernetes.io/environment: production
-
-# Images — use stable release tags (pinned SHA)
 images:
-  - name: gateway
-    newName: ghcr.io/example/gateway
-    newTag: v1.0.0
-  - name: identity
-    newName: ghcr.io/example/identity
-    newTag: v1.0.0
-  - name: catalog
-    newName: ghcr.io/example/catalog
-    newTag: v1.0.0
-  - name: order
-    newName: ghcr.io/example/order
-    newTag: v1.0.0
-  - name: payment
-    newName: ghcr.io/example/payment
-    newTag: v1.0.0
-  - name: notification
-    newName: ghcr.io/example/notification
-    newTag: v1.0.0
-  - name: analytics
-    newName: ghcr.io/example/analytics
-    newTag: v1.0.0
-  - name: cdc-relay
-    newName: ghcr.io/example/cdc-relay
-    newTag: v1.0.0
-  - name: schema-registry
-    newName: ghcr.io/example/schema-registry
-    newTag: v1.0.0
-
-# Replicas — full production HA
-# From performance-budget.md Section 4
-replicas:
-  - name: gateway
-    count: 3
-  - name: identity
-    count: 2
-  - name: catalog
-    count: 3
-  - name: order
-    count: 3
-  - name: payment
-    count: 2
-  - name: notification
-    count: 2
-  - name: analytics
-    count: 2
-  - name: cdc-relay
-    count: 1
-  - name: schema-registry
-    count: 2
-  - name: otel-gateway
-    count: 2
-  - name: spire-server
-    count: 3
-  - name: kafka
-    count: 3
-  - name: zookeeper
-    count: 3
-
-# Resource patches — full production budgets
-# Aligned with performance-budget.md Section 4
-patches:
-  # Gateway: 100m/500m CPU, 128Mi/512Mi Memory
-  - target:
-      kind: Deployment
-      name: gateway
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: gateway
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: gateway
-                resources:
-                  requests:
-                    cpu: 100m
-                    memory: 128Mi
-                  limits:
-                    cpu: 500m
-                    memory: 512Mi
-            topologySpreadConstraints:
-              - maxSkew: 1
-                topologyKey: topology.kubernetes.io/zone
-                whenUnsatisfiable: DoNotSchedule
-                labelSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: gateway
-  # Identity: 100m/300m CPU, 256Mi/512Mi Memory
-  - target:
-      kind: Deployment
-      name: identity
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: identity
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: identity
-                resources:
-                  requests:
-                    cpu: 100m
-                    memory: 256Mi
-                  limits:
-                    cpu: 300m
-                    memory: 512Mi
-            topologySpreadConstraints:
-              - maxSkew: 1
-                topologyKey: topology.kubernetes.io/zone
-                whenUnsatisfiable: DoNotSchedule
-                labelSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: identity
-  # Catalog: 200m/1000m CPU, 256Mi/1Gi Memory
-  - target:
-      kind: Deployment
-      name: catalog
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: catalog
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: catalog
-                resources:
-                  requests:
-                    cpu: 200m
-                    memory: 256Mi
-                  limits:
-                    cpu: 1000m
-                    memory: 1Gi
-            topologySpreadConstraints:
-              - maxSkew: 1
-                topologyKey: topology.kubernetes.io/zone
-                whenUnsatisfiable: DoNotSchedule
-                labelSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: catalog
-  # Order: 500m/2000m CPU, 512Mi/2Gi Memory
-  - target:
-      kind: Deployment
-      name: order
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: order
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: order
-                resources:
-                  requests:
-                    cpu: 500m
-                    memory: 512Mi
-                  limits:
-                    cpu: 2000m
-                    memory: 2Gi
-            topologySpreadConstraints:
-              - maxSkew: 1
-                topologyKey: topology.kubernetes.io/zone
-                whenUnsatisfiable: DoNotSchedule
-                labelSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: order
-  # Payment: 200m/1000m CPU, 256Mi/1Gi Memory
-  - target:
-      kind: Deployment
-      name: payment
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: payment
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: payment
-                resources:
-                  requests:
-                    cpu: 200m
-                    memory: 256Mi
-                  limits:
-                    cpu: 1000m
-                    memory: 1Gi
-            topologySpreadConstraints:
-              - maxSkew: 1
-                topologyKey: topology.kubernetes.io/zone
-                whenUnsatisfiable: DoNotSchedule
-                labelSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: payment
-  # Notification: 100m/500m CPU, 256Mi/512Mi Memory
-  - target:
-      kind: Deployment
-      name: notification
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: notification
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: notification
-                resources:
-                  requests:
-                    cpu: 100m
-                    memory: 256Mi
-                  limits:
-                    cpu: 500m
-                    memory: 512Mi
-            topologySpreadConstraints:
-              - maxSkew: 1
-                topologyKey: topology.kubernetes.io/zone
-                whenUnsatisfiable: DoNotSchedule
-                labelSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: notification
-  # Analytics: 500m/2000m CPU, 1Gi/4Gi Memory
-  - target:
-      kind: Deployment
-      name: analytics
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: analytics
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: analytics
-                resources:
-                  requests:
-                    cpu: 500m
-                    memory: 1Gi
-                  limits:
-                    cpu: 2000m
-                    memory: 4Gi
-            topologySpreadConstraints:
-              - maxSkew: 1
-                topologyKey: topology.kubernetes.io/zone
-                whenUnsatisfiable: DoNotSchedule
-                labelSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: analytics
-  # CDC Relay: 500m/2000m CPU, 1Gi/4Gi Memory
-  - target:
-      kind: Deployment
-      name: cdc-relay
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: cdc-relay
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: cdc-relay
-                resources:
-                  requests:
-                    cpu: 500m
-                    memory: 1Gi
-                  limits:
-                    cpu: 2000m
-                    memory: 4Gi
-  # Schema Registry: 100m/300m CPU, 128Mi/256Mi Memory
-  - target:
-      kind: Deployment
-      name: schema-registry
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: schema-registry
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: schema-registry
-                resources:
-                  requests:
-                    cpu: 100m
-                    memory: 128Mi
-                  limits:
-                    cpu: 300m
-                    memory: 256Mi
-            topologySpreadConstraints:
-              - maxSkew: 1
-                topologyKey: topology.kubernetes.io/zone
-                whenUnsatisfiable: DoNotSchedule
-                labelSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: schema-registry
-
-# ConfigMap — production-specific settings
+- name: gateway
+  newName: ghcr.io/example/gateway
+  newTag: v1.0.0
+- name: identity
+  newName: ghcr.io/example/identity
+  newTag: v1.0.0
+- name: catalog
+  newName: ghcr.io/example/catalog
+  newTag: v1.0.0
+- name: order
+  newName: ghcr.io/example/order
+  newTag: v1.0.0
+- name: payment
+  newName: ghcr.io/example/payment
+  newTag: v1.0.0
+- name: notification
+  newName: ghcr.io/example/notification
+  newTag: v1.0.0
+- name: analytics
+  newName: ghcr.io/example/analytics
+  newTag: v1.0.0
+- name: cdc-relay
+  newName: ghcr.io/example/cdc-relay
+  newTag: v1.0.0
+- name: schema-registry
+  newName: ghcr.io/example/schema-registry
+  newTag: v1.0.0
 configMapGenerator:
-  - name: environment-config
-    literals:
-      - LOG_LEVEL=INFO
-      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
-      - OTEL_TRACES_SAMPLER_ARG=0.1
-      - OTEL_METRICS_EXPORT_INTERVAL=15000
-      - SPIRE_TRUST_DOMAIN=trust.example.org
-    behavior: create
-
-# Pod disruption budgets for production
-# Inject environment-config ConfigMap into ALL service deployments
+- name: environment-config
+  literals:
+  - LOG_LEVEL=INFO
+  - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+  - OTEL_TRACES_SAMPLER_ARG=0.1
+  - OTEL_METRICS_EXPORT_INTERVAL=15000
+  - SPIRE_TRUST_DOMAIN=trust.example.org
+  behavior: create
 patchesJson6902:
-  - target:
-      group: apps
-      version: v1
-      kind: Deployment
-      name: gateway
-    patch: |
-      - op: add
-        path: /spec/template/spec/containers/0/envFrom
-        value:
-          - configMapRef:
-              name: environment-config
-  - target:
-      group: apps
-      version: v1
-      kind: Deployment
-      name: identity
-    patch: |
-      - op: add
-        path: /spec/template/spec/containers/0/envFrom
-        value:
-          - configMapRef:
-              name: environment-config
-  - target:
-      group: apps
-      version: v1
-      kind: Deployment
-      name: catalog
-    patch: |
-      - op: add
-        path: /spec/template/spec/containers/0/envFrom
-        value:
-          - configMapRef:
-              name: environment-config
-  - target:
-      group: apps
-      version: v1
-      kind: Deployment
-      name: order
-    patch: |
-      - op: add
-        path: /spec/template/spec/containers/0/envFrom
-        value:
-          - configMapRef:
-              name: environment-config
-  - target:
-      group: apps
-      version: v1
-      kind: Deployment
-      name: payment
-    patch: |
-      - op: add
-        path: /spec/template/spec/containers/0/envFrom
-        value:
-          - configMapRef:
-              name: environment-config
-  - target:
-      group: apps
-      version: v1
-      kind: Deployment
-      name: notification
-    patch: |
-      - op: add
-        path: /spec/template/spec/containers/0/envFrom
-        value:
-          - configMapRef:
-              name: environment-config
-  - target:
-      group: apps
-      version: v1
-      kind: Deployment
-      name: analytics
-    patch: |
-      - op: add
-        path: /spec/template/spec/containers/0/envFrom
-        value:
-          - configMapRef:
-              name: environment-config
-  - target:
-      group: apps
-      version: v1
-      kind: Deployment
-      name: cdc-relay
-    patch: |
-      - op: add
-        path: /spec/template/spec/containers/0/envFrom
-        value:
-          - configMapRef:
-              name: environment-config
-  - target:
-      group: apps
-      version: v1
-      kind: Deployment
-      name: schema-registry
-    patch: |
-      - op: add
-        path: /spec/template/spec/containers/0/envFrom
-        value:
-          - configMapRef:
-              name: environment-config
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: gateway
+  patch: "- op: add\n  path: /spec/template/spec/containers/0/envFrom\n  value:\n\
+    \    - configMapRef:\n        name: environment-config\n"
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: identity
+  patch: "- op: add\n  path: /spec/template/spec/containers/0/envFrom\n  value:\n\
+    \    - configMapRef:\n        name: environment-config\n"
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: catalog
+  patch: "- op: add\n  path: /spec/template/spec/containers/0/envFrom\n  value:\n\
+    \    - configMapRef:\n        name: environment-config\n"
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: order
+  patch: "- op: add\n  path: /spec/template/spec/containers/0/envFrom\n  value:\n\
+    \    - configMapRef:\n        name: environment-config\n"
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: payment
+  patch: "- op: add\n  path: /spec/template/spec/containers/0/envFrom\n  value:\n\
+    \    - configMapRef:\n        name: environment-config\n"
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: notification
+  patch: "- op: add\n  path: /spec/template/spec/containers/0/envFrom\n  value:\n\
+    \    - configMapRef:\n        name: environment-config\n"
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: analytics
+  patch: "- op: add\n  path: /spec/template/spec/containers/0/envFrom\n  value:\n\
+    \    - configMapRef:\n        name: environment-config\n"
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: cdc-relay
+  patch: "- op: add\n  path: /spec/template/spec/containers/0/envFrom\n  value:\n\
+    \    - configMapRef:\n        name: environment-config\n"
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: schema-registry
+  patch: "- op: add\n  path: /spec/template/spec/containers/0/envFrom\n  value:\n\
+    \    - configMapRef:\n        name: environment-config\n"

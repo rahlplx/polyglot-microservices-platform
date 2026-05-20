@@ -26,7 +26,7 @@ from ...models.notification import (
     Recipient,
 )
 from ...models.preference import NotificationPreference
-from ...models.delivery import DeliveryStatus, DeliveryReceipt
+from ...models.delivery import DeliveryStatus
 
 
 # --- Request/Response types for SendNotification ---

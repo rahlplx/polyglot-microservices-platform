@@ -25,9 +25,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from ...domain.models.aggregation import AggregationFunction
-from ...domain.models.metric import DataPoint, Metric, MetricType
-from ...domain.ports.outbound.otel_processor import OTelTraceProcessor
+from ...domain.models.metric import Metric, MetricType
 from ...domain.ports.outbound.time_series_store import TimeSeriesRepository
 
 logger = logging.getLogger(__name__)

@@ -24,7 +24,6 @@ import logging
 import math
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from typing import Any
 
 from ..models.rate_limit import (
     RateLimitKey,

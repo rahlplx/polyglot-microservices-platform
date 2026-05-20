@@ -19,11 +19,10 @@ import logging
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Any, Optional
+from typing import Optional
 
 from ....domain.models.notification import NotificationChannel
 from ....domain.ports.outbound.channel_sender import (
-    ChannelSenderPort,
     DeliveryRequest,
     DeliveryResponse,
 )

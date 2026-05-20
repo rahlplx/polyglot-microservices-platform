@@ -1,307 +1,48 @@
-# Staging Overlay — 2 replicas, production-like resources
-# Pre-production validation environment, mirrors production config
----
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 metadata:
   name: staging-overlay
-
 resources:
-  - ../../base
-  - ../../platform
-
+- ../../base
+- ../../platform
 namespace: production
-
-# Common labels for all resources in staging overlay
 commonLabels:
   environment: staging
   app.kubernetes.io/environment: staging
-
-# Images — use release-candidate tagged images
 images:
-  - name: gateway
-    newName: ghcr.io/example/gateway
-    newTag: rc
-  - name: identity
-    newName: ghcr.io/example/identity
-    newTag: rc
-  - name: catalog
-    newName: ghcr.io/example/catalog
-    newTag: rc
-  - name: order
-    newName: ghcr.io/example/order
-    newTag: rc
-  - name: payment
-    newName: ghcr.io/example/payment
-    newTag: rc
-  - name: notification
-    newName: ghcr.io/example/notification
-    newTag: rc
-  - name: analytics
-    newName: ghcr.io/example/analytics
-    newTag: rc
-  - name: cdc-relay
-    newName: ghcr.io/example/cdc-relay
-    newTag: rc
-  - name: schema-registry
-    newName: ghcr.io/example/schema-registry
-    newTag: rc
-
-# Replicas — 2 replicas for HA validation
-replicas:
-  - name: gateway
-    count: 2
-  - name: identity
-    count: 2
-  - name: catalog
-    count: 2
-  - name: order
-    count: 2
-  - name: payment
-    count: 2
-  - name: notification
-    count: 2
-  - name: analytics
-    count: 2
-  - name: cdc-relay
-    count: 1
-  - name: schema-registry
-    count: 2
-  - name: otel-gateway
-    count: 2
-  - name: spire-server
-    count: 3
-  - name: kafka
-    count: 3
-  - name: zookeeper
-    count: 3
-
-# Resource patches — production-like but with 80% limits for cost control
-patches:
-  # Gateway: production budget 100m/500m, 128Mi/512Mi
-  - target:
-      kind: Deployment
-      name: gateway
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: gateway
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: gateway
-                resources:
-                  requests:
-                    cpu: 100m
-                    memory: 128Mi
-                  limits:
-                    cpu: 400m
-                    memory: 384Mi
-  # Identity: production budget 100m/300m, 256Mi/512Mi
-  - target:
-      kind: Deployment
-      name: identity
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: identity
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: identity
-                resources:
-                  requests:
-                    cpu: 100m
-                    memory: 256Mi
-                  limits:
-                    cpu: 250m
-                    memory: 384Mi
-  # Catalog: production budget 200m/1000m, 256Mi/1Gi
-  - target:
-      kind: Deployment
-      name: catalog
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: catalog
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: catalog
-                resources:
-                  requests:
-                    cpu: 200m
-                    memory: 256Mi
-                  limits:
-                    cpu: 800m
-                    memory: 768Mi
-  # Order: production budget 500m/2000m, 512Mi/2Gi
-  - target:
-      kind: Deployment
-      name: order
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: order
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: order
-                resources:
-                  requests:
-                    cpu: 500m
-                    memory: 512Mi
-                  limits:
-                    cpu: 1500m
-                    memory: 1536Mi
-  # Payment: production budget 200m/1000m, 256Mi/1Gi
-  - target:
-      kind: Deployment
-      name: payment
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: payment
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: payment
-                resources:
-                  requests:
-                    cpu: 200m
-                    memory: 256Mi
-                  limits:
-                    cpu: 800m
-                    memory: 768Mi
-  # Notification: production budget 100m/500m, 256Mi/512Mi
-  - target:
-      kind: Deployment
-      name: notification
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: notification
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: notification
-                resources:
-                  requests:
-                    cpu: 100m
-                    memory: 256Mi
-                  limits:
-                    cpu: 400m
-                    memory: 384Mi
-  # Analytics: production budget 500m/2000m, 1Gi/4Gi
-  - target:
-      kind: Deployment
-      name: analytics
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: analytics
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: analytics
-                resources:
-                  requests:
-                    cpu: 500m
-                    memory: 1Gi
-                  limits:
-                    cpu: 1500m
-                    memory: 3Gi
-  # CDC Relay: production budget 500m/2000m, 1Gi/4Gi
-  - target:
-      kind: Deployment
-      name: cdc-relay
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: cdc-relay
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: cdc-relay
-                resources:
-                  requests:
-                    cpu: 500m
-                    memory: 1Gi
-                  limits:
-                    cpu: 1500m
-                    memory: 3Gi
-  # Schema Registry: production budget 100m/300m, 128Mi/256Mi
-  - target:
-      kind: Deployment
-      name: schema-registry
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: schema-registry
-      spec:
-        template:
-          metadata:
-            annotations:
-              spiffe.io/inject: "true"
-          spec:
-            containers:
-              - name: schema-registry
-                resources:
-                  requests:
-                    cpu: 100m
-                    memory: 128Mi
-                  limits:
-                    cpu: 250m
-                    memory: 192Mi
-
-# ConfigMap — staging-specific settings
+- name: gateway
+  newName: ghcr.io/example/gateway
+  newTag: rc
+- name: identity
+  newName: ghcr.io/example/identity
+  newTag: rc
+- name: catalog
+  newName: ghcr.io/example/catalog
+  newTag: rc
+- name: order
+  newName: ghcr.io/example/order
+  newTag: rc
+- name: payment
+  newName: ghcr.io/example/payment
+  newTag: rc
+- name: notification
+  newName: ghcr.io/example/notification
+  newTag: rc
+- name: analytics
+  newName: ghcr.io/example/analytics
+  newTag: rc
+- name: cdc-relay
+  newName: ghcr.io/example/cdc-relay
+  newTag: rc
+- name: schema-registry
+  newName: ghcr.io/example/schema-registry
+  newTag: rc
 configMapGenerator:
-  - name: environment-config
-    literals:
-      - LOG_LEVEL=INFO
-      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
-      - OTEL_TRACES_SAMPLER_ARG=0.5
-      - OTEL_METRICS_EXPORT_INTERVAL=15000
-      - SPIRE_TRUST_DOMAIN=trust.staging.example.org
-    behavior: create
+- name: environment-config
+  literals:
+  - LOG_LEVEL=INFO
+  - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+  - OTEL_TRACES_SAMPLER_ARG=0.5
+  - OTEL_METRICS_EXPORT_INTERVAL=15000
+  - SPIRE_TRUST_DOMAIN=trust.staging.example.org
+  behavior: create
