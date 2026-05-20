@@ -1,0 +1,43 @@
+{
+  "knowledge_id": "KN-G1",
+  "source_finding": "G1",
+  "category": "Bug",
+  "severity": "critical",
+  "file_path": "services/catalog/src/adapters/inbound/rest/CatalogController.ts",
+  "problem_pattern": "Money price conversion bug: min_price 29.99 \u2192 units:2999 instead of units:29 nanos:990000000",
+  "solution": "Used Money.fromDecimal() to correctly split decimal into units and nanos",
+  "verification_tier": 3,
+  "verification_evidence": [
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File services/catalog/src/adapters/inbound/rest/CatalogController.ts exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T10:23:00.569120+00:00"
+    },
+    {
+      "tier": 2,
+      "result": "pass",
+      "evidence": "Test directory found at /home/z/my-project/services/cdc-relay/tests",
+      "tester": "rl-feedback-loop-functional",
+      "timestamp": "2026-05-20T10:23:00.573155+00:00"
+    },
+    {
+      "tier": 3,
+      "result": "pass",
+      "evidence": "Stress test: tests/stress/money/test_money_value_stress.py \u2014 passed=51, failed=0, errors=0, elapsed=2.16s",
+      "tester": "stress-test-runner",
+      "timestamp": "2026-05-20T11:02:17.593550+00:00"
+    }
+  ],
+  "source_type": "external_bot",
+  "external_source": "gemini-code-assist",
+  "promoted_at": "2026-05-20T11:02:41.107845+00:00",
+  "confidence": 0.95,
+  "tags": [
+    "bug",
+    "critical",
+    "typescript",
+    "external:gemini-code-assist"
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "knowledge_id": "KN-V-3",
+  "source_finding": "V-3",
+  "category": "Bug",
+  "severity": "medium",
+  "file_path": "services/rl-engine/src/domain/services/rate_limit_engine.py",
+  "problem_pattern": "datetime.utcnow() deprecated \u2014 use datetime.now(timezone.utc)",
+  "solution": "Replaced datetime.utcnow() with datetime.now(timezone.utc)",
+  "verification_tier": 3,
+  "verification_evidence": [
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File services/rl-engine/src/domain/services/rate_limit_engine.py exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T10:23:00.590253+00:00"
+    },
+    {
+      "tier": 2,
+      "result": "pass",
+      "evidence": "Test directory found at /home/z/my-project/services/cdc-relay/tests",
+      "tester": "rl-feedback-loop-functional",
+      "timestamp": "2026-05-20T10:23:00.594655+00:00"
+    },
+    {
+      "tier": 3,
+      "result": "pass",
+      "evidence": "Stress test: tests/stress/config/test_config_correctness_stress.py \u2014 passed=5, failed=0, errors=0, elapsed=2.17s",
+      "tester": "stress-test-runner",
+      "timestamp": "2026-05-20T11:02:17.431609+00:00"
+    }
+  ],
+  "source_type": "our_audit",
+  "external_source": "",
+  "promoted_at": "2026-05-20T11:02:41.111824+00:00",
+  "confidence": 0.95,
+  "tags": [
+    "bug",
+    "medium",
+    "service-code",
+    "python",
+    "self-audit"
+  ]
+}

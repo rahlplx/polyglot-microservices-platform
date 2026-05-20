@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "created_at": "2026-05-20T10:22:54.390238+00:00",
-  "updated_at": "2026-05-20T10:23:54.869187+00:00",
+  "updated_at": "2026-05-20T11:02:54.259402+00:00",
   "metrics": {
     "total_findings": 31,
     "our_findings": 13,
@@ -9,10 +9,10 @@
     "duplicates": 0,
     "unique_to_external": 16,
     "gap_count": 16,
-    "tier1_passed": 25,
-    "tier2_passed": 9,
-    "tier3_passed": 0,
-    "promoted_to_knowledge": 0
+    "tier1_passed": 29,
+    "tier2_passed": 25,
+    "tier3_passed": 25,
+    "promoted_to_knowledge": 25
   },
   "gaps": [
     {
@@ -23,7 +23,7 @@
       "description": "readOnlyRootFilesystem: false \u2014 should be true for security",
       "external_source": "gemini-code-assist",
       "gap_reason": "category_blind_spot",
-      "fix_status": "statically_verified"
+      "fix_status": "promoted"
     },
     {
       "finding_id": "G18",
@@ -33,7 +33,7 @@
       "description": "DNS outage function applies wrong policy then deletes it \u2014 confusing and error-prone",
       "external_source": "gemini-code-assist",
       "gap_reason": "pattern_unrecognized",
-      "fix_status": "statically_verified"
+      "fix_status": "promoted"
     },
     {
       "finding_id": "G13",
@@ -43,7 +43,7 @@
       "description": "protoPath identical in all environment branches \u2014 dead conditional",
       "external_source": "gemini-code-assist",
       "gap_reason": "pattern_unrecognized",
-      "fix_status": "functionally_verified"
+      "fix_status": "promoted"
     },
     {
       "finding_id": "G9",
@@ -53,7 +53,7 @@
       "description": "datetime.fromtimestamp() without timezone \u2014 creates naive datetime objects",
       "external_source": "gemini-code-assist",
       "gap_reason": "pattern_unrecognized",
-      "fix_status": "functionally_verified"
+      "fix_status": "promoted"
     },
     {
       "finding_id": "G3",
@@ -63,7 +63,7 @@
       "description": "nanos validation prevents negative values \u2014 should allow range [-999999999, 999999999] with same sign as units",
       "external_source": "gemini-code-assist",
       "gap_reason": "pattern_unrecognized",
-      "fix_status": "functionally_verified"
+      "fix_status": "promoted"
     },
     {
       "finding_id": "G7",
@@ -73,7 +73,7 @@
       "description": "Recreate strategy causes downtime \u2014 should use RollingUpdate",
       "external_source": "gemini-code-assist",
       "gap_reason": "category_blind_spot",
-      "fix_status": "statically_verified"
+      "fix_status": "promoted"
     },
     {
       "finding_id": "G12",
@@ -83,7 +83,7 @@
       "description": "nanos comment says 0 <= nanos < 1B but should allow negative range with sign rule",
       "external_source": "gemini-code-assist",
       "gap_reason": "pattern_unrecognized",
-      "fix_status": "statically_verified"
+      "fix_status": "promoted"
     },
     {
       "finding_id": "G15",
@@ -93,7 +93,7 @@
       "description": "Hardcoded database credentials in connection string",
       "external_source": "gemini-code-assist",
       "gap_reason": "pattern_unrecognized",
-      "fix_status": "functionally_verified"
+      "fix_status": "promoted"
     },
     {
       "finding_id": "G6",
@@ -103,7 +103,7 @@
       "description": "Hardcoded placeholder repoURL https://github.com/example/...",
       "external_source": "gemini-code-assist",
       "gap_reason": "category_blind_spot",
-      "fix_status": "statically_verified"
+      "fix_status": "promoted"
     },
     {
       "finding_id": "G2",
@@ -113,7 +113,7 @@
       "description": "Zookeeper & Kafka using emptyDir instead of volumeClaimTemplates \u2014 data loss on pod reschedule",
       "external_source": "gemini-code-assist",
       "gap_reason": "category_blind_spot",
-      "fix_status": "statically_verified"
+      "fix_status": "promoted"
     },
     {
       "finding_id": "G5",
@@ -123,7 +123,7 @@
       "description": "Egress allows broad 10.0.0.0/8 instead of specific podSelector/ipBlock \u2014 violates least privilege",
       "external_source": "gemini-code-assist",
       "gap_reason": "category_blind_spot",
-      "fix_status": "statically_verified"
+      "fix_status": "promoted"
     },
     {
       "finding_id": "G1",
@@ -133,7 +133,7 @@
       "description": "Money price conversion bug: min_price 29.99 \u2192 units:2999 instead of units:29 nanos:990000000",
       "external_source": "gemini-code-assist",
       "gap_reason": "pattern_unrecognized",
-      "fix_status": "functionally_verified"
+      "fix_status": "promoted"
     },
     {
       "finding_id": "G17",
@@ -143,7 +143,7 @@
       "description": "Duplicated dashboard JSON \u2014 both inline in ConfigMap and as separate files in grafana-dashboards/",
       "external_source": "gemini-code-assist",
       "gap_reason": "category_blind_spot",
-      "fix_status": "statically_verified"
+      "fix_status": "promoted"
     },
     {
       "finding_id": "G16",
@@ -153,7 +153,7 @@
       "description": "ApplicationSet path points to YAML files not kustomize directories \u2014 will fail deployment",
       "external_source": "gemini-code-assist",
       "gap_reason": "category_blind_spot",
-      "fix_status": "statically_verified"
+      "fix_status": "promoted"
     },
     {
       "finding_id": "G14",
@@ -163,7 +163,7 @@
       "description": "Hardcoded default admin password in Kubernetes Secret",
       "external_source": "gemini-code-assist",
       "gap_reason": "category_blind_spot",
-      "fix_status": "statically_verified"
+      "fix_status": "promoted"
     },
     {
       "finding_id": "G10",
@@ -173,7 +173,7 @@
       "description": "environment-config ConfigMap only applied to gateway, not all services",
       "external_source": "gemini-code-assist",
       "gap_reason": "category_blind_spot",
-      "fix_status": "statically_verified"
+      "fix_status": "promoted"
     }
   ],
   "promotion_policy": {

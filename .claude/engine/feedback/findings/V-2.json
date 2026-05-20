@@ -9,8 +9,8 @@
   "fix_description": "Replaced datetime.utcnow() with datetime.now(timezone.utc)",
   "fix_commit": "",
   "our_violation_id": "V-2",
-  "status": "functionally_verified",
-  "verification_tier": 2,
+  "status": "promoted",
+  "verification_tier": 3,
   "verification_history": [
     {
       "tier": 1,
@@ -25,8 +25,15 @@
       "evidence": "Test directory found at /home/z/my-project/services/cdc-relay/tests",
       "tester": "rl-feedback-loop-functional",
       "timestamp": "2026-05-20T10:23:00.607856+00:00"
+    },
+    {
+      "tier": 3,
+      "result": "pass",
+      "evidence": "Stress test: tests/stress/config/test_config_correctness_stress.py \u2014 passed=5, failed=0, errors=0, elapsed=2.17s",
+      "tester": "stress-test-runner",
+      "timestamp": "2026-05-20T11:02:17.349633+00:00"
     }
   ],
   "created_at": "2026-05-20T10:22:54.390811+00:00",
-  "updated_at": "2026-05-20T10:23:00.607863+00:00"
+  "updated_at": "2026-05-20T11:02:41.114063+00:00"
 }

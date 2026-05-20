@@ -1,0 +1,43 @@
+{
+  "knowledge_id": "KN-G9",
+  "source_finding": "G9",
+  "category": "Bug",
+  "severity": "high",
+  "file_path": "services/analytics/src/adapters/inbound/grpc_handler.py",
+  "problem_pattern": "datetime.fromtimestamp() without timezone \u2014 creates naive datetime objects",
+  "solution": "Added tz=timezone.utc parameter to fromtimestamp() calls",
+  "verification_tier": 3,
+  "verification_evidence": [
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File services/analytics/src/adapters/inbound/grpc_handler.py exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T10:23:00.543249+00:00"
+    },
+    {
+      "tier": 2,
+      "result": "pass",
+      "evidence": "Test directory found at /home/z/my-project/services/cdc-relay/tests",
+      "tester": "rl-feedback-loop-functional",
+      "timestamp": "2026-05-20T10:23:00.547389+00:00"
+    },
+    {
+      "tier": 3,
+      "result": "pass",
+      "evidence": "Stress test: tests/stress/tz_datetime/test_datetime_timezone_stress.py \u2014 passed=28, failed=0, errors=0, elapsed=2.18s",
+      "tester": "stress-test-runner",
+      "timestamp": "2026-05-20T11:02:17.512683+00:00"
+    }
+  ],
+  "source_type": "external_bot",
+  "external_source": "gemini-code-assist",
+  "promoted_at": "2026-05-20T11:02:41.102435+00:00",
+  "confidence": 0.95,
+  "tags": [
+    "bug",
+    "high",
+    "python",
+    "external:gemini-code-assist"
+  ]
+}

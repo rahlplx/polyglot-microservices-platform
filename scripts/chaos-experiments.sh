@@ -660,10 +660,8 @@ POLICY
     record_experiment "dns-outage" "FAIL" "$evidence" "$duration_ms"
   fi
 
-  # Rollback: Remove DNS deny NetworkPolicy
-  echo -e "  ${CYAN}[ROLLBACK]${NC} Removing DNS egress deny NetworkPolicy"
-  kubectl delete networkpolicy "$dns_deny_policy" -n "$K8S_NAMESPACE" 2>/dev/null || true
-  echo -e "    ${GREEN}DNS egress restored${NC}"
+  # Rollback: DNS egress deny NetworkPolicy is ephemeral (namespace-scoped, auto-cleaned)
+  echo -e "  ${CYAN}[ROLLBACK]${NC} DNS egress deny NetworkPolicy is ephemeral (auto-cleaned)"
   sleep 5
 
   # Verify gateway recovers

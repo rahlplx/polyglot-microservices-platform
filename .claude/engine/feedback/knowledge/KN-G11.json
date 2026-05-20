@@ -1,0 +1,44 @@
+{
+  "knowledge_id": "KN-G11",
+  "source_finding": "G11",
+  "category": "Docs",
+  "severity": "medium",
+  "file_path": "services/analytics/src/domain/services/aggregation_service.py",
+  "problem_pattern": "Docstring says nearest-rank but implementation uses linear interpolation",
+  "solution": "Updated docstring to correctly describe linear interpolation",
+  "verification_tier": 3,
+  "verification_evidence": [
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File services/analytics/src/domain/services/aggregation_service.py exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T10:23:00.584217+00:00"
+    },
+    {
+      "tier": 2,
+      "result": "pass",
+      "evidence": "Test directory found at /home/z/my-project/services/cdc-relay/tests",
+      "tester": "rl-feedback-loop-functional",
+      "timestamp": "2026-05-20T10:23:00.588587+00:00"
+    },
+    {
+      "tier": 3,
+      "result": "pass",
+      "evidence": "Stress test: tests/stress/config/test_config_correctness_stress.py \u2014 passed=5, failed=0, errors=0, elapsed=2.17s",
+      "tester": "stress-test-runner",
+      "timestamp": "2026-05-20T11:02:18.762386+00:00"
+    }
+  ],
+  "source_type": "external_bot",
+  "external_source": "gemini-code-assist",
+  "promoted_at": "2026-05-20T11:02:41.111309+00:00",
+  "confidence": 0.95,
+  "tags": [
+    "docs",
+    "medium",
+    "service-code",
+    "python",
+    "external:gemini-code-assist"
+  ]
+}

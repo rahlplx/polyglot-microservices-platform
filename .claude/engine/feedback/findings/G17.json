@@ -9,8 +9,8 @@
   "fix_description": "UNFIXED \u2014 should use configMapGenerator from source JSON files",
   "fix_commit": "",
   "our_violation_id": "",
-  "status": "statically_verified",
-  "verification_tier": 1,
+  "status": "promoted",
+  "verification_tier": 3,
   "verification_history": [
     {
       "tier": 1,
@@ -18,8 +18,141 @@
       "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
       "tester": "rl-feedback-loop-static",
       "timestamp": "2026-05-20T10:23:00.575914+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.205543+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.329882+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.413045+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.494922+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.575596+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.656911+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.739202+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.821335+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.911072+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.992902+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.073189+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.151691+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.229443+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.306925+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.385797+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.461799+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.534871+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/grafana-dashboards-config.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.607336+00:00"
+    },
+    {
+      "tier": 3,
+      "result": "pass",
+      "evidence": "Stress test: tests/stress/infra/test_infra_config_stress.py \u2014 passed=13, failed=0, errors=0, elapsed=2.15s",
+      "tester": "stress-test-runner",
+      "timestamp": "2026-05-20T11:02:18.621871+00:00"
     }
   ],
   "created_at": "2026-05-20T10:22:54.397950+00:00",
-  "updated_at": "2026-05-20T10:23:00.575917+00:00"
+  "updated_at": "2026-05-20T11:02:41.109144+00:00"
 }

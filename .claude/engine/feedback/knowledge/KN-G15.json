@@ -1,0 +1,44 @@
+{
+  "knowledge_id": "KN-G15",
+  "source_finding": "G15",
+  "category": "Security",
+  "severity": "high",
+  "file_path": "services/analytics/src/adapters/outbound/persistence/postgres_repo.py",
+  "problem_pattern": "Hardcoded database credentials in connection string",
+  "solution": "Parameterized connection_string, added env var injection requirement",
+  "verification_tier": 3,
+  "verification_evidence": [
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File services/analytics/src/adapters/outbound/persistence/postgres_repo.py exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T10:23:00.556871+00:00"
+    },
+    {
+      "tier": 2,
+      "result": "pass",
+      "evidence": "Test directory found at /home/z/my-project/services/cdc-relay/tests",
+      "tester": "rl-feedback-loop-functional",
+      "timestamp": "2026-05-20T10:23:00.562764+00:00"
+    },
+    {
+      "tier": 3,
+      "result": "pass",
+      "evidence": "Stress test: tests/stress/security/test_credentials_security_stress.py \u2014 passed=7, failed=0, errors=0, elapsed=2.2s",
+      "tester": "stress-test-runner",
+      "timestamp": "2026-05-20T11:02:17.928576+00:00"
+    }
+  ],
+  "source_type": "external_bot",
+  "external_source": "gemini-code-assist",
+  "promoted_at": "2026-05-20T11:02:41.105162+00:00",
+  "confidence": 0.95,
+  "tags": [
+    "security",
+    "high",
+    "python",
+    "security",
+    "external:gemini-code-assist"
+  ]
+}

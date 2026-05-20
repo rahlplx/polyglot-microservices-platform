@@ -9,8 +9,8 @@
   "fix_description": "Updated proto comment to document [-999999999, +999999999] range with sign consistency",
   "fix_commit": "",
   "our_violation_id": "",
-  "status": "statically_verified",
-  "verification_tier": 1,
+  "status": "promoted",
+  "verification_tier": 3,
   "verification_history": [
     {
       "tier": 1,
@@ -18,8 +18,64 @@
       "evidence": "File schemas/proto/common/v1/types.proto exists and fix has been applied",
       "tester": "rl-feedback-loop-static",
       "timestamp": "2026-05-20T10:23:00.555873+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File schemas/proto/common/v1/types.proto exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.186492+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File schemas/proto/common/v1/types.proto exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.323529+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File schemas/proto/common/v1/types.proto exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.406394+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File schemas/proto/common/v1/types.proto exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.488345+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File schemas/proto/common/v1/types.proto exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.568934+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File schemas/proto/common/v1/types.proto exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.649869+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File schemas/proto/common/v1/types.proto exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.732347+00:00"
+    },
+    {
+      "tier": 3,
+      "result": "pass",
+      "evidence": "Stress test: tests/stress/config/test_config_correctness_stress.py \u2014 passed=5, failed=0, errors=0, elapsed=2.17s",
+      "tester": "stress-test-runner",
+      "timestamp": "2026-05-20T11:02:17.757515+00:00"
     }
   ],
   "created_at": "2026-05-20T10:22:54.397025+00:00",
-  "updated_at": "2026-05-20T10:23:00.555877+00:00"
+  "updated_at": "2026-05-20T11:02:41.104770+00:00"
 }

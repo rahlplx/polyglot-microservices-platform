@@ -1,0 +1,43 @@
+{
+  "knowledge_id": "KN-G3",
+  "source_finding": "G3",
+  "category": "Bug",
+  "severity": "critical",
+  "file_path": "services/catalog/src/domain/models/Money.ts",
+  "problem_pattern": "nanos validation prevents negative values \u2014 should allow range [-999999999, 999999999] with same sign as units",
+  "solution": "Updated validation to allow negative nanos with sign consistency check",
+  "verification_tier": 3,
+  "verification_evidence": [
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File services/catalog/src/domain/models/Money.ts exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T10:23:00.548861+00:00"
+    },
+    {
+      "tier": 2,
+      "result": "pass",
+      "evidence": "Test directory found at /home/z/my-project/services/cdc-relay/tests",
+      "tester": "rl-feedback-loop-functional",
+      "timestamp": "2026-05-20T10:23:00.553116+00:00"
+    },
+    {
+      "tier": 3,
+      "result": "pass",
+      "evidence": "Stress test: tests/stress/money/test_money_value_stress.py \u2014 passed=51, failed=0, errors=0, elapsed=2.16s",
+      "tester": "stress-test-runner",
+      "timestamp": "2026-05-20T11:02:17.675259+00:00"
+    }
+  ],
+  "source_type": "external_bot",
+  "external_source": "gemini-code-assist",
+  "promoted_at": "2026-05-20T11:02:41.102916+00:00",
+  "confidence": 0.95,
+  "tags": [
+    "bug",
+    "critical",
+    "typescript",
+    "external:gemini-code-assist"
+  ]
+}

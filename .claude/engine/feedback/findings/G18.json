@@ -9,8 +9,8 @@
   "fix_description": "PARTIALLY FIXED \u2014 end result correct but logic still messy",
   "fix_commit": "",
   "our_violation_id": "",
-  "status": "statically_verified",
-  "verification_tier": 1,
+  "status": "promoted",
+  "verification_tier": 3,
   "verification_history": [
     {
       "tier": 1,
@@ -18,8 +18,148 @@
       "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
       "tester": "rl-feedback-loop-static",
       "timestamp": "2026-05-20T10:23:00.536478+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.164778+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.321145+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.404041+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.485973+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.566545+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.647482+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.729921+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.812727+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.902642+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.984304+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.065494+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.143327+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.222270+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.299614+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.379764+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.455655+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.530119+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.602480+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File scripts/chaos-experiments.sh exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.675376+00:00"
+    },
+    {
+      "tier": 3,
+      "result": "pass",
+      "evidence": "Stress test: tests/stress/infra/test_infra_config_stress.py \u2014 passed=13, failed=0, errors=0, elapsed=2.15s",
+      "tester": "stress-test-runner",
+      "timestamp": "2026-05-20T11:02:18.693199+00:00"
     }
   ],
   "created_at": "2026-05-20T10:22:54.398109+00:00",
-  "updated_at": "2026-05-20T10:23:00.536483+00:00"
+  "updated_at": "2026-05-20T11:02:41.101450+00:00"
 }

@@ -1,0 +1,263 @@
+{
+  "timestamp": "2026-05-20T11:02:06.247691+00:00",
+  "tier": 3,
+  "categories": {},
+  "findings": {
+    "V-1": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/config/test_config_correctness_stress.py",
+      "passed_tests": 5,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.17,
+      "exit_code": 0
+    },
+    "V-2": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/config/test_config_correctness_stress.py",
+      "passed_tests": 5,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.17,
+      "exit_code": 0
+    },
+    "V-3": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/config/test_config_correctness_stress.py",
+      "passed_tests": 5,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.17,
+      "exit_code": 0
+    },
+    "G9": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/tz_datetime/test_datetime_timezone_stress.py",
+      "passed_tests": 28,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.18,
+      "exit_code": 0
+    },
+    "G1": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/money/test_money_value_stress.py",
+      "passed_tests": 51,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.16,
+      "exit_code": 0
+    },
+    "G3": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/money/test_money_value_stress.py",
+      "passed_tests": 51,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.16,
+      "exit_code": 0
+    },
+    "G12": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/config/test_config_correctness_stress.py",
+      "passed_tests": 5,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.17,
+      "exit_code": 0
+    },
+    "G14": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/security/test_credentials_security_stress.py",
+      "passed_tests": 7,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.2,
+      "exit_code": 0
+    },
+    "G15": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/security/test_credentials_security_stress.py",
+      "passed_tests": 7,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.2,
+      "exit_code": 0
+    },
+    "G5": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/security/test_credentials_security_stress.py",
+      "passed_tests": 7,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.2,
+      "exit_code": 0
+    },
+    "G8": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/security/test_credentials_security_stress.py",
+      "passed_tests": 7,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.2,
+      "exit_code": 0
+    },
+    "G2": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/infra/test_infra_config_stress.py",
+      "passed_tests": 13,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.15,
+      "exit_code": 0
+    },
+    "G16": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/infra/test_infra_config_stress.py",
+      "passed_tests": 13,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.15,
+      "exit_code": 0
+    },
+    "G6": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/infra/test_infra_config_stress.py",
+      "passed_tests": 13,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.15,
+      "exit_code": 0
+    },
+    "G4": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/infra/test_infra_config_stress.py",
+      "passed_tests": 13,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.15,
+      "exit_code": 0
+    },
+    "G7": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/infra/test_infra_config_stress.py",
+      "passed_tests": 13,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.15,
+      "exit_code": 0
+    },
+    "G10": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/infra/test_infra_config_stress.py",
+      "passed_tests": 13,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.15,
+      "exit_code": 0
+    },
+    "G17": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/infra/test_infra_config_stress.py",
+      "passed_tests": 13,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.15,
+      "exit_code": 0
+    },
+    "G18": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/infra/test_infra_config_stress.py",
+      "passed_tests": 13,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.15,
+      "exit_code": 0
+    },
+    "G11": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/config/test_config_correctness_stress.py",
+      "passed_tests": 5,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.17,
+      "exit_code": 0
+    },
+    "G13": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/config/test_config_correctness_stress.py",
+      "passed_tests": 5,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.17,
+      "exit_code": 0
+    },
+    "V-4": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/config/test_config_correctness_stress.py",
+      "passed_tests": 5,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.17,
+      "exit_code": 0
+    },
+    "V-5": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/config/test_config_correctness_stress.py",
+      "passed_tests": 5,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.17,
+      "exit_code": 0
+    },
+    "V-6": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/config/test_config_correctness_stress.py",
+      "passed_tests": 5,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.17,
+      "exit_code": 0
+    },
+    "V-7": {
+      "status": "pass",
+      "tier": 3,
+      "test_file": "tests/stress/config/test_config_correctness_stress.py",
+      "passed_tests": 5,
+      "failed_tests": 0,
+      "error_tests": 0,
+      "elapsed_seconds": 2.17,
+      "exit_code": 0
+    }
+  },
+  "summary": {
+    "total_tests": 104,
+    "passed": 104,
+    "failed": 0,
+    "errors": 0
+  }
+}

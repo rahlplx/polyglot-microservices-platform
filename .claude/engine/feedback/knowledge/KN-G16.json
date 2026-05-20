@@ -1,0 +1,128 @@
+{
+  "knowledge_id": "KN-G16",
+  "source_finding": "G16",
+  "category": "Infrastructure",
+  "severity": "high",
+  "file_path": "infra/kubernetes/apps/app-of-apps.yaml",
+  "problem_pattern": "ApplicationSet path points to YAML files not kustomize directories \u2014 will fail deployment",
+  "solution": "UNFIXED \u2014 needs refactoring to kustomize directory structure",
+  "verification_tier": 3,
+  "verification_evidence": [
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/apps/app-of-apps.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T10:23:00.583382+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/apps/app-of-apps.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.214960+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/apps/app-of-apps.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.332018+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/apps/app-of-apps.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.415292+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/apps/app-of-apps.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.497128+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/apps/app-of-apps.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.577765+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/apps/app-of-apps.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.659166+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/apps/app-of-apps.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.741510+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/apps/app-of-apps.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.823674+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/apps/app-of-apps.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.913367+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/apps/app-of-apps.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.995256+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/apps/app-of-apps.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.075630+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/apps/app-of-apps.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.154114+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/apps/app-of-apps.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.231954+00:00"
+    },
+    {
+      "tier": 3,
+      "result": "pass",
+      "evidence": "Stress test: tests/stress/infra/test_infra_config_stress.py \u2014 passed=13, failed=0, errors=0, elapsed=2.15s",
+      "tester": "stress-test-runner",
+      "timestamp": "2026-05-20T11:02:18.247069+00:00"
+    }
+  ],
+  "source_type": "external_bot",
+  "external_source": "gemini-code-assist",
+  "promoted_at": "2026-05-20T11:02:41.110743+00:00",
+  "confidence": 0.95,
+  "tags": [
+    "infrastructure",
+    "high",
+    "infrastructure",
+    "k8s-manifest",
+    "external:gemini-code-assist"
+  ]
+}

@@ -9,8 +9,8 @@
   "fix_description": "Added tz=timezone.utc parameter to fromtimestamp() calls",
   "fix_commit": "",
   "our_violation_id": "V-2 (partial \u2014 we found utcnow() but missed fromtimestamp())",
-  "status": "functionally_verified",
-  "verification_tier": 2,
+  "status": "promoted",
+  "verification_tier": 3,
   "verification_history": [
     {
       "tier": 1,
@@ -25,8 +25,15 @@
       "evidence": "Test directory found at /home/z/my-project/services/cdc-relay/tests",
       "tester": "rl-feedback-loop-functional",
       "timestamp": "2026-05-20T10:23:00.547389+00:00"
+    },
+    {
+      "tier": 3,
+      "result": "pass",
+      "evidence": "Stress test: tests/stress/tz_datetime/test_datetime_timezone_stress.py \u2014 passed=28, failed=0, errors=0, elapsed=2.18s",
+      "tester": "stress-test-runner",
+      "timestamp": "2026-05-20T11:02:17.512683+00:00"
     }
   ],
   "created_at": "2026-05-20T10:22:54.396454+00:00",
-  "updated_at": "2026-05-20T10:23:00.547396+00:00"
+  "updated_at": "2026-05-20T11:02:41.102524+00:00"
 }

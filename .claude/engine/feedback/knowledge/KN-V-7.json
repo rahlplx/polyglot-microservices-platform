@@ -1,0 +1,29 @@
+{
+  "knowledge_id": "KN-V-7",
+  "source_finding": "V-7",
+  "category": "Bug",
+  "severity": "medium",
+  "file_path": "services/schema-registry/src/main.go",
+  "problem_pattern": "time.Now() without .UTC() in schema registry \u2014 producing local timestamps",
+  "solution": "Replaced time.Now() with time.Now().UTC()",
+  "verification_tier": 3,
+  "verification_evidence": [
+    {
+      "tier": 3,
+      "result": "pass",
+      "evidence": "Stress test: tests/stress/config/test_config_correctness_stress.py \u2014 passed=5, failed=0, errors=0, elapsed=2.17s",
+      "tester": "stress-test-runner",
+      "timestamp": "2026-05-20T11:02:19.111317+00:00"
+    }
+  ],
+  "source_type": "our_audit",
+  "external_source": "",
+  "promoted_at": "2026-05-20T11:02:41.104121+00:00",
+  "confidence": 0.95,
+  "tags": [
+    "bug",
+    "medium",
+    "go",
+    "self-audit"
+  ]
+}

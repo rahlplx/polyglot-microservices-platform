@@ -1,0 +1,108 @@
+{
+  "knowledge_id": "KN-G5",
+  "source_finding": "G5",
+  "category": "Security",
+  "severity": "high",
+  "file_path": "infra/kubernetes/base/networkpolicy.yaml",
+  "problem_pattern": "Egress allows broad 10.0.0.0/8 instead of specific podSelector/ipBlock \u2014 violates least privilege",
+  "solution": "Narrowed CIDRs to specific /24 subnets per service",
+  "verification_tier": 3,
+  "verification_evidence": [
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/base/networkpolicy.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T10:23:00.567990+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/base/networkpolicy.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.196908+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/base/networkpolicy.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.327690+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/base/networkpolicy.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.410732+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/base/networkpolicy.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.492656+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/base/networkpolicy.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.573274+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/base/networkpolicy.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.654553+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/base/networkpolicy.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.736852+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/base/networkpolicy.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.818914+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/base/networkpolicy.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.908644+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/base/networkpolicy.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.990444+00:00"
+    },
+    {
+      "tier": 3,
+      "result": "pass",
+      "evidence": "Stress test: tests/stress/security/test_credentials_security_stress.py \u2014 passed=7, failed=0, errors=0, elapsed=2.2s",
+      "tester": "stress-test-runner",
+      "timestamp": "2026-05-20T11:02:18.010682+00:00"
+    }
+  ],
+  "source_type": "external_bot",
+  "external_source": "gemini-code-assist",
+  "promoted_at": "2026-05-20T11:02:41.106819+00:00",
+  "confidence": 0.95,
+  "tags": [
+    "security",
+    "high",
+    "infrastructure",
+    "k8s-manifest",
+    "security",
+    "external:gemini-code-assist"
+  ]
+}

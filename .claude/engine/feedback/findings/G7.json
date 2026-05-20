@@ -9,8 +9,8 @@
   "fix_description": "Kept Recreate with documented justification (Debezium duplicate connector risk)",
   "fix_commit": "",
   "our_violation_id": "",
-  "status": "statically_verified",
-  "verification_tier": 1,
+  "status": "promoted",
+  "verification_tier": 3,
   "verification_history": [
     {
       "tier": 1,
@@ -18,8 +18,127 @@
       "evidence": "File infra/kubernetes/platform/debezium.yaml exists and fix has been applied",
       "tester": "rl-feedback-loop-static",
       "timestamp": "2026-05-20T10:23:00.554531+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/debezium.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.185242+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/debezium.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.322360+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/debezium.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.405237+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/debezium.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.487210+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/debezium.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.567748+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/debezium.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.648712+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/debezium.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.731195+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/debezium.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.814014+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/debezium.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.903963+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/debezium.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:17.985676+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/debezium.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.066911+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/debezium.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.145183+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/debezium.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.224192+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/debezium.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.301548+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/debezium.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.381655+00:00"
+    },
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File infra/kubernetes/platform/debezium.yaml exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T11:02:18.457587+00:00"
+    },
+    {
+      "tier": 3,
+      "result": "pass",
+      "evidence": "Stress test: tests/stress/infra/test_infra_config_stress.py \u2014 passed=13, failed=0, errors=0, elapsed=2.15s",
+      "tester": "stress-test-runner",
+      "timestamp": "2026-05-20T11:02:18.477322+00:00"
     }
   ],
   "created_at": "2026-05-20T10:22:54.395982+00:00",
-  "updated_at": "2026-05-20T10:23:00.554535+00:00"
+  "updated_at": "2026-05-20T11:02:41.103677+00:00"
 }

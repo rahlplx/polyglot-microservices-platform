@@ -1,0 +1,43 @@
+{
+  "knowledge_id": "KN-G13",
+  "source_finding": "G13",
+  "category": "Bug",
+  "severity": "medium",
+  "file_path": "services/catalog/src/infrastructure/di/container.ts",
+  "problem_pattern": "protoPath identical in all environment branches \u2014 dead conditional",
+  "solution": "Simplified to single nullish coalescing assignment",
+  "verification_tier": 3,
+  "verification_evidence": [
+    {
+      "tier": 1,
+      "result": "pass",
+      "evidence": "File services/catalog/src/infrastructure/di/container.ts exists and fix has been applied",
+      "tester": "rl-feedback-loop-static",
+      "timestamp": "2026-05-20T10:23:00.537383+00:00"
+    },
+    {
+      "tier": 2,
+      "result": "pass",
+      "evidence": "Test directory found at /home/z/my-project/services/cdc-relay/tests",
+      "tester": "rl-feedback-loop-functional",
+      "timestamp": "2026-05-20T10:23:00.541782+00:00"
+    },
+    {
+      "tier": 3,
+      "result": "pass",
+      "evidence": "Stress test: tests/stress/config/test_config_correctness_stress.py \u2014 passed=5, failed=0, errors=0, elapsed=2.17s",
+      "tester": "stress-test-runner",
+      "timestamp": "2026-05-20T11:02:18.832295+00:00"
+    }
+  ],
+  "source_type": "external_bot",
+  "external_source": "gemini-code-assist",
+  "promoted_at": "2026-05-20T11:02:41.101931+00:00",
+  "confidence": 0.95,
+  "tags": [
+    "bug",
+    "medium",
+    "typescript",
+    "external:gemini-code-assist"
+  ]
+}
