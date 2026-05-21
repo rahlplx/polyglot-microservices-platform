@@ -1,0 +1,51 @@
+{
+  "consumer": "order",
+  "provider": "auth",
+  "pactSpecification": { "version": "2.0.0" },
+  "interactions": [
+    {
+      "description": "A request to get effective permissions for order service authorization",
+      "providerState": "user customer-001 has order:create and order:read permissions",
+      "request": {
+        "method": "POST",
+        "path": "/v1/auth.GetPermissions",
+        "headers": { "Content-Type": "application/grpc" },
+        "body": {
+          "user_id": "customer-001"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "role_permissions": ["catalog:read", "order:create", "order:read", "payment:initiate"],
+          "granted_permissions": [],
+          "revoked_permissions": [],
+          "effective_permissions": ["catalog:read", "order:create", "order:read", "payment:initiate"]
+        }
+      }
+    },
+    {
+      "description": "A request to check order:create permission for an operator",
+      "providerState": "operator-001 has operator role permissions",
+      "request": {
+        "method": "POST",
+        "path": "/v1/auth.CheckPermission",
+        "headers": { "Content-Type": "application/grpc" },
+        "body": {
+          "user_id": "operator-001",
+          "permission": "order:create",
+          "resource": "order:any"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "allowed": true
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "pactSpecification": { "version": "2.0.0" }
+  }
+}

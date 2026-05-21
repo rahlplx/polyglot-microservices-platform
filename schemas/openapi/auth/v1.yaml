@@ -1,0 +1,733 @@
+openapi: 3.1.0
+info:
+  title: Authentication Service API
+  description: >
+    External-facing REST API for user authentication, token management, and session control.
+    This API is served through the API Gateway, which performs rate limiting, WAF filtering,
+    and JWT validation before forwarding requests to the Identity/Auth service.
+    All endpoints require HTTPS. Authentication uses Bearer JWT tokens (RS256 signed).
+  version: 1.0.0
+  contact:
+    name: Platform Team
+    url: https://trust.example.org/support
+  license:
+    name: Proprietary
+    url: https://trust.example.org/license
+
+servers:
+  - url: https://api.trust.example.org/v1/auth
+    description: Production
+  - url: https://api.staging.trust.example.org/v1/auth
+    description: Staging
+  - url: http://localhost:8080/v1/auth
+    description: Local development
+
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []
+
+tags:
+  - name: Authentication
+    description: Login, register, and token lifecycle
+  - name: Profile
+    description: User profile management
+  - name: Sessions
+    description: Session management and device control
+  - name: API Keys
+    description: Programmatic access key management
+
+paths:
+  /register:
+    post:
+      operationId: register
+      tags: [Authentication]
+      summary: Register a new user account
+      security: []  # No auth required for registration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered successfully (pending email verification)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '400':
+          description: Invalid input (password policy, email format)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '409':
+          description: Email already registered
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '429':
+          description: Rate limited (max 5 registrations per hour per IP)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /login:
+    post:
+      operationId: login
+      tags: [Authentication]
+      summary: Authenticate and receive tokens
+      security: []  # No auth required for login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '403':
+          description: Account locked (too many failed attempts)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /refresh:
+    post:
+      operationId: refreshToken
+      tags: [Authentication]
+      summary: Exchange refresh token for new token pair
+      security: []  # Refresh token is in the request body
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+                  description: Opaque refresh token from login/previous refresh
+      responses:
+        '200':
+          description: Token pair refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPairResponse'
+        '401':
+          description: Refresh token invalid or expired
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /logout:
+    post:
+      operationId: logout
+      tags: [Authentication]
+      summary: Invalidate refresh token and optionally all sessions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+                everywhere:
+                  type: boolean
+                  default: false
+                  description: Invalidate ALL sessions for this user
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions_revoked:
+                    type: integer
+
+  /password/reset:
+    post:
+      operationId: requestPasswordReset
+      tags: [Authentication]
+      summary: Initiate password reset flow
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Reset initiated (always returns success to prevent email enumeration)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reset_initiated:
+                    type: boolean
+
+  /password/reset/confirm:
+    post:
+      operationId: resetPassword
+      tags: [Authentication]
+      summary: Complete password reset with token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reset_token, new_password]
+              properties:
+                reset_token:
+                  type: string
+                new_password:
+                  type: string
+                  format: password
+                  minLength: 12
+      responses:
+        '200':
+          description: Password reset successful
+        '400':
+          description: Invalid or expired reset token
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /password/change:
+    post:
+      operationId: changePassword
+      tags: [Authentication]
+      summary: Change password for authenticated user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password:
+                  type: string
+                  format: password
+                new_password:
+                  type: string
+                  format: password
+                  minLength: 12
+      responses:
+        '200':
+          description: Password changed, new tokens issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangePasswordResponse'
+
+  /profile:
+    get:
+      operationId: getProfile
+      tags: [Profile]
+      summary: Get current user profile
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+    patch:
+      operationId: updateProfile
+      tags: [Profile]
+      summary: Update user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+
+  /sessions:
+    get:
+      operationId: listSessions
+      tags: [Sessions]
+      summary: List active sessions for current user
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: Session list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionListResponse'
+
+  /sessions/{sessionId}:
+    delete:
+      operationId: revokeSession
+      tags: [Sessions]
+      summary: Revoke a specific session (force-logout device)
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session revoked
+
+  /api-keys:
+    get:
+      operationId: listApiKeys
+      tags: [API Keys]
+      summary: List API keys for current user
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: API key list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyListResponse'
+    post:
+      operationId: createApiKey
+      tags: [API Keys]
+      summary: Create a new API key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiKeyRequest'
+      responses:
+        '201':
+          description: API key created (secret shown only once)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateApiKeyResponse'
+
+  /api-keys/{keyId}:
+    delete:
+      operationId: revokeApiKey
+      tags: [API Keys]
+      summary: Revoke an API key
+      parameters:
+        - name: keyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: API key revoked
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: RS256-signed JWT access token
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for programmatic access (prefix: cak_)
+
+  parameters:
+    CursorParam:
+      name: cursor
+      in: query
+      schema:
+        type: string
+      description: Opaque pagination cursor from previous response
+    PageSizeParam:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Maximum items to return per page
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 12
+          description: Minimum 12 chars, must contain uppercase, lowercase, digit, special char
+        display_name:
+          type: string
+          maxLength: 128
+        verification_token:
+          type: string
+          description: Anti-bot token (reCAPTCHA v3 / Turnstile)
+        invite_code:
+          type: string
+          description: Required for OPERATOR and ADMIN roles
+
+    RegisterResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        verification_email_sent:
+          type: boolean
+
+    LoginRequest:
+      type: object
+      required: [auth_method]
+      properties:
+        auth_method:
+          $ref: '#/components/schemas/AuthMethod'
+        client_metadata:
+          $ref: '#/components/schemas/ClientMetadata'
+
+    AuthMethod:
+      oneOf:
+        - $ref: '#/components/schemas/EmailPasswordAuth'
+        - $ref: '#/components/schemas/OAuth2Auth'
+        - $ref: '#/components/schemas/ApiKeyAuth'
+      discriminator:
+        propertyName: type
+
+    EmailPasswordAuth:
+      type: object
+      required: [type, email, password]
+      properties:
+        type:
+          type: string
+          enum: [email_password]
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        totp_code:
+          type: string
+          description: TOTP code if MFA is enabled
+
+    OAuth2Auth:
+      type: object
+      required: [type, provider, code, redirect_uri]
+      properties:
+        type:
+          type: string
+          enum: [oauth2]
+        provider:
+          type: string
+          enum: [google, github, microsoft]
+        code:
+          type: string
+        redirect_uri:
+          type: string
+          format: uri
+        code_verifier:
+          type: string
+          description: PKCE code verifier for public clients
+
+    ApiKeyAuth:
+      type: object
+      required: [type, api_key]
+      properties:
+        type:
+          type: string
+          enum: [api_key]
+        api_key:
+          type: string
+
+    ClientMetadata:
+      type: object
+      properties:
+        platform:
+          type: string
+          enum: [web, ios, android, api]
+        device_fingerprint:
+          type: string
+
+    LoginResponse:
+      type: object
+      properties:
+        tokens:
+          $ref: '#/components/schemas/TokenPair'
+        user:
+          $ref: '#/components/schemas/User'
+        session_id:
+          type: string
+        mfa_completed:
+          type: boolean
+
+    TokenPair:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        access_token_expires_at:
+          type: string
+          format: date-time
+        refresh_token_expires_at:
+          type: string
+          format: date-time
+        token_type:
+          type: string
+          enum: [Bearer]
+
+    TokenPairResponse:
+      type: object
+      properties:
+        tokens:
+          $ref: '#/components/schemas/TokenPair'
+        session_id:
+          type: string
+
+    ChangePasswordResponse:
+      type: object
+      properties:
+        changed:
+          type: boolean
+        tokens:
+          $ref: '#/components/schemas/TokenPair'
+
+    User:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        role:
+          type: string
+          enum: [viewer, customer, operator, admin, super_admin]
+        status:
+          type: string
+          enum: [pending_verification, active, suspended, deactivated, locked]
+        email_verified:
+          type: boolean
+        mfa_enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        last_login_at:
+          type: string
+          format: date-time
+
+    UserProfile:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        active_sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+        last_password_change:
+          type: string
+          format: date-time
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+          maxLength: 128
+        email:
+          type: string
+          format: email
+          description: Changing email requires re-verification
+
+    Session:
+      type: object
+      properties:
+        session_id:
+          type: string
+        device_fingerprint:
+          type: string
+        ip_address:
+          type: string
+        platform:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        last_active_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    SessionListResponse:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+        next_cursor:
+          type: string
+        has_more:
+          type: boolean
+
+    CreateApiKeyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 64
+        permissions:
+          type: array
+          items:
+            type: string
+          description: Subset of user's permissions
+        expires_at:
+          type: string
+          format: date-time
+        allowed_cidrs:
+          type: array
+          items:
+            type: string
+          description: IP allowlist in CIDR notation
+
+    CreateApiKeyResponse:
+      type: object
+      properties:
+        api_key:
+          type: object
+          properties:
+            key_id:
+              type: string
+            key_prefix:
+              type: string
+            name:
+              type: string
+            permissions:
+              type: array
+              items:
+                type: string
+            status:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+            expires_at:
+              type: string
+              format: date-time
+        secret_key:
+          type: string
+          description: Full API key (ONLY shown on creation)
+
+    ApiKeyListResponse:
+      type: object
+      properties:
+        api_keys:
+          type: array
+          items:
+            type: object
+            properties:
+              key_id:
+                type: string
+              key_prefix:
+                type: string
+              name:
+                type: string
+              permissions:
+                type: array
+                items:
+                  type: string
+              status:
+                type: string
+              created_at:
+                type: string
+                format: date-time
+              last_used_at:
+                type: string
+                format: date-time
+              expires_at:
+                type: string
+                format: date-time
+        next_cursor:
+          type: string
+        has_more:
+          type: boolean
+
+    ProblemDetail:
+      type: object
+      description: RFC 7807 Problem Details
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri
+        trace_id:
+          type: string
+          description: W3C Trace Context trace ID for debugging
