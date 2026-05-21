@@ -1,0 +1,251 @@
+# ============================================================================
+# Polyglot Microservices Platform — Local Dev Environment
+# Usage: docker compose -f docker-compose.dev.yml up -d
+# Services boot order: infra → platform → services
+# mTLS is DISABLED in dev (SPIFFE_DEV_MODE=true bypasses attestation)
+# ============================================================================
+
+version: "3.9"
+
+x-common: &common
+  restart: unless-stopped
+  networks: [platform]
+
+x-python: &python
+  <<: *common
+  environment: &py-env
+    SPIFFE_DEV_MODE: "true"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+    LOG_LEVEL: DEBUG
+
+x-go: &go
+  <<: *common
+  environment: &go-env
+    SPIFFE_DEV_MODE: "true"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+
+services:
+  # ── Infrastructure ──────────────────────────────────────────────────────
+  postgres:
+    <<: *common
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: platform_dev
+      POSTGRES_DB: platform
+    ports: ["5432:5432"]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/dev/init-databases.sql:/docker-entrypoint-initdb.d/01_init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform"]
+      interval: 5s
+      retries: 10
+
+  kafka:
+    <<: *common
+    image: confluentinc/cp-kafka:7.6.0
+    depends_on: [zookeeper]
+    ports: ["9092:9092"]
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      retries: 10
+
+  zookeeper:
+    <<: *common
+    image: confluentinc/cp-zookeeper:7.6.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+  keydb:
+    <<: *common
+    image: eqalpha/keydb:latest
+    ports: ["6379:6379"]
+    command: keydb-server --appendonly yes --server-threads 2
+    healthcheck:
+      test: ["CMD", "keydb-cli", "ping"]
+      interval: 5s
+
+  meilisearch:
+    <<: *common
+    image: getmeili/meilisearch:v1.6
+    ports: ["7700:7700"]
+    environment:
+      MEILI_MASTER_KEY: dev-master-key-not-for-production
+      MEILI_ENV: development
+    volumes: [meilisearch_data:/meili_data]
+
+  kafka-connect:
+    <<: *common
+    image: debezium/connect:2.5
+    depends_on: [kafka, postgres]
+    ports: ["8083:8083"]
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      GROUP_ID: cdc-relay-dev
+      CONFIG_STORAGE_TOPIC: _connect_configs
+      OFFSET_STORAGE_TOPIC: _connect_offsets
+      STATUS_STORAGE_TOPIC: _connect_status
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/connectors"]
+      interval: 15s
+      retries: 10
+
+  # ── Observability ────────────────────────────────────────────────────────
+  otel-collector:
+    <<: *common
+    image: otel/opentelemetry-collector-contrib:0.96.0
+    ports: ["4317:4317", "4318:4318", "8888:8888"]
+    volumes: [./platform/otel/dev-config.yaml:/etc/otelcol/config.yaml]
+    command: ["--config=/etc/otelcol/config.yaml"]
+
+  prometheus:
+    <<: *common
+    image: prom/prometheus:v2.50.1
+    ports: ["9090:9090"]
+    volumes: [./platform/prometheus:/etc/prometheus]
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=1d"]
+
+  grafana:
+    <<: *common
+    image: grafana/grafana:10.3.1
+    ports: ["3000:3000"]
+    depends_on: [prometheus]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./platform/grafana-dashboards:/etc/grafana/provisioning/dashboards
+
+  # ── Application Services ─────────────────────────────────────────────────
+  gateway:
+    <<: *go
+    build: {context: services/gateway, dockerfile: Dockerfile, target: builder}
+    ports: ["8080:8080", "50050:50050"]
+    depends_on: [postgres, keydb, otel-collector]
+    environment:
+      <<: *go-env
+      DB_HOST: postgres
+      DB_USER: platform
+      DB_PASSWORD: platform_dev
+      DB_NAME: platform
+      KEYDB_ADDR: keydb:6379
+      RATE_LIMIT_SERVICE_URL: rl-engine:50056
+      IDENTITY_SERVICE_URL: identity:50051
+    command: ["go", "run", "./cmd/main.go"]
+
+  identity:
+    <<: *go
+    build: {context: services/identity, dockerfile: Dockerfile, target: builder}
+    ports: ["50051:50051"]
+    depends_on: [postgres, otel-collector]
+    environment:
+      <<: *go-env
+      DATABASE_URL: "postgres://platform:platform_dev@postgres:5432/identity_db?sslmode=disable"
+      SPIRE_AGENT_SOCKET: ""
+      DEV_MODE: "true"
+
+  order:
+    <<: *common
+    build: {context: services/order, dockerfile: Dockerfile, target: builder}
+    ports: ["50052:50052"]
+    depends_on: [postgres, kafka, otel-collector]
+    environment:
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/order_db"
+      SPRING_DATASOURCE_USERNAME: platform
+      SPRING_DATASOURCE_PASSWORD: platform_dev
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPIFFE_DEV_MODE: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+
+  catalog:
+    <<: *common
+    build: {context: services/catalog, dockerfile: Dockerfile, target: builder}
+    ports: ["50053:50053", "3001:3001"]
+    depends_on: [postgres, meilisearch, otel-collector]
+    environment:
+      CATALOG_DB_HOST: postgres
+      CATALOG_DB_USER: platform
+      CATALOG_DB_PASSWORD: platform_dev
+      CATALOG_DB_NAME: catalog_db
+      MEILISEARCH_HOST: http://meilisearch:7700
+      MEILISEARCH_API_KEY: dev-master-key-not-for-production
+      SPIFFE_DEV_MODE: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+
+  payment:
+    <<: *go
+    build: {context: services/payment, dockerfile: Dockerfile, target: builder}
+    ports: ["50054:50054"]
+    depends_on: [postgres, kafka, otel-collector]
+    environment:
+      <<: *go-env
+      DB_HOST: postgres
+      DB_USER: platform
+      DB_PASSWORD: platform_dev
+      DB_NAME: payment_db
+      KAFKA_BROKERS: kafka:29092
+
+  notification:
+    <<: *python
+    build: {context: services/notification, dockerfile: Dockerfile, target: builder}
+    ports: ["50055:50055"]
+    depends_on: [postgres, kafka, keydb, otel-collector]
+    environment:
+      <<: *py-env
+      DB_HOST: postgres
+      DB_USER: platform
+      DB_PASSWORD: platform_dev
+      DB_NAME: notification_db
+      KAFKA_BROKERS: kafka:29092
+      KEYDB_URL: redis://keydb:6379
+
+  rl-engine:
+    <<: *python
+    build: {context: services/rl-engine, dockerfile: Dockerfile, target: builder}
+    ports: ["50056:50056"]
+    depends_on: [keydb, otel-collector]
+    environment:
+      <<: *py-env
+      KEYDB_URL: redis://keydb:6379
+
+  analytics:
+    <<: *python
+    build: {context: services/analytics, dockerfile: Dockerfile, target: builder}
+    ports: ["50057:50057", "8087:8087"]
+    depends_on: [postgres, kafka, otel-collector]
+    environment:
+      <<: *py-env
+      DB_HOST: postgres
+      DB_USER: platform
+      DB_PASSWORD: platform_dev
+      DB_NAME: analytics_db
+      KAFKA_BROKERS: kafka:29092
+
+  cdc-relay:
+    <<: *python
+    build: {context: services/cdc-relay, dockerfile: Dockerfile, target: builder}
+    ports: ["50060:50060"]
+    depends_on: [kafka-connect, postgres, otel-collector]
+    environment:
+      <<: *py-env
+      KAFKA_CONNECT_URL: http://kafka-connect:8083
+      GRPC_PORT: "50060"
+
+volumes:
+  postgres_data:
+  meilisearch_data:
+  grafana_data:
+
+networks:
+  platform:
+    driver: bridge
