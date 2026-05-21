@@ -35,10 +35,6 @@ describe('Configuration Integration', () => {
     }
     delete process.env.NODE_ENV;
 
-    // Set required credentials for validation to pass
-    process.env.CATALOG_DB_PASSWORD = 'test';
-    process.env.CATALOG_MEILISEARCH_API_KEY = 'test';
-
     const config = loadConfig();
 
     expect(config.server.httpPort).toBe(3000);
@@ -109,17 +105,17 @@ describe('Hexagonal Architecture Verification', () => {
 
     for (const file of domainFiles) {
       const content = fs.readFileSync(file, 'utf-8');
+      const importLines = content
+        .split('\n')
+        .filter((line) => line.trim().startsWith('import'))
+        .filter((line) => !line.includes('./') && !line.includes('../'));
 
-      // Multiline import support: find the full import statement
-      const importMatches = content.match(/import\s+(?:[^;]+|{[^}]+})\s+from\s+['"][^'"]+['"]/g) || [];
+      // Domain files should only have relative imports (no external packages)
+      // The only exception is type-only imports which are erased at compile time
+      const externalImports = importLines.filter(
+        (line) => !line.includes('type ') && !line.includes("type {") && !line.includes("type{")
+      );
 
-      const externalImports = importMatches
-        .filter((imp) => !imp.includes('./') && !imp.includes('../'))
-        .filter((imp) => !imp.includes('type ') && !imp.includes('type{') && !imp.includes('type {'));
-
-      if (externalImports.length > 0) {
-        console.log(`External imports found in ${file}:`, externalImports);
-      }
       expect(externalImports).toHaveLength(0);
     }
   });

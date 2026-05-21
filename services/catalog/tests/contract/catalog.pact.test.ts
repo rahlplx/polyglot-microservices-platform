@@ -5,7 +5,9 @@
  * REST API contract using the Pact framework.
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
+import path from 'path';
+import fs from 'fs';
 
 // ---------------------------------------------------------------------------
 // Contract Test Setup
@@ -163,9 +165,9 @@ describe('Catalog Service Contract Tests', () => {
       }
     });
 
-    it('should include product_id in resource response bodies', () => {
+    it('should include product_id in all response bodies', () => {
       for (const endpoint of CATALOG_API_CONTRACT) {
-        if (endpoint.path.includes('{id}') && !endpoint.path.includes('inventory')) {
+        if (endpoint.method !== 'DELETE' || !endpoint.path.includes('inventory')) {
           const body = endpoint.responseBody as Record<string, unknown>;
           expect(body).toHaveProperty('product_id');
         }
@@ -219,7 +221,7 @@ describe('Catalog Service Contract Tests', () => {
         SEARCH_INDEX_UNAVAILABLE: 503,
       };
 
-      for (const [, status] of Object.entries(errorStatusMap)) {
+      for (const [code, status] of Object.entries(errorStatusMap)) {
         expect(status).toBeGreaterThanOrEqual(400);
         expect(status).toBeLessThan(600);
       }

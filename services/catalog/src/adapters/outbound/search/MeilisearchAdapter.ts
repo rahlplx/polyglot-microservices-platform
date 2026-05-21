@@ -37,7 +37,6 @@ interface MeilisearchDocument {
   readonly createdAt: string;
 }
 
-
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -199,15 +198,13 @@ export class MeilisearchAdapter implements SearchIndex {
 
     if (filters.categories && filters.categories.length > 0) {
       const categoryFilters = filters.categories.map(
-        (c) => `category = "${this.escapeFilterValue(c)}"`
+        (c) => `category = "${c}"`
       );
       conditions.push(`(${categoryFilters.join(' OR ')})`);
     }
 
     if (filters.tags && filters.tags.length > 0) {
-      const tagFilters = filters.tags.map(
-        (t) => `tags = "${this.escapeFilterValue(t)}"`
-      );
+      const tagFilters = filters.tags.map((t) => `tags = "${t}"`);
       conditions.push(`(${tagFilters.join(' OR ')})`);
     }
 
@@ -319,14 +316,5 @@ export class MeilisearchAdapter implements SearchIndex {
     } catch {
       return 1;
     }
-  }
-
-  /**
-   * Escape special characters in filter values to prevent injection.
-   * According to Meilisearch documentation, backslashes and double quotes
-   * must be escaped within double-quoted filter values.
-   */
-  private escapeFilterValue(value: string): string {
-    return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   }
 }
