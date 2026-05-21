@@ -207,6 +207,11 @@ function validateConfig(config: AppConfig): AppConfig {
     );
   }
 
+  // Validate that gRPC port is different from HTTP port
+  if (config.server.httpPort === config.server.grpcPort) {
+    throw new Error('HTTP port and gRPC port must be different');
+  }
+
   try {
     return AppConfigSchema.parse(config);
   } catch (error) {

@@ -37,24 +37,6 @@ interface MeilisearchDocument {
   readonly createdAt: string;
 }
 
-// ---------------------------------------------------------------------------
-// V-13 fix: Adapter-local search document type (was previously in domain port).
-// This is the technology-neutral view of an indexed document that the adapter
-// uses internally. It is NOT part of the domain port — the port accepts
-// `Product` directly and returns `SearchIndexResult`.
-// ---------------------------------------------------------------------------
-
-interface AdapterSearchDocument {
-  readonly productId: string;
-  readonly name: string;
-  readonly description: string;
-  readonly category: string;
-  readonly tags: string[];
-  readonly price: Money;
-  readonly availableQuantity: number;
-  readonly status: string;
-  readonly createdAt: string;
-}
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -217,13 +199,15 @@ export class MeilisearchAdapter implements SearchIndex {
 
     if (filters.categories && filters.categories.length > 0) {
       const categoryFilters = filters.categories.map(
-        (c) => `category = "${c}"`
+        (c) => `category = "${this.escapeFilterValue(c)}"`
       );
       conditions.push(`(${categoryFilters.join(' OR ')})`);
     }
 
     if (filters.tags && filters.tags.length > 0) {
-      const tagFilters = filters.tags.map((t) => `tags = "${t}"`);
+      const tagFilters = filters.tags.map(
+        (t) => `tags = "${this.escapeFilterValue(t)}"`
+      );
       conditions.push(`(${tagFilters.join(' OR ')})`);
     }
 
@@ -281,25 +265,6 @@ export class MeilisearchAdapter implements SearchIndex {
     };
   }
 
-  /**
-   * Reconstruct a domain-compatible search result from a flattened
-   * Meilisearch hit, reassembling the Money value object from the
-   * denormalized fields. (V-13: SearchDocument moved to adapter-local type.)
-   */
-  private toSearchDocument(hit: MeilisearchDocument): AdapterSearchDocument {
-    return {
-      productId: hit.productId,
-      name: hit.name,
-      description: hit.description,
-      category: hit.category,
-      tags: hit.tags,
-      price: Money.create(hit.currencyCode, hit.priceUnits, hit.priceNanos),
-      availableQuantity: hit.availableQuantity,
-      status: hit.status,
-      createdAt: hit.createdAt,
-    };
-  }
-
   private toSearchResult(
     response: SearchResponse<MeilisearchDocument>,
     facetFields: string[]
@@ -354,5 +319,14 @@ export class MeilisearchAdapter implements SearchIndex {
     } catch {
       return 1;
     }
+  }
+
+  /**
+   * Escape special characters in filter values to prevent injection.
+   * According to Meilisearch documentation, backslashes and double quotes
+   * must be escaped within double-quoted filter values.
+   */
+  private escapeFilterValue(value: string): string {
+    return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   }
 }

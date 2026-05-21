@@ -164,7 +164,11 @@ export class CatalogService implements CreateProduct, GetProduct, SearchCatalog,
         productId: item.productId,
         name: item.name,
         descriptionSnippet: item.descriptionSnippet,
-        price: item.price,
+        price: {
+          currencyCode: item.price.currencyCode,
+          units: item.price.units,
+          nanos: item.price.nanos,
+        },
         relevanceScore: item.relevanceScore,
       }));
 
