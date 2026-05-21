@@ -37,3 +37,12 @@ Thumbs.db
 
 # PDF/Image generation temp files
 download/*.tmp
+
+# AI agent runtime artifacts (never commit)
+.claude/
+.jules/
+agent-ctx/
+worklog.md
+skills/
+*.npy
+*.npz

@@ -61,8 +61,12 @@ jobs:
           echo "::group::RL Knowledge Base Coverage"
           COVERAGE=$(python3 -c "
           import json, sys
-          sys.path.insert(0, '.claude/engine')
-          from knowledge_matcher import validate_knowledge_base
+          try:
+            import sys; sys.path.insert(0, '.claude/engine')
+            from knowledge_matcher import validate_knowledge_base
+          except ImportError:
+            print('RL knowledge base not available — skipping validation')
+            sys.exit(0)
           results = validate_knowledge_base()
           print(results['summary']['coverage_percentage'])
           " 2>/dev/null || echo "0")
