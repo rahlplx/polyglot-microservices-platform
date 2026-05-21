@@ -41,7 +41,7 @@ class EmailSender(ChannelSenderPort):
         )
 
         try:
-            # In production: use aiosmtplib or boto3 SES client.
+            # In production: use aiosmtplib or AWS SES SDK client.
             # msg = MIMEText(notification.html_body or notification.body, "html" if notification.html_body else "plain")
             # msg["Subject"] = notification.subject
             # msg["To"] = notification.recipient_id
@@ -84,7 +84,7 @@ class SmsSender(ChannelSenderPort):
         )
 
         try:
-            # In production: use twilio client or boto3 SNS.
+            # In production: use twilio client or AWS SNS SDK.
             # client.messages.create(to=notification.recipient_id, body=notification.body)
             logger.info("sms sent", extra={
                 "notification_id": notification.id,
