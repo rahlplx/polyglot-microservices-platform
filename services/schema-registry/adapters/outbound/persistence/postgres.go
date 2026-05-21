@@ -104,8 +104,8 @@ func (s *PostgresSchemaStore) Save(ctx context.Context, schema models.Schema) (m
 
 	s.logger.Debug("schema saved",
 		slog.String("subject", schema.Subject),
-		slog.Int32("schema_id", schema.ID),
-		slog.Int32("version", schema.Version),
+		slog.Int("schema_id", int(schema.ID)),
+		slog.Int("version", int(schema.Version)),
 	)
 
 	return schema, nil

@@ -2,7 +2,6 @@ package grpc
 
 import (
         "context"
-        "fmt"
         "log/slog"
 
         "google.golang.org/grpc/codes"

@@ -340,8 +340,7 @@ func (h *Handler) Validate(ctx context.Context, req *ValidateSchemaRequest) (*Va
 
         var compatResult *CompatibilityResultMsg
         if resp.CompatibilityResult != nil {
-                cr := convertCompatibilityResult(*resp.CompatibilityResult)
-                compatResult = &cr
+                compatResult = convertCompatibilityResult(*resp.CompatibilityResult)
         }
 
         return &ValidateSchemaResponse{
@@ -385,7 +384,7 @@ func (h *Handler) CheckBreaking(ctx context.Context, req *CheckBreakingRequest) 
 func (h *Handler) List(ctx context.Context, req *ListSchemasRequest) (*ListSchemasResponse, error) {
         h.logger.Debug("gRPC List called",
                 slog.String("prefix", req.Prefix),
-                slog.Int32("page_size", req.PageSize),
+                slog.Int("page_size", int(req.PageSize)),
         )
 
         var schemaType *models.SchemaType

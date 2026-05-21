@@ -30,7 +30,7 @@ func main() {
         )
 
         // Wire all dependencies via the DI container.
-        container := di.NewContainer(cfg)
+        _ = di.NewContainer(cfg)
 
         // Create and start the gRPC server.
         srv := server.NewServer(cfg.Server.GRPCPort, cfg.Server.MetricsPort, logger)

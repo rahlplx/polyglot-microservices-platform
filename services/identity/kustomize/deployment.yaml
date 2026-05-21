@@ -20,6 +20,10 @@ spec:
       annotations:
         spiffe.io/inject: "true"
     spec:
+      securityContext:
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       serviceAccountName: identity
       containers:
         - name: identity
@@ -75,3 +79,5 @@ spec:
             capabilities:
               drop:
                 - ALL
+            seccompProfile:
+              type: RuntimeDefault

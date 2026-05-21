@@ -126,6 +126,10 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8889"
     spec:
+      securityContext:
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       serviceAccountName: otel-gateway
       affinity:
         podAntiAffinity:
@@ -203,6 +207,8 @@ spec:
             capabilities:
               drop:
                 - ALL
+            seccompProfile:
+              type: RuntimeDefault
       volumes:
         - name: config
           configMap:

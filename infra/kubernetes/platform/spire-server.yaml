@@ -1,6 +1,7 @@
-# SPIRE Server StatefulSet — 3 replicas
-# Trust root, CA, SQLite backend
+# SPIRE Server StatefulSet — 3 replicas with PostgreSQL HA backend
+# Trust root, CA, PostgreSQL DataStore for multi-replica consistency
 # SPIFFE ID format: spiffe://trust.example.org/...
+# KeyManager uses disk with shared PVC for key persistence across restarts
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -37,8 +38,8 @@ data:
     plugins {
       DataStore "sql" {
         plugin_data {
-          database_type = "sqlite3"
-          connection_string = "/run/spire/data/datastore.sqlite3"
+          database_type = "postgres"
+          connection_string = "host=spire-postgres.production.svc.cluster.local port=5432 dbname=spire user=spire password=Ch4ng3M3!sp1r3_h4_pr0d sslmode=disable"
         }
       }
 
@@ -100,6 +101,10 @@ spec:
         app.kubernetes.io/component: identity
         app.kubernetes.io/part-of: polyglot-microservices
     spec:
+      securityContext:
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       serviceAccountName: spire-server
       affinity:
         podAntiAffinity:
@@ -160,6 +165,8 @@ spec:
             capabilities:
               drop:
                 - ALL
+            seccompProfile:
+              type: RuntimeDefault
       volumes:
         - name: config
           configMap:

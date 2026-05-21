@@ -133,8 +133,12 @@ spec:
             capabilities:
               drop:
                 - ALL
+            seccompProfile:
+              type: RuntimeDefault
       securityContext:
         fsGroup: 472
+        seccompProfile:
+          type: RuntimeDefault
       volumes:
         - name: config
           configMap:

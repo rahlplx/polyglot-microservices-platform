@@ -96,7 +96,7 @@ func (s *RegistryService) Register(ctx context.Context, req models.RegisterSchem
 	if existing != nil {
 		s.logger.Info("schema with identical fingerprint already exists",
 			slog.String("subject", req.Subject),
-			slog.Int32("existing_version", existing.Version),
+			slog.Int("existing_version", int(existing.Version)),
 			slog.String("fingerprint", schema.Fingerprint),
 		)
 		return models.RegisterSchemaResponse{
@@ -177,8 +177,8 @@ func (s *RegistryService) Register(ctx context.Context, req models.RegisterSchem
 
 	s.logger.Info("schema registered",
 		slog.String("subject", req.Subject),
-		slog.Int32("schema_id", saved.ID),
-		slog.Int32("version", saved.Version),
+		slog.Int("schema_id", int(saved.ID)),
+		slog.Int("version", int(saved.Version)),
 		slog.String("fingerprint", saved.Fingerprint),
 		slog.String("compatibility", compatLevel.String()),
 	)
