@@ -34,6 +34,9 @@ describe('Configuration Integration', () => {
       }
     }
     delete process.env.NODE_ENV;
+    // Provide required credentials (no defaults — must come from env in production)
+    process.env.CATALOG_DB_PASSWORD = 'test-password';
+    process.env.CATALOG_MEILISEARCH_API_KEY = 'test-api-key';
 
     const config = loadConfig();
 
@@ -56,7 +59,9 @@ describe('Configuration Integration', () => {
     process.env.CATALOG_DB_HOST = 'postgres.prod';
     process.env.CATALOG_DB_PORT = '5433';
     process.env.CATALOG_DB_NAME = 'catalog_prod';
+    process.env.CATALOG_DB_PASSWORD = 'prod-secret';
     process.env.CATALOG_MEILISEARCH_HOST = 'http://search.prod:7700';
+    process.env.CATALOG_MEILISEARCH_API_KEY = 'prod-api-key';
     process.env.CATALOG_OTEL_ENABLED = 'false';
     process.env.CATALOG_SPIFFE_ENABLED = 'true';
     process.env.CATALOG_SPIFFE_TRUST_DOMAIN = 'prod.example.org';
@@ -105,16 +110,20 @@ describe('Hexagonal Architecture Verification', () => {
 
     for (const file of domainFiles) {
       const content = fs.readFileSync(file, 'utf-8');
-      const importLines = content
-        .split('\n')
-        .filter((line) => line.trim().startsWith('import'))
-        .filter((line) => !line.includes('./') && !line.includes('../'));
 
-      // Domain files should only have relative imports (no external packages)
-      // The only exception is type-only imports which are erased at compile time
-      const externalImports = importLines.filter(
-        (line) => !line.includes('type ') && !line.includes("type {") && !line.includes("type{")
-      );
+      // Extract complete import statements (handles multi-line blocks like `import {\n  Foo,\n} from '...'`)
+      // by matching full import ... from '...' blocks rather than line-by-line
+      const importStatements = content.match(/import\s[\s\S]*?from\s+['"][^'"]+['"]/g) ?? [];
+
+      const externalImports = importStatements.filter((stmt) => {
+        // Skip type-only imports — erased at compile time, no runtime boundary violation
+        if (stmt.includes('import type ') || stmt.match(/import\s*\btype\b\s*\{/)) return false;
+        // Keep only statements where the `from` path is NOT relative
+        const fromMatch = stmt.match(/from\s+['"]([^'"]+)['"]/);
+        if (!fromMatch) return false;
+        const fromPath = fromMatch[1];
+        return !fromPath.startsWith('./') && !fromPath.startsWith('../');
+      });
 
       expect(externalImports).toHaveLength(0);
     }
