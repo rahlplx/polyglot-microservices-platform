@@ -1,0 +1,363 @@
+# AlertManager — Severity-based alert routing to PagerDuty/Jira/Slack
+# Routes: critical → PagerDuty, warning → Slack, info → Jira
+# Inhibition: critical alerts suppress warning alerts for the same service
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: production
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: polyglot-microservices
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+      # PagerDuty Integration Key (replace with real key)
+      pagerduty_url: "https://events.pagerduty.com/v2/enqueue"
+      # Slack API URL
+      slack_api_url: "https://hooks.slack.com/services/REPLACE_ME"
+      # SMTP for email notifications (optional)
+      smtp_smarthost: "smtp.example.org:587"
+      smtp_from: "alertmanager@polyglot.example.org"
+      smtp_auth_username: "alertmanager"
+      smtp_auth_password: "REPLACE_ME"
+
+    # Templates for notification formatting
+    templates:
+      - "/etc/alertmanager/templates/*.tmpl"
+
+    # Route tree — severity-based dispatch
+    route:
+      receiver: "slack-default"
+      group_by: ["alertname", "service.name", "namespace"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+
+      routes:
+        # Critical alerts → PagerDuty (immediate page)
+        - match:
+            severity: critical
+          receiver: "pagerduty-critical"
+          group_wait: 10s
+          group_interval: 1m
+          repeat_interval: 30m
+          continue: true  # Also send to Slack for visibility
+
+        # Critical alerts → Slack #incidents channel
+        - match:
+            severity: critical
+          receiver: "slack-incidents"
+          group_wait: 10s
+          repeat_interval: 30m
+
+        # Warning alerts → Slack #alerts channel
+        - match:
+            severity: warning
+          receiver: "slack-alerts"
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 4h
+          continue: true  # Also create Jira ticket
+
+        # Warning alerts → Jira (auto-create ticket)
+        - match:
+            severity: warning
+          receiver: "jira-warning"
+          group_wait: 1m
+          repeat_interval: 24h
+
+        # SLO error-budget alerts (critical)
+        - match:
+            slo: error-budget
+            severity: critical
+          receiver: "pagerduty-critical"
+          group_wait: 10s
+          repeat_interval: 15m
+          continue: true
+
+        # SLO identity alerts → Slack #security
+        - match:
+            slo: identity
+          receiver: "slack-security"
+          group_wait: 30s
+          repeat_interval: 2h
+
+        # Data pipeline alerts → Slack #data-ops
+        - match:
+            slo: data-pipeline
+          receiver: "slack-data-ops"
+          group_wait: 30s
+          repeat_interval: 2h
+
+    # Inhibition rules — prevent alert fatigue
+    inhibit_rules:
+      # Critical suppresses warning for same service
+      - source_match:
+          severity: critical
+        target_match:
+          severity: warning
+        equal: ["alertname", "service.name", "namespace"]
+
+      # Fast burn suppresses slow burn for same service
+      - source_match:
+          alertname: ErrorBudgetFastBurn
+        target_match:
+          alertname: ErrorBudgetSlowBurn
+        equal: ["service.name"]
+
+      # High error rate suppresses elevated error rate
+      - source_match:
+          alertname: HighErrorRate
+        target_match:
+          alertname: ElevatedErrorRate
+        equal: ["service.name"]
+
+    # Receivers — notification destinations
+    receivers:
+      - name: "slack-default"
+        slack_configs:
+          - channel: "#alerts"
+            title: "[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}"
+            text: |
+              {{ range .Alerts }}
+              *Alert:* {{ .Annotations.summary }}
+              *Description:* {{ .Annotations.description }}
+              *Severity:* {{ .Labels.severity }}
+              *Service:* {{ .Labels.service.name }}
+              {{ end }}
+            send_resolved: true
+
+      - name: "slack-incidents"
+        slack_configs:
+          - channel: "#incidents"
+            title: ":rotating_light: [{{ .Status | toUpper }}] CRITICAL: {{ .CommonLabels.alertname }}"
+            text: |
+              {{ range .Alerts }}
+              *Alert:* {{ .Annotations.summary }}
+              *Description:* {{ .Annotations.description }}
+              *Service:* {{ .Labels.service.name }}
+              *SLO:* {{ .Labels.slo }}
+              *Runbook:* https://runbooks.polyglot.example.org/{{ .Labels.alertname }}
+              {{ end }}
+            send_resolved: true
+
+      - name: "slack-alerts"
+        slack_configs:
+          - channel: "#alerts"
+            title: ":warning: [{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}"
+            text: |
+              {{ range .Alerts }}
+              *Alert:* {{ .Annotations.summary }}
+              *Description:* {{ .Annotations.description }}
+              *Service:* {{ .Labels.service.name }}
+              {{ end }}
+            send_resolved: true
+
+      - name: "slack-security"
+        slack_configs:
+          - channel: "#security"
+            title: ":lock: [{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}"
+            text: |
+              {{ range .Alerts }}
+              *Alert:* {{ .Annotations.summary }}
+              *Description:* {{ .Annotations.description }}
+              *Pod:* {{ .Labels.pod }}
+              {{ end }}
+            send_resolved: true
+
+      - name: "slack-data-ops"
+        slack_configs:
+          - channel: "#data-ops"
+            title: ":database: [{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}"
+            text: |
+              {{ range .Alerts }}
+              *Alert:* {{ .Annotations.summary }}
+              *Description:* {{ .Annotations.description }}
+              {{ end }}
+            send_resolved: true
+
+      - name: "pagerduty-critical"
+        pagerduty_configs:
+          - service_key: "REPLACE_ME_PAGERDUTY_SERVICE_KEY"
+            severity: "{{ .CommonLabels.severity }}"
+            description: "{{ .CommonAnnotations.summary }}"
+            details:
+              alertname: "{{ .CommonLabels.alertname }}"
+              service: "{{ .CommonLabels.service.name }}"
+              slo: "{{ .CommonLabels.slo }}"
+              description: "{{ .CommonAnnotations.description }}"
+            group_by: ["alertname", "service.name"]
+
+      - name: "jira-warning"
+        webhook_configs:
+          - url: "http://jira-webhook-proxy.production.svc.cluster.local:8080/alert"
+            send_resolved: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: production
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: argocd
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alertmanager
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: alertmanager
+        app.kubernetes.io/component: observability
+        app.kubernetes.io/part-of: polyglot-microservices
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9093"
+    spec:
+      securityContext:
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values:
+                      - alertmanager
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: alertmanager
+          image: prom/alertmanager:v0.27.0
+          args:
+            - --config.file=/etc/alertmanager/alertmanager.yml
+            - --storage.path=/alertmanager
+            - --data.retention=120h
+            - --web.listen-address=:9093
+            - --cluster.listen-address=0.0.0.0:9094
+            - --cluster.peer=alertmanager-0.alertmanager-peers.production.svc.cluster.local:9094
+            - --cluster.peer=alertmanager-1.alertmanager-peers.production.svc.cluster.local:9094
+          ports:
+            - name: http
+              containerPort: 9093
+              protocol: TCP
+            - name: cluster
+              containerPort: 9094
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alertmanager
+            - name: data
+              mountPath: /alertmanager
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9093
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9093
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: config
+          configMap:
+            name: alertmanager-config
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alertmanager
+  namespace: production
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: polyglot-microservices
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: production
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: alertmanager
+  ports:
+    - name: http
+      port: 9093
+      targetPort: 9093
+      protocol: TCP
+    - name: cluster
+      port: 9094
+      targetPort: 9094
+      protocol: TCP
+---
+# Headless service for AlertManager cluster mesh (peer discovery)
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager-peers
+  namespace: production
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: alertmanager
+  ports:
+    - name: cluster
+      port: 9094
+      targetPort: 9094
+      protocol: TCP
+---
+# PodDisruptionBudget — ensure at least 1 alertmanager replica stays available
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: alertmanager
+  namespace: production
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alertmanager

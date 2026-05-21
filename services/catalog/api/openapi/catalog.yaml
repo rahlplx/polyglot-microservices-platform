@@ -1,0 +1,366 @@
+openapi: 3.1.0
+info:
+  title: Catalog Service API
+  description: >
+    Service-local OpenAPI spec for the Catalog Service (TypeScript).
+
+    Manages product listings, inventory, and search.
+    Provides CRUD operations for products with full-text search,
+    filtering, and pagination support.
+
+    NOTE: The centralized canonical spec is the source of truth and lives at
+    schemas/openapi/catalog/catalog.yaml. This service-local copy is provided for
+    service-level tooling (mock generation, gateway wiring, contract tests) and
+    must be kept in sync with the centralized version.
+  version: 1.0.0
+  contact:
+    name: Platform Team
+
+servers:
+  - url: https://catalog.internal.example.com/v1
+    description: Internal gRPC-Gateway endpoint
+
+paths:
+  /products:
+    post:
+      operationId: createProduct
+      summary: Create a new product
+      tags: [Products]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProductRequest'
+      responses:
+        '200':
+          description: Created product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateProductResponse'
+        '400':
+          description: Invalid product data
+
+    get:
+      operationId: listProducts
+      summary: List all products with pagination
+      tags: [Products]
+      parameters:
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            format: int32
+        - name: category_filter
+          in: query
+          schema:
+            type: string
+        - name: status_filter
+          in: query
+          schema:
+            $ref: '#/components/schemas/ProductStatus'
+      responses:
+        '200':
+          description: List of products
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListProductsResponse'
+
+  /products/{productId}:
+    get:
+      operationId: getProduct
+      summary: Get product by ID
+      tags: [Products]
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Product details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetProductResponse'
+        '404':
+          description: Product not found
+
+    patch:
+      operationId: updateProduct
+      summary: Update an existing product
+      tags: [Products]
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProductRequest'
+      responses:
+        '200':
+          description: Updated product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateProductResponse'
+
+    delete:
+      operationId: deleteProduct
+      summary: Soft-delete a product
+      tags: [Products]
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteProductRequest'
+      responses:
+        '200':
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteProductResponse'
+
+  /products:search:
+    post:
+      operationId: searchProducts
+      summary: Search products with filtering and pagination
+      tags: [Search]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchProductsRequest'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchProductsResponse'
+
+components:
+  schemas:
+    Money:
+      type: object
+      description: Monetary value with currency (common.v1.Money)
+      required: [currency_code, units, nanos]
+      properties:
+        currency_code:
+          type: string
+          description: ISO 4217 currency code
+          minLength: 3
+          maxLength: 3
+        units:
+          type: integer
+          format: int64
+          description: Whole units (e.g., dollars)
+        nanos:
+          type: integer
+          format: int32
+          description: Nano units (10^-9), same sign as units
+
+    PaginationRequest:
+      type: object
+      description: Pagination request using opaque cursor tokens (common.v1.PaginationRequest)
+      properties:
+        cursor:
+          type: string
+          description: Opaque cursor from previous response
+        page_size:
+          type: integer
+          format: int32
+          description: Maximum items to return
+
+    PaginationResponse:
+      type: object
+      description: Pagination response (common.v1.PaginationResponse)
+      properties:
+        next_cursor:
+          type: string
+          description: Opaque cursor for next page
+        total_count:
+          type: integer
+          format: int64
+        has_more:
+          type: boolean
+
+    ProductStatus:
+      type: string
+      enum:
+        - PRODUCT_STATUS_UNSPECIFIED
+        - PRODUCT_STATUS_ACTIVE
+        - PRODUCT_STATUS_INACTIVE
+        - PRODUCT_STATUS_DISCONTINUED
+
+    Product:
+      type: object
+      properties:
+        product_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          $ref: '#/components/schemas/Money'
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        available_quantity:
+          type: integer
+          format: int32
+        status:
+          $ref: '#/components/schemas/ProductStatus'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateProductRequest:
+      type: object
+      required: [name, price, category]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          $ref: '#/components/schemas/Money'
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        initial_quantity:
+          type: integer
+          format: int32
+
+    CreateProductResponse:
+      type: object
+      properties:
+        product:
+          $ref: '#/components/schemas/Product'
+
+    GetProductResponse:
+      type: object
+      properties:
+        product:
+          $ref: '#/components/schemas/Product'
+
+    UpdateProductRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          $ref: '#/components/schemas/Money'
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        quantity_adjustment:
+          type: integer
+          format: int32
+
+    UpdateProductResponse:
+      type: object
+      properties:
+        product:
+          $ref: '#/components/schemas/Product'
+
+    DeleteProductRequest:
+      type: object
+      properties:
+        hard_delete:
+          type: boolean
+        replacement_product_id:
+          type: string
+
+    DeleteProductResponse:
+      type: object
+      properties:
+        deleted:
+          type: boolean
+        replacement_product_id:
+          type: string
+
+    SearchProductsRequest:
+      type: object
+      properties:
+        query:
+          type: string
+        category_filters:
+          type: array
+          items:
+            type: string
+        tag_filters:
+          type: array
+          items:
+            type: string
+        min_price:
+          $ref: '#/components/schemas/Money'
+        max_price:
+          $ref: '#/components/schemas/Money'
+        in_stock_only:
+          type: boolean
+        pagination:
+          $ref: '#/components/schemas/PaginationRequest'
+        sort_field:
+          type: string
+        sort_order:
+          type: string
+          enum: [asc, desc]
+
+    SearchProductsResponse:
+      type: object
+      properties:
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        pagination:
+          $ref: '#/components/schemas/PaginationResponse'
+        total_matches:
+          type: integer
+          format: int32
+
+    ListProductsResponse:
+      type: object
+      properties:
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        pagination:
+          $ref: '#/components/schemas/PaginationResponse'

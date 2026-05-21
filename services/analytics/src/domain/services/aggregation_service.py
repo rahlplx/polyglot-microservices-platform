@@ -99,7 +99,7 @@ class AggregationService:
             logger.info("No raw data found for metric=%s, labels=%s", metric_name, labels)
             return []
 
-        all_points = raw_series[0].points if raw_series else []
+        all_points = raw_series[0].points
         windows = self._group_points_by_window(all_points, window)
 
         results: list[AggregatedDataPoint] = []

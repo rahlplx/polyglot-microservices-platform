@@ -5,25 +5,12 @@
  * This is a driven port — adapters on the outbound side implement this interface.
  *
  * Domain core has ZERO external dependencies.
+ *
+ * NOTE: ProductRow and persistence-specific types have been moved to the
+ * adapter layer. The domain port only deals with domain entities and
+ * technology-neutral filter/result types.
  */
 import type { Product } from '../../models';
-
-export interface ProductRow {
-  readonly product_id: string;
-  readonly name: string;
-  readonly description: string;
-  readonly currency_code: string;
-  readonly price_units: number;
-  readonly price_nanos: number;
-  readonly category: string;
-  readonly tags: string[];
-  readonly available_quantity: number;
-  readonly status: string;
-  readonly created_at: Date;
-  readonly updated_at: Date;
-  readonly deleted_at: Date | null;
-  readonly replacement_product_id: string | null;
-}
 
 export interface PaginatedResult<T> {
   readonly items: T[];

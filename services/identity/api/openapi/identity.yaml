@@ -1,0 +1,264 @@
+openapi: 3.1.0
+info:
+  title: Identity Service API
+  description: >
+    Service-local OpenAPI spec for the Identity Service (Rust).
+
+    Manages SPIFFE/SPIRE workload attestation and SVID lifecycle.
+    Provides identity verification, certificate issuance, and trust bundle management
+    for zero-trust mTLS across all platform services.
+
+    NOTE: The centralized canonical spec is the source of truth and lives at
+    schemas/openapi/auth/identity.yaml. This service-local copy is provided for
+    service-level tooling (mock generation, gateway wiring, contract tests) and
+    must be kept in sync with the centralized version.
+  version: 1.0.0
+  contact:
+    name: Platform Team
+
+servers:
+  - url: https://identity.internal.example.com/v1
+    description: Internal gRPC-Gateway endpoint
+
+paths:
+  /workloads/attest:
+    post:
+      operationId: attestWorkload
+      summary: Attest a workload and verify its identity
+      tags: [Workload]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttestWorkloadRequest'
+      responses:
+        '200':
+          description: Attestation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttestWorkloadResponse'
+        '400':
+          description: Invalid attestation data
+
+  /svids:
+    post:
+      operationId: issueSVID
+      summary: Issue a new SVID for an attested workload
+      tags: [SVID]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueSVIDRequest'
+      responses:
+        '200':
+          description: SVID issuance result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IssueSVIDResponse'
+        '403':
+          description: Not authorized to issue SVID
+
+  /svids/{spiffeId}/revoke:
+    post:
+      operationId: revokeSVID
+      summary: Revoke an SVID
+      tags: [SVID]
+      parameters:
+        - name: spiffeId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeSVIDRequest'
+      responses:
+        '200':
+          description: Revocation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevokeSVIDResponse'
+
+  /trust-bundles/{trustDomain}:
+    get:
+      operationId: getTrustBundle
+      summary: Get the current trust bundle for a trust domain
+      tags: [TrustBundle]
+      parameters:
+        - name: trustDomain
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Trust bundle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTrustBundleResponse'
+
+  /workloads:
+    get:
+      operationId: listWorkloads
+      summary: List all registered workloads in a trust domain
+      tags: [Workload]
+      parameters:
+        - name: trust_domain
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '200':
+          description: List of workloads
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListWorkloadsResponse'
+
+components:
+  schemas:
+    AttestWorkloadRequest:
+      type: object
+      required: [spiffe_id, selectors, trust_domain]
+      properties:
+        spiffe_id:
+          type: string
+          description: SPIFFE ID of the workload to attest
+        selectors:
+          type: object
+          additionalProperties:
+            type: string
+          description: Attestation data (K8s pod labels, Unix UID, etc.)
+        trust_domain:
+          type: string
+          description: Trust domain (e.g., "example.com")
+
+    AttestWorkloadResponse:
+      type: object
+      properties:
+        attested:
+          type: boolean
+          description: Whether attestation succeeded
+        spiffe_id:
+          type: string
+          description: Verified SPIFFE ID
+        expires_at:
+          type: string
+          format: date-time
+          description: Attestation expiry timestamp
+        failure_reason:
+          type: string
+          description: Failure reason if attestation failed
+
+    IssueSVIDRequest:
+      type: object
+      required: [spiffe_id, ttl_seconds, trust_domain]
+      properties:
+        spiffe_id:
+          type: string
+        ttl_seconds:
+          type: integer
+          format: int64
+        csr:
+          type: string
+          format: byte
+          description: CSR in DER format
+        trust_domain:
+          type: string
+
+    IssueSVIDResponse:
+      type: object
+      properties:
+        certificate_chain:
+          type: string
+          description: X.509 SVID certificate chain in PEM format
+        private_key:
+          type: string
+          description: Private key (testing/mock only)
+        expires_at:
+          type: string
+          format: date-time
+        spiffe_id:
+          type: string
+
+    RevokeSVIDRequest:
+      type: object
+      required: [spiffe_id, trust_domain]
+      properties:
+        spiffe_id:
+          type: string
+        reason:
+          type: string
+        trust_domain:
+          type: string
+
+    RevokeSVIDResponse:
+      type: object
+      properties:
+        revoked:
+          type: boolean
+        revoked_at:
+          type: string
+          format: date-time
+
+    GetTrustBundleResponse:
+      type: object
+      properties:
+        root_certificates:
+          type: array
+          items:
+            type: string
+          description: X.509 root certificates in PEM format
+        expires_at:
+          type: string
+          format: date-time
+        sequence_number:
+          type: integer
+          format: uint64
+
+    ListWorkloadsResponse:
+      type: object
+      properties:
+        workloads:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkloadEntry'
+        next_cursor:
+          type: string
+
+    WorkloadEntry:
+      type: object
+      properties:
+        spiffe_id:
+          type: string
+        parent_id:
+          type: string
+        selectors:
+          type: object
+          additionalProperties:
+            type: string
+        ttl_seconds:
+          type: integer
+          format: int64
+        attested:
+          type: boolean

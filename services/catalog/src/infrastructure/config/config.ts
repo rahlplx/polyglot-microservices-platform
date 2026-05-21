@@ -23,7 +23,7 @@ const DatabaseConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(5432),
   database: z.string().min(1).default('catalog'),
   user: z.string().min(1).default('catalog'),
-  password: z.string().default('catalog'),
+  password: z.string().min(1).default('catalog'), // FIXME: SECURITY — no default password in production
   maxPoolSize: z.number().int().positive().default(20),
   idleTimeoutMs: z.number().int().positive().default(30000),
   connectionTimeoutMs: z.number().int().positive().default(5000),
@@ -32,7 +32,7 @@ const DatabaseConfigSchema = z.object({
 
 const MeilisearchConfigSchema = z.object({
   host: z.string().min(1).default('http://localhost:7700'),
-  apiKey: z.string().default('catalog-key'),
+  apiKey: z.string().min(1).default('catalog-key'), // FIXME: SECURITY — no default API key in production
   indexName: z.string().min(1).default('products'),
 });
 

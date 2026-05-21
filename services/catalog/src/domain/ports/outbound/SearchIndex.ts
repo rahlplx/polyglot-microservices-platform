@@ -6,26 +6,17 @@
  * This is a driven port — adapters on the outbound side implement this interface.
  *
  * Domain core has ZERO external dependencies.
+ *
+ * NOTE (V-13 fix): The previous `SearchDocument` interface has been removed
+ * from this domain port. It was shaped by Meilisearch adapter concerns
+ * (flat document with serialized date strings). The port now accepts the
+ * domain entity `Product` directly — adapters are responsible for
+ * projecting/flattening the domain model into whatever shape the search
+ * engine requires internally.
  */
 import type { Product } from '../../models';
 import type { Money } from '../../models';
 import type { SearchFilters, SortBy, FacetValue } from '../inbound/SearchCatalog';
-
-// ---------------------------------------------------------------------------
-// Search Document (what gets indexed)
-// ---------------------------------------------------------------------------
-
-export interface SearchDocument {
-  readonly productId: string;
-  readonly name: string;
-  readonly description: string;
-  readonly category: string;
-  readonly tags: string[];
-  readonly price: Money;
-  readonly availableQuantity: number;
-  readonly status: string;
-  readonly createdAt: string;
-}
 
 // ---------------------------------------------------------------------------
 // Search Query

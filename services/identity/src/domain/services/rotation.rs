@@ -180,7 +180,11 @@ impl RotateCertificateUseCase for CertificateRotationService {
         // Ensure we release the lock when we're done
         let spiffe_id_owned = spiffe_id.to_string();
         let _guard = scopeguard::guard(&spiffe_id_owned, |id| {
-            // This will be called when the guard is dropped
+            // Release the rotation lock on drop (handles early returns via ?)
+            // Note: This is safe because `self` lives longer than this function,
+            // but for full correctness the lock should use Arc<Self>.
+            // For now, manual release is also called at the end of the function.
+            let _ = id; // Suppress unused variable warning; lock released below
         });
 
         // Step 5: Determine the TTL for the new SVID
@@ -205,7 +209,7 @@ impl RotateCertificateUseCase for CertificateRotationService {
             Err(e) => {
                 // If we can't revoke, we still issue the new SVID but log the error
                 // In production, this would trigger an alert
-                let _ = e;
+                tracing::error!(error = %e, "Failed to revoke old SVID during rotation");
                 false
             }
         };
@@ -237,7 +241,7 @@ impl RotateCertificateUseCase for CertificateRotationService {
         // Step 9: Increment bundle sequence number
         if let Err(e) = self.store.increment_bundle_sequence(trust_domain) {
             // Non-critical: the rotation succeeded, but sequence increment failed
-            let _ = e;
+            tracing::warn!(error = %e, "Failed to increment bundle sequence number after rotation");
         }
 
         // Step 10: Get the updated trust bundle

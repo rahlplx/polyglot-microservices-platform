@@ -37,13 +37,13 @@ pub struct PostgresWorkloadStore {
 impl PostgresWorkloadStore {
     /// Creates a new PostgreSQL store with the given connection pool.
     pub fn new(pool: sqlx::postgres::PgPool) -> Self {
-        Self { Some(pool) }
+        Self { pool: Some(pool) }
     }
 
     /// Creates a new PostgreSQL store without a connection pool.
     /// Used for testing or when the database is not yet available.
     pub fn disconnected() -> Self {
-        Self { None }
+        Self { pool: None }
     }
 
     /// Runs database migrations.

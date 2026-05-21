@@ -1,0 +1,181 @@
+# ---------------------------------------------------------------------------
+# K8s Manifest Validation — Polyglot Microservices Platform
+# ---------------------------------------------------------------------------
+# Triggers: PRs on infra/kubernetes/**
+# Jobs:
+#   1. kubeconform      — Validate manifests against Kubernetes JSON schemas
+#   2. kubectl-dry-run   — Server-side dry run against a temporary cluster
+# ---------------------------------------------------------------------------
+name: K8s Validate
+
+on:
+  pull_request:
+    paths:
+      - 'infra/kubernetes/**'
+    branches:
+      - develop
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  KUBERNETES_VERSION: "1.29.2"
+  KUBECONFORM_VERSION: "v0.6.7"
+
+jobs:
+  # =========================================================================
+  # 1. Kubeconform — Validate manifests against Kubernetes JSON schemas
+  # =========================================================================
+  kubeconform:
+    name: "Kubeconform"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL -o /tmp/kubeconform.tar.gz \
+            "https://github.com/yannh/kubeconform/releases/download/${{ env.KUBECONFORM_VERSION }}/kubeconform-linux-amd64.tar.gz"
+          tar -xzf /tmp/kubeconform.tar.gz -C /usr/local/bin kubeconform
+          chmod +x /usr/local/bin/kubeconform
+
+      - name: Validate base manifests
+        run: |
+          echo "Validating base Kubernetes manifests..."
+          kubeconform \
+            -kubernetes-version ${{ env.KUBERNETES_VERSION }} \
+            -summary \
+            -verbose \
+            -ignore-missing-schemas \
+            infra/kubernetes/base/ || exit 1
+
+      - name: Validate platform manifests
+        run: |
+          echo "Validating platform (observability/infrastructure) manifests..."
+          kubeconform \
+            -kubernetes-version ${{ env.KUBERNETES_VERSION }} \
+            -summary \
+            -verbose \
+            -ignore-missing-schemas \
+            infra/kubernetes/platform/ || exit 1
+
+      - name: Validate app manifests
+        run: |
+          echo "Validating application manifests..."
+          kubeconform \
+            -kubernetes-version ${{ env.KUBERNETES_VERSION }} \
+            -summary \
+            -verbose \
+            -ignore-missing-schemas \
+            infra/kubernetes/apps/ || exit 1
+
+      - name: Validate overlay manifests (dev)
+        run: |
+          echo "Validating dev overlay..."
+          kubeconform \
+            -kubernetes-version ${{ env.KUBERNETES_VERSION }} \
+            -summary \
+            -verbose \
+            -ignore-missing-schemas \
+            infra/kubernetes/overlays/dev/ || true
+
+      - name: Validate overlay manifests (staging)
+        run: |
+          echo "Validating staging overlay..."
+          kubeconform \
+            -kubernetes-version ${{ env.KUBERNETES_VERSION }} \
+            -summary \
+            -verbose \
+            -ignore-missing-schemas \
+            infra/kubernetes/overlays/staging/ || true
+
+      - name: Validate overlay manifests (production)
+        run: |
+          echo "Validating production overlay..."
+          kubeconform \
+            -kubernetes-version ${{ env.KUBERNETES_VERSION }} \
+            -summary \
+            -verbose \
+            -ignore-missing-schemas \
+            infra/kubernetes/overlays/production/ || true
+
+      - name: Kubeconform summary
+        if: always()
+        run: |
+          echo "### Kubeconform Validation Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "Kubernetes version: ${{ env.KUBERNETES_VERSION }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Kubeconform version: ${{ env.KUBECONFORM_VERSION }}" >> "$GITHUB_STEP_SUMMARY"
+
+  # =========================================================================
+  # 2. kubectl dry-run — Server-side dry run against temporary cluster
+  # =========================================================================
+  kubectl-dry-run:
+    name: "kubectl Dry Run"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: ${{ env.KUBERNETES_VERSION }}
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: k8s-validate
+          node_image: kindest/node:v${{ env.KUBERNETES_VERSION }}
+          wait: 120s
+
+      - name: Verify cluster is running
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Dry-run base manifests
+        run: |
+          echo "Dry-running base manifests..."
+          for manifest in infra/kubernetes/base/*.yaml; do
+            if [ -f "$manifest" ]; then
+              echo "  → $(basename "$manifest")"
+              kubectl apply --dry-run=server -f "$manifest" || {
+                echo "::error::Dry-run failed for $manifest"
+                exit 1
+              }
+            fi
+          done
+
+      - name: Dry-run platform manifests
+        run: |
+          echo "Dry-running platform manifests..."
+          for manifest in infra/kubernetes/platform/*.yaml; do
+            if [ -f "$manifest" ]; then
+              echo "  → $(basename "$manifest")"
+              kubectl apply --dry-run=server -f "$manifest" || {
+                echo "::warning::Dry-run failed for $manifest (may depend on CRDs)"
+              }
+            fi
+          done
+
+      - name: Dry-run app manifests
+        run: |
+          echo "Dry-running application manifests (ArgoCD Application CRDs may not exist)..."
+          for manifest in infra/kubernetes/apps/*.yaml; do
+            if [ -f "$manifest" ]; then
+              echo "  → $(basename "$manifest")"
+              kubectl apply --dry-run=server -f "$manifest" 2>&1 || {
+                echo "::warning::Dry-run failed for $manifest — may require ArgoCD CRDs"
+              }
+            fi
+          done
+
+      - name: Dry-run summary
+        if: always()
+        run: |
+          echo "### kubectl Dry-Run Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "Kind cluster: k8s-validate" >> "$GITHUB_STEP_SUMMARY"
+          echo "Kubernetes version: ${{ env.KUBERNETES_VERSION }}" >> "$GITHUB_STEP_SUMMARY"

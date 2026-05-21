@@ -136,6 +136,10 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8889"
     spec:
+      securityContext:
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       serviceAccountName: otel-collector
       tolerations:
         - key: node-role.kubernetes.io/control-plane
@@ -188,11 +192,14 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 10001
+            runAsGroup: 10001
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
+            seccompProfile:
+              type: RuntimeDefault
       volumes:
         - name: config
           configMap:

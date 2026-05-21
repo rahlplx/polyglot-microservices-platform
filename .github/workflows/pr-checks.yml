@@ -1,3 +1,13 @@
+# ---------------------------------------------------------------------------
+# PR Quality Gates — Polyglot Microservices Platform
+# ---------------------------------------------------------------------------
+# Triggers: PR events (opened, synchronize, reopened, edited)
+# Jobs:
+#   1. commit-lint       — Conventional Commits validation
+#   2. size-check        — PR size limits with auto-labeling
+#   3. license-check     — Dependency license compliance
+#   4. hexagonal-architecture-check — Domain layer boundary enforcement
+# ---------------------------------------------------------------------------
 name: PR Quality Gates
 
 on:
@@ -8,18 +18,23 @@ concurrency:
   group: pr-checks-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
-  # ──────────────────────────────────────────────
-  # Conventional Commits validation
-  # ──────────────────────────────────────────────
-  conventional-commits:
-    name: "Conventional Commits"
+  # =========================================================================
+  # 1. Conventional Commits validation
+  # =========================================================================
+  commit-lint:
+    name: "Commit Lint"
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for commit validation
+          fetch-depth: 0
 
       - name: Validate PR title (Conventional Commits)
         uses: amannn/action-semantic-pull-request@v5
@@ -46,19 +61,16 @@ jobs:
 
       - name: Validate commit messages
         run: |
-          # Get all commits in this PR
           COMMITS=$(git log --format="%H %s" origin/${{ github.base_ref }}..HEAD)
 
-          echo "Validating ${#COMMITS[@]} commits..."
+          echo "Validating commits..."
 
           echo "$COMMITS" | while read -r hash message; do
-            # Check conventional commit format: type(scope)!: description
             if ! echo "$message" | grep -qE "^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?(!)?: .+"; then
               echo "::error::Commit $hash does not follow Conventional Commits: '$message'"
               echo "Expected format: type(scope)!: description"
               exit 1
             fi
-            # Check subject length
             SUBJECT_LEN=${#message}
             if [ "$SUBJECT_LEN" -gt 72 ]; then
               echo "::warning::Commit $hash subject exceeds 72 chars ($SUBJECT_LEN): '$message'"
@@ -67,14 +79,14 @@ jobs:
 
           echo "All commits follow Conventional Commits format"
 
-  # ──────────────────────────────────────────────
-  # PR Size check
-  # ──────────────────────────────────────────────
-  pr-size:
-    name: "PR Size Check"
+  # =========================================================================
+  # 2. PR Size check
+  # =========================================================================
+  size-check:
+    name: "Size Check"
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Get diff stats
@@ -103,14 +115,6 @@ jobs:
       - name: Check PR size limits
         run: |
           TOTAL=${{ steps.diff.outputs.total }}
-          FILES=${{ steps.diff.outputs.files }}
-
-          # Size thresholds
-          # XS:   0-50    lines
-          # S:    51-150  lines
-          # M:    151-400 lines
-          # L:    401-800 lines
-          # XL:   800+    lines (requires extra review)
 
           if [ "$TOTAL" -gt 800 ]; then
             echo "::warning::PR is XL (${TOTAL} lines changed). Consider breaking into smaller PRs."
@@ -151,7 +155,6 @@ jobs:
             const size = process.env.SIZE || 'M';
             const label = sizeLabels[size];
 
-            // Remove existing size labels
             const existingLabels = await github.rest.issues.listLabelsOnIssue({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -168,7 +171,6 @@ jobs:
               }
             }
 
-            // Add new size label
             await github.rest.issues.addLabels({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -176,14 +178,14 @@ jobs:
               labels: [label]
             });
 
-  # ──────────────────────────────────────────────
-  # License check
-  # ──────────────────────────────────────────────
+  # =========================================================================
+  # 3. License check
+  # =========================================================================
   license-check:
     name: "License Check"
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -219,7 +221,7 @@ jobs:
             if [ -f "services/${svc}/go.mod" ]; then
               echo "Checking licenses for ${svc}..."
               cd "services/${svc}"
-              go install github.com/google/go-licenses@latest
+              go install github.com/google/go-licenses@latest 2>/dev/null || true
               go-licenses check ./... \
                 --disallowed_types=forbidden \
                 --ignore github.com/${{ github.repository }} || true
@@ -259,14 +261,14 @@ jobs:
           fi
           cd "${{ github.workspace }}"
 
-  # ──────────────────────────────────────────────
-  # Hexagonal Architecture Boundary Check
-  # ──────────────────────────────────────────────
-  hexagonal-boundary-check:
+  # =========================================================================
+  # 4. Hexagonal Architecture Boundary Check
+  # =========================================================================
+  hexagonal-architecture-check:
     name: "Hexagonal Boundary Check"
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Verify domain layer has zero infrastructure imports
@@ -274,36 +276,7 @@ jobs:
           echo "Checking hexagonal architecture boundaries across all services..."
           VIOLATIONS=0
 
-          # ── Go services ──
-          for svc in gateway payment schema-registry; do
-            DOMAIN_DIR="services/${svc}/internal/domain"
-            if [ -d "$DOMAIN_DIR" ]; then
-              echo "Checking ${svc} domain layer..."
-              # Domain should never import infrastructure packages
-              INFRA_IMPORTS=$(rg -l \
-                --type go \
-                '"github\.com/[^"]+/(sql|database|redis|kafka|rabbitmq|grpc|http|postgres|mongo|s3|aws|gcp|azure)/' \
-                "$DOMAIN_DIR" 2>/dev/null || true)
-              if [ -n "$INFRA_IMPORTS" ]; then
-                echo "::error::${svc}: Domain layer contains infrastructure imports:"
-                echo "$INFRA_IMPORTS"
-                VIOLATIONS=$((VIOLATIONS + 1))
-              fi
-
-              # Also check for net/http, database/sql stdlib imports in domain
-              STDLIB_INFRA=$(rg -l \
-                --type go \
-                '"net/http"|"database/sql"|"net/rpc"' \
-                "$DOMAIN_DIR" 2>/dev/null || true)
-              if [ -n "$STDLIB_INFRA" ]; then
-                echo "::error::${svc}: Domain layer contains stdlib infrastructure imports (net/http, database/sql):"
-                echo "$STDLIB_INFRA"
-                VIOLATIONS=$((VIOLATIONS + 1))
-              fi
-            fi
-          done
-
-          # ── Rust service ──
+          # ── Rust service: identity ──
           DOMAIN_DIR="services/identity/src/domain"
           if [ -d "$DOMAIN_DIR" ]; then
             echo "Checking identity domain layer..."
@@ -318,8 +291,8 @@ jobs:
             fi
           fi
 
-          # ── Kotlin service ──
-          DOMAIN_DIR="services/order/src/main/kotlin/com/platform/order/domain"
+          # ── Kotlin service: order ──
+          DOMAIN_DIR="services/order/src/main/kotlin/domain"
           if [ -d "$DOMAIN_DIR" ]; then
             echo "Checking order domain layer..."
             INFRA_IMPORTS=$(rg -l \
@@ -333,7 +306,34 @@ jobs:
             fi
           fi
 
-          # ── TypeScript service ──
+          # ── Go services: payment, schema-registry, gateway ──
+          for svc in payment schema-registry gateway; do
+            DOMAIN_DIR="services/${svc}/domain"
+            if [ -d "$DOMAIN_DIR" ]; then
+              echo "Checking ${svc} domain layer..."
+              INFRA_IMPORTS=$(rg -l \
+                --type go \
+                '"github\.com/[^"]+/(sql|database|redis|kafka|rabbitmq|grpc|http|postgres|mongo|s3|aws|gcp|azure)/' \
+                "$DOMAIN_DIR" 2>/dev/null || true)
+              if [ -n "$INFRA_IMPORTS" ]; then
+                echo "::error::${svc}: Domain layer contains infrastructure imports:"
+                echo "$INFRA_IMPORTS"
+                VIOLATIONS=$((VIOLATIONS + 1))
+              fi
+
+              STDLIB_INFRA=$(rg -l \
+                --type go \
+                '"net/http"|"database/sql"|"net/rpc"' \
+                "$DOMAIN_DIR" 2>/dev/null || true)
+              if [ -n "$STDLIB_INFRA" ]; then
+                echo "::error::${svc}: Domain layer contains stdlib infrastructure imports:"
+                echo "$STDLIB_INFRA"
+                VIOLATIONS=$((VIOLATIONS + 1))
+              fi
+            fi
+          done
+
+          # ── TypeScript service: catalog ──
           DOMAIN_DIR="services/catalog/src/domain"
           if [ -d "$DOMAIN_DIR" ]; then
             echo "Checking catalog domain layer..."
@@ -348,7 +348,7 @@ jobs:
             fi
           fi
 
-          # ── Python services ──
+          # ── Python services: notification, analytics, rl-engine ──
           for svc in notification analytics rl-engine; do
             DOMAIN_DIR="services/${svc}/src/domain"
             if [ -d "$DOMAIN_DIR" ]; then
@@ -368,10 +368,10 @@ jobs:
           echo ""
           echo "### Hexagonal Boundary Report" >> "$GITHUB_STEP_SUMMARY"
           if [ "$VIOLATIONS" -gt 0 ]; then
-            echo "❌ **${VIOLATIONS} boundary violation(s) detected** — domain layers must not import infrastructure" >> "$GITHUB_STEP_SUMMARY"
+            echo "**${VIOLATIONS} boundary violation(s) detected** — domain layers must not import infrastructure" >> "$GITHUB_STEP_SUMMARY"
             echo "::error::${VIOLATIONS} hexagonal boundary violation(s) found. Domain layer must have zero infrastructure imports."
             exit 1
           else
-            echo "✅ **All hexagonal boundaries respected** — no infrastructure imports in domain layers" >> "$GITHUB_STEP_SUMMARY"
-            echo "All hexagonal boundaries respected ✅"
+            echo "**All hexagonal boundaries respected** — no infrastructure imports in domain layers" >> "$GITHUB_STEP_SUMMARY"
+            echo "All hexagonal boundaries respected"
           fi

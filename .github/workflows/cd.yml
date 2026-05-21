@@ -1,3 +1,11 @@
+# ---------------------------------------------------------------------------
+# Continuous Deployment Pipeline — Polyglot Microservices Platform
+# ---------------------------------------------------------------------------
+# Triggers:
+#   push to main → deploy to staging (ArgoCD sync)
+#   tag v*       → deploy to production (ArgoCD sync)
+#   failure      → automatic rollback
+# ---------------------------------------------------------------------------
 name: CD Pipeline
 
 on:
@@ -9,6 +17,10 @@ concurrency:
   group: cd-${{ github.ref }}
   cancel-in-progress: false  # Never cancel deployments
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ${{ github.repository }}
@@ -16,31 +28,28 @@ env:
   ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
 
 jobs:
-  # ──────────────────────────────────────────────
+  # =========================================================================
   # Build and push all Docker images
-  # ──────────────────────────────────────────────
+  # =========================================================================
   build-and-push:
     name: "Build & Push / ${{ matrix.service }}"
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
-    permissions:
-      contents: read
-      packages: write
     strategy:
       fail-fast: false
       matrix:
         service:
-          - gateway
-          - payment
-          - schema-registry
           - identity
           - order
+          - payment
+          - schema-registry
+          - gateway
           - catalog
           - notification
           - analytics
           - rl-engine
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
@@ -86,9 +95,9 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
-  # ──────────────────────────────────────────────
+  # =========================================================================
   # Deploy to staging (on push to main)
-  # ──────────────────────────────────────────────
+  # =========================================================================
   deploy-staging:
     name: "Deploy → Staging"
     runs-on: ubuntu-latest
@@ -98,7 +107,7 @@ jobs:
       name: staging
       url: https://staging.example.com
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install ArgoCD CLI
@@ -114,10 +123,9 @@ jobs:
 
       - name: Update manifest images to staging
         run: |
-          # Replace image tags in staging kustomization or Helm values
-          for svc in gateway payment schema-registry identity order catalog notification analytics rl-engine; do
+          for svc in identity order payment schema-registry gateway catalog notification analytics rl-engine; do
             yq -i ".images[] |= select(.name | test(\"${svc}\")) .newTag = \"${GITHUB_SHA}\"" \
-              deployments/staging/kustomization.yaml 2>/dev/null || true
+              infra/kubernetes/overlays/staging/kustomization.yaml 2>/dev/null || true
           done
 
       - name: Sync staging environment
@@ -144,12 +152,11 @@ jobs:
       - name: Notify deployment status
         if: always()
         run: |
-          STATUS="${{ job.status }}"
-          echo "Staging deployment: ${STATUS}"
+          echo "Staging deployment: ${{ job.status }}"
 
-  # ──────────────────────────────────────────────
+  # =========================================================================
   # Deploy to production (on tag v*)
-  # ──────────────────────────────────────────────
+  # =========================================================================
   deploy-production:
     name: "Deploy → Production"
     runs-on: ubuntu-latest
@@ -159,7 +166,7 @@ jobs:
       name: production
       url: https://app.example.com
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Extract version from tag
@@ -180,9 +187,9 @@ jobs:
       - name: Update manifest images for production
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
-          for svc in gateway payment schema-registry identity order catalog notification analytics rl-engine; do
+          for svc in identity order payment schema-registry gateway catalog notification analytics rl-engine; do
             yq -i ".images[] |= select(.name | test(\"${svc}\")) .newTag = \"${VERSION}\"" \
-              deployments/production/kustomization.yaml 2>/dev/null || true
+              infra/kubernetes/overlays/production/kustomization.yaml 2>/dev/null || true
           done
 
       - name: Sync production environment
@@ -208,8 +215,7 @@ jobs:
 
       - name: Production health gate — smoke tests
         run: |
-          # Run basic smoke tests against production
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://app.example.com/healthz")
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://app.example.com/healthz" || echo "000")
           if [ "${HTTP_STATUS}" -ne 200 ]; then
             echo "::error::Health check failed (HTTP ${HTTP_STATUS}) — initiating rollback"
             exit 1
@@ -221,11 +227,11 @@ jobs:
         run: |
           echo "Production deployment ${{ steps.version.outputs.VERSION }} completed successfully"
 
-  # ──────────────────────────────────────────────
-  # Rollback (manual / failure-triggered)
-  # ──────────────────────────────────────────────
+  # =========================================================================
+  # Rollback (triggered on failure of deploy jobs)
+  # =========================================================================
   rollback:
-    name: "Rollback ${{ github.event.deployment.environment || 'staging' }}"
+    name: "Rollback ${{ github.ref == 'refs/heads/main' && 'staging' || 'production' }}"
     runs-on: ubuntu-latest
     if: failure()
     needs: [deploy-staging, deploy-production]

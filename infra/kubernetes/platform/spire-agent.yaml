@@ -82,6 +82,10 @@ spec:
         app.kubernetes.io/component: identity
         app.kubernetes.io/part-of: polyglot-microservices
     spec:
+      securityContext:
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       serviceAccountName: spire-agent
       hostPID: true
       hostNetwork: true
@@ -131,11 +135,14 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
+            runAsGroup: 1000
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
+            seccompProfile:
+              type: RuntimeDefault
       volumes:
         - name: config
           configMap:

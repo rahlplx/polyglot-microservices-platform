@@ -8,8 +8,8 @@ Validates send_notification, preference management, and delivery optimization.
 from __future__ import annotations
 
 import pytest
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, MagicMock
 
 from src.domain.models.notification import (
     Notification,
@@ -320,6 +320,3 @@ class TestDeliveryOptimization:
         )
         await notification_service.send(request)
         mock_delivery_optimizer.optimize_delivery_time.assert_not_called()
-
-
-from datetime import timedelta

@@ -1,0 +1,231 @@
+openapi: 3.1.0
+info:
+  title: Analytics Service API
+  description: >
+    Service-local OpenAPI spec for the Analytics Service (Python).
+
+    Business intelligence, reporting, and ML-driven insights.
+    Provides pre-built and custom reports, aggregated metrics queries,
+    and real-time dashboard data.
+
+    NOTE: The centralized canonical spec is the source of truth and lives at
+    schemas/openapi/analytics/analytics.yaml. This service-local copy is provided for
+    service-level tooling (mock generation, gateway wiring, contract tests) and
+    must be kept in sync with the centralized version.
+  version: 1.0.0
+  contact:
+    name: Platform Team
+
+servers:
+  - url: https://analytics.internal.example.com/v1
+    description: Internal gRPC-Gateway endpoint
+
+paths:
+  /reports:
+    post:
+      operationId: getReport
+      summary: Get a pre-built or custom report
+      tags: [Reports]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetReportRequest'
+      responses:
+        '200':
+          description: Generated report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetReportResponse'
+        '400':
+          description: Invalid report parameters
+
+  /metrics:query:
+    post:
+      operationId: queryMetrics
+      summary: Query aggregated metrics
+      tags: [Metrics]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryMetricsRequest'
+      responses:
+        '200':
+          description: Metric series data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryMetricsResponse'
+
+  /dashboards/{dashboardId}:
+    get:
+      operationId: getDashboard
+      summary: Get real-time dashboard data
+      tags: [Dashboards]
+      parameters:
+        - name: dashboardId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: start_time
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: end_time
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: auto_refresh
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetDashboardResponse'
+
+components:
+  schemas:
+    TimeRange:
+      type: object
+      description: Time range for queries (common.v1.TimeRange)
+      properties:
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+
+    MetricDataPoint:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        value:
+          type: number
+          format: double
+
+    MetricSeries:
+      type: object
+      properties:
+        metric_name:
+          type: string
+        data_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/MetricDataPoint'
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+
+    DashboardPanel:
+      type: object
+      properties:
+        panel_id:
+          type: string
+        title:
+          type: string
+        panel_type:
+          type: string
+          description: "line_chart, bar_chart, stat, table"
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MetricSeries'
+        config:
+          type: object
+          additionalProperties:
+            type: string
+
+    GetReportRequest:
+      type: object
+      required: [report_type, time_range]
+      properties:
+        report_type:
+          type: string
+          description: "sales_summary, order_funnel, payment_reconciliation"
+        time_range:
+          $ref: '#/components/schemas/TimeRange'
+        parameters:
+          type: object
+          additionalProperties:
+            type: string
+        output_format:
+          type: string
+          description: "json, csv, pdf"
+
+    GetReportResponse:
+      type: object
+      properties:
+        report_id:
+          type: string
+        report_type:
+          type: string
+        time_range:
+          $ref: '#/components/schemas/TimeRange'
+        data:
+          type: string
+          format: byte
+          description: Report content in requested format
+        content_type:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+
+    QueryMetricsRequest:
+      type: object
+      required: [metric_names, time_range]
+      properties:
+        metric_names:
+          type: array
+          items:
+            type: string
+          description: e.g., "order.count", "revenue.total", "latency.p99"
+        time_range:
+          $ref: '#/components/schemas/TimeRange'
+        granularity:
+          type: string
+          description: "minute, hour, day"
+        filters:
+          type: object
+          additionalProperties:
+            type: string
+        group_by:
+          type: array
+          items:
+            type: string
+
+    QueryMetricsResponse:
+      type: object
+      properties:
+        series:
+          type: array
+          items:
+            $ref: '#/components/schemas/MetricSeries'
+
+    GetDashboardResponse:
+      type: object
+      properties:
+        dashboard_id:
+          type: string
+        panels:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardPanel'
+        last_updated:
+          type: string
+          format: date-time

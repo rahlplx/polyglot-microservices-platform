@@ -122,9 +122,14 @@ spec:
         app.kubernetes.io/component: observability
         app.kubernetes.io/part-of: polyglot-microservices
       annotations:
+        spiffe.io/inject: "true"
         prometheus.io/scrape: "true"
         prometheus.io/port: "8889"
     spec:
+      securityContext:
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       serviceAccountName: otel-gateway
       affinity:
         podAntiAffinity:
@@ -197,11 +202,14 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 10001
+            runAsGroup: 10001
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
+            seccompProfile:
+              type: RuntimeDefault
       volumes:
         - name: config
           configMap:

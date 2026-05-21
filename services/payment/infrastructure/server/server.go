@@ -10,8 +10,8 @@ import (
         "syscall"
         "time"
 
-        "google.golang.org/grpc"
-        "google.golang.org/grpc/reflection"
+        _ "google.golang.org/grpc"
+        _ "google.golang.org/grpc/reflection"
 )
 
 // Server manages the gRPC server lifecycle for the Payment service.

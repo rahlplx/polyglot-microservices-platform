@@ -61,7 +61,7 @@ data class ApplicationConfig(
             database = DatabaseConfig(
                 url = env("DATABASE_URL", "jdbc:postgresql://localhost:5432/orderdb"),
                 username = env("DATABASE_USERNAME", "order"),
-                password = env("DATABASE_PASSWORD", "order"),
+                password = env("DATABASE_PASSWORD", ""),
                 maxPoolSize = envInt("DATABASE_MAX_POOL_SIZE", 20),
                 minIdle = envInt("DATABASE_MIN_IDLE", 5),
                 connectionTimeoutMs = envLong("DATABASE_CONNECTION_TIMEOUT_MS", 5000),
@@ -137,7 +137,7 @@ data class ServerConfig(
 data class DatabaseConfig(
     val url: String = "jdbc:postgresql://localhost:5432/orderdb",
     val username: String = "order",
-    val password: String = "order",
+    val password: String = "", // No default password — must be set via DATABASE_PASSWORD env var
     val maxPoolSize: Int = 20,
     val minIdle: Int = 5,
     val connectionTimeoutMs: Long = 5000,

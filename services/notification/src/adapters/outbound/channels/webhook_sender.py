@@ -14,6 +14,7 @@ the configured maximum with exponential backoff between attempts.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -132,7 +133,7 @@ class WebhookSenderAdapter:
                     self._max_backoff_seconds,
                 )
                 logger.debug("Retrying webhook in %.1f seconds", backoff)
-                time.sleep(backoff)
+                await asyncio.sleep(backoff)
 
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
         return DeliveryResponse(

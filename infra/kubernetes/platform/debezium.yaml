@@ -62,9 +62,14 @@ spec:
         app.kubernetes.io/component: cdc
         app.kubernetes.io/part-of: polyglot-microservices
       annotations:
+        spiffe.io/inject: "true"
         prometheus.io/scrape: "true"
         prometheus.io/port: "9308"
     spec:
+      securityContext:
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
       serviceAccountName: cdc-relay
       containers:
         - name: debezium
@@ -124,11 +129,14 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 1001
+            runAsGroup: 1001
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
+            seccompProfile:
+              type: RuntimeDefault
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -155,8 +163,14 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 10001
+            runAsGroup: 10001
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
       volumes:
         - name: jmx-config
           configMap:

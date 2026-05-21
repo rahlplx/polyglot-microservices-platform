@@ -63,9 +63,16 @@ impl RingCryptoAdapter {
     }
 
     /// Generates a random serial number for certificate issuance.
+    ///
+    /// SECURITY (audit note): The current implementation uses a nanosecond
+    /// timestamp, which is NOT cryptographically random and is predictable.
+    /// This makes serial numbers guessable, violating RFC 5280 §4.1.2.2.
+    ///
+    /// TODO: Replace with `ring::rand::generate::<[u8; 20]>()` to produce
+    /// a 20-byte cryptographically random serial number.
     fn generate_serial_number() -> String {
-        // In production, use ring::rand to generate a cryptographically
-        // secure random serial number
+        // FIXME: SECURITY — timestamp-based serials are predictable.
+        // Use ring::rand for cryptographic randomness.
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -77,10 +84,15 @@ impl RingCryptoAdapter {
     ///
     /// The encryption key is derived from a master secret managed
     /// by the platform's secret store (Vault or Kubernetes Secrets).
+    ///
+    /// SECURITY: The placeholder no-op encryption has been replaced with a
+    /// TODO marker. This MUST be implemented before production use.
     fn encrypt_private_key(key_der: &[u8]) -> Vec<u8> {
-        // In production, use ring::aead::AES_256_GCM with a key
-        // derived from the master secret via HKDF
-        key_der.to_vec() // Placeholder: no encryption
+        // TODO: Implement AES-256-GCM encryption using ring::aead with a key
+        // derived from the master secret via HKDF. Storing private keys
+        // unencrypted is a critical security vulnerability.
+        // See: ring::aead::AES_256_GCM, ring::hkdf
+        key_der.to_vec() // FIXME: SECURITY — no encryption applied!
     }
 
     /// Performs a constant-time comparison of two byte slices.
