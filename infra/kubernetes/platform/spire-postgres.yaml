@@ -16,8 +16,7 @@ type: Opaque
 stringData:
   POSTGRES_DB: "spire"
   POSTGRES_USER: "spire"
-  POSTGRES_PASSWORD: "Ch4ng3M3!sp1r3_h4_pr0d"
-  connection-string: "host=spire-postgres.production.svc.cluster.local port=5432 dbname=spire user=spire password=Ch4ng3M3!sp1r3_h4_pr0d sslmode=disable"
+  POSTGRES_PASSWORD: "CHANGE_ME_IN_PRODUCTION_USE_VAULT_OR_SEALED_SECRETS"
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -100,6 +99,7 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 999
+            runAsGroup: 999
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
@@ -138,3 +138,71 @@ spec:
       port: 5432
       targetPort: 5432
       protocol: TCP
+---
+# PostgreSQL Backup CronJob — daily pg_dump for disaster recovery
+# Retains 7 days of backups; in production, push to S3/GCS via sidecar
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: spire-postgres-backup
+  namespace: production
+  labels:
+    app.kubernetes.io/name: spire-postgres
+    app.kubernetes.io/component: identity
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: spire-postgres-backup
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            fsGroup: 999
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: pg-dump
+              image: postgres:16-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  BACKUP_FILE="/backup/spire-$(date +%Y%m%d-%H%M%S).sql.gz"
+                  pg_dump -h spire-postgres.production.svc.cluster.local \
+                    -U spire -d spire | gzip > "$BACKUP_FILE"
+                  echo "Backup completed: $BACKUP_FILE"
+                  # Cleanup backups older than 7 days
+                  find /backup -name "spire-*.sql.gz" -mtime +7 -delete
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: spire-postgres
+                      key: POSTGRES_PASSWORD
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 999
+                runAsGroup: 999
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                seccompProfile:
+                  type: RuntimeDefault
+          volumes:
+            - name: backup
+              persistentVolumeClaim:
+                claimName: spire-postgres-backup

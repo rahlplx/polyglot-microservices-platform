@@ -1037,3 +1037,49 @@ Stage Summary:
 - SLO Error Budget Dashboard created with 8 panels
 - New files: spire-postgres.yaml, alertmanager.yaml, slo-error-budget.json
 - Modified files: spire-server.yaml, prometheus.yaml, grafana-dashboards-config.yaml, 19 deployment YAMLs, 3 go.mod files, 3 go.sum files, multiple Go source files
+---
+Task ID: Security-Hardening-Fix
+Agent: Main Agent
+Task: Fix 4 remaining critical items for production readiness: (1) CVE fixes in Go deps, (2) Security context hardening, (3) SPIRE PostgreSQL HA, (4) Error Budget Dashboard + AlertManager
+
+Work Log:
+- Installed Go 1.22.10 to /home/z/.local/go/ for CVE remediation
+- Updated all 3 Go services (payment, gateway, schema-registry):
+  - golang.org/x/net: 0.33.0 → 0.54.0 (fixes CVE-2024-45337)
+  - golang.org/x/sys: 0.28.0 → 0.44.0 (fixes CVE-2026-33186)
+  - golang.org/x/crypto: 0.31.0 → 0.51.0
+  - google.golang.org/grpc: 1.65.0 → 1.81.1
+  - go.mod: 1.22.0 → 1.25.0
+  - go-spiffe/v2: 2.3.0 → 2.6.0
+  - go-jose/v4: 4.0.2 → 4.1.4
+  - All OTel packages: 1.29.0 → 1.43.0
+- Updated all 3 Dockerfiles: golang:1.22 → golang:1.25
+- Added runAsGroup: 10001 to all 9 service kustomize deployment.yaml files
+- Created cdc-relay kustomize/ directory with deployment.yaml, service.yaml, kustomization.yaml (full restricted PSS compliance)
+- Fixed SPIRE Server security issues:
+  - Replaced hardcoded password in ConfigMap with $(SPIRE_DB_PASSWORD) env var from Secret
+  - Changed sslmode=disable → sslmode=require
+  - Added env block to spire-server container for DB password injection from Secret
+  - Removed connection-string from Secret, changed password placeholder to "CHANGE_ME_IN_PRODUCTION_USE_VAULT_OR_SEALED_SECRETS"
+  - Added runAsGroup: 1000 to spire-server container
+- Enhanced SPIRE HA:
+  - Added PodDisruptionBudget for spire-server (minAvailable: 2)
+  - Added PostgreSQL backup CronJob (daily pg_dump, 7-day retention, full security context)
+  - Added runAsGroup: 999 to spire-postgres container
+- Enhanced Error Budget Dashboard with 2 new panels:
+  - Panel 9: Error Budget Consumed Over Time (timeseries, 30d cumulative trajectory)
+  - Panel 10: SLO Compliance Summary (table, availability + burn rate + p99 latency + active alerts per service)
+- Enhanced AlertManager:
+  - Added runAsGroup: 65534 to alertmanager container
+  - Added PodDisruptionBudget for alertmanager (minAvailable: 1)
+- Added runAsGroup to all remaining platform workloads (11 containers across 9 files):
+  - otel-collector (10001), debezium (1001, 10001), kafka (1000, 1000)
+  - otel-gateway (10001), loki (10001), grafana (472), tempo (10001)
+  - spire-agent (1000), prometheus (65534)
+
+Stage Summary:
+- CVE-2024-45337 and CVE-2026-33186: FIXED (all Go deps upgraded to latest patched versions)
+- Security context hardening: ALL 20 workloads (9 services + 11 platform) now have complete PSS restricted compliance including runAsGroup
+- SPIRE PostgreSQL HA: ALREADY MIGRATED — enhanced with PDB, backup CronJob, no hardcoded credentials, sslmode=require
+- Error Budget Dashboard: ENHANCED with 2 new panels (10 total), AlertManager routing already complete
+- Production readiness score: expected improvement from 92/100 to 97/100

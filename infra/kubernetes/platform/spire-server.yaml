@@ -39,7 +39,7 @@ data:
       DataStore "sql" {
         plugin_data {
           database_type = "postgres"
-          connection_string = "host=spire-postgres.production.svc.cluster.local port=5432 dbname=spire user=spire password=Ch4ng3M3!sp1r3_h4_pr0d sslmode=disable"
+          connection_string = "host=spire-postgres.production.svc.cluster.local port=5432 dbname=spire user=spire password=$(SPIRE_DB_PASSWORD) sslmode=require"
         }
       }
 
@@ -122,6 +122,12 @@ spec:
           args:
             - -config
             - /run/spire/config/server.conf
+          env:
+            - name: SPIRE_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: spire-postgres
+                  key: POSTGRES_PASSWORD
           ports:
             - name: grpc
               containerPort: 8081
@@ -160,6 +166,7 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
+            runAsGroup: 1000
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
@@ -224,3 +231,19 @@ metadata:
   labels:
     app.kubernetes.io/name: spire-bundle
     app.kubernetes.io/part-of: polyglot-microservices
+---
+# PodDisruptionBudget — ensure at least 2 of 3 SPIRE Server replicas stay available
+# during voluntary disruptions (node drains, cluster upgrades)
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: spire-server
+  namespace: production
+  labels:
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spire-server

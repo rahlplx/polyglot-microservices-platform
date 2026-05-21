@@ -281,6 +281,7 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 65534
+            runAsGroup: 65534
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
@@ -345,3 +346,18 @@ spec:
       port: 9094
       targetPort: 9094
       protocol: TCP
+---
+# PodDisruptionBudget — ensure at least 1 alertmanager replica stays available
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: alertmanager
+  namespace: production
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: polyglot-microservices
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alertmanager

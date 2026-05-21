@@ -1,72 +1,80 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: payment
+  name: cdc-relay
   labels:
-    app.kubernetes.io/name: payment
-    app.kubernetes.io/component: payment
+    app.kubernetes.io/name: cdc-relay
+    app.kubernetes.io/component: cdc-relay
     app.kubernetes.io/part-of: polyglot-microservices
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app.kubernetes.io/name: payment
+      app.kubernetes.io/name: cdc-relay
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: payment
-        app.kubernetes.io/component: payment
+        app.kubernetes.io/name: cdc-relay
+        app.kubernetes.io/component: cdc-relay
         app.kubernetes.io/part-of: polyglot-microservices
       annotations:
         spiffe.io/inject: "true"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
     spec:
       securityContext:
         fsGroup: 10001
+        runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
-      serviceAccountName: payment
+      serviceAccountName: cdc-relay
       containers:
-        - name: payment
-          image: polyglot-platform/payment:latest
+        - name: cdc-relay
+          image: polyglot-platform/cdc-relay:latest
           ports:
-            - name: grpc
-              containerPort: 50055
+            - name: http
+              containerPort: 8088
               protocol: TCP
-            - name: health
-              containerPort: 9091
+            - name: metrics
+              containerPort: 9090
               protocol: TCP
           env:
-            - name: GRPC_PORT
-              value: "50055"
-            - name: HEALTH_PORT
-              value: "9091"
+            - name: HTTP_PORT
+              value: "8088"
+            - name: METRICS_PORT
+              value: "9090"
             - name: SPIFFE_ENDPOINT_SOCKET
               value: "unix:///run/spire/sockets/agent.sock"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://otel-gateway.production.svc.cluster.local:4317"
             - name: OTEL_SERVICE_NAME
-              value: "payment"
+              value: "cdc-relay"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka.production.svc.cluster.local:9092"
+            - name: DEBEZIUM_CONNECTOR_URL
+              value: "http://debezium.production.svc.cluster.local:8083"
             - name: LOG_LEVEL
               value: "info"
           resources:
             requests:
               cpu: 100m
-              memory: 128Mi
+              memory: 256Mi
             limits:
               cpu: 500m
               memory: 512Mi
           livenessProbe:
             httpGet:
-              path: /healthz
-              port: health
+              path: /health
+              port: http
             initialDelaySeconds: 15
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /healthz
-              port: health
+              path: /health
+              port: http
             initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 3

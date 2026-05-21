@@ -432,6 +432,150 @@
           "refId": "B"
         }
       ]
+    },
+    {
+      "title": "Error Budget Consumed Over Time",
+      "description": "Cumulative error budget consumed per service over the 30-day SLO window. Shows the trajectory — linear consumption is expected, exponential spikes indicate incidents. Uses slo:errors:ratio:rate5m recording rule integrated over 30d.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "id": 9,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Budget Consumed (%)",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 30,
+            "gradientMode": "scheme",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "mode": "none" },
+            "thresholdsStyle": { "mode": "area" }
+          },
+          "unit": "percent",
+          "decimals": 2,
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "orange", "value": 75 },
+              { "color": "red", "value": 100 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "calcs": ["mean", "max", "lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "100 * sum(rate(http_server_duration_count{http.status_code=~\"5..\"}[30d])) by (service.name) / sum(rate(http_server_duration_count[30d])) by (service.name) / 0.001",
+          "legendFormat": "{{service.name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "SLO Compliance Summary (30d)",
+      "description": "Tabular summary of SLO compliance per service over 30 days. Shows current availability, error budget remaining, burn rate, p99 latency, and active alert count. Green = healthy, red = SLO violated.",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "id": 10,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": { "align": "auto", "cellOptions": { "type": "color-text" }, "inspect": false },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 95 },
+              { "color": "yellow", "value": 99 },
+              { "color": "green", "value": 99.9 }
+            ]
+          },
+          "unit": "percent",
+          "decimals": 3
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Burn Rate" },
+            "properties": [
+              { "id": "unit", "value": "short" },
+              { "id": "decimals", "value": 1 },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 3 }, { "color": "red", "value": 14.4 }] } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "p99 Latency" },
+            "properties": [
+              { "id": "unit", "value": "ms" },
+              { "id": "decimals", "value": 0 },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 2000 }] } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Active Alerts" },
+            "properties": [
+              { "id": "unit", "value": "short" },
+              { "id": "decimals", "value": 0 },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Budget Left" },
+            "properties": [
+              { "id": "unit", "value": "percent" },
+              { "id": "decimals", "value": 2 },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "orange", "value": 10 }, { "color": "yellow", "value": 30 }, { "color": "green", "value": 60 }] } }
+            ]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "transformations": [],
+      "targets": [
+        {
+          "expr": "100 * (1 - slo:errors:ratio:rate5m)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "",
+          "refId": "A"
+        },
+        {
+          "expr": "slo:burnrate:fast",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "",
+          "refId": "B"
+        },
+        {
+          "expr": "slo:latency:p99:rate5m * 1000",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "",
+          "refId": "C"
+        },
+        {
+          "expr": "count(ALERTS{alertstate=\"firing\"}) by (service.name) or label_replace(vector(0), \"service.name\", \"\", \"\", \"\")",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "",
+          "refId": "D"
+        }
+      ]
     }
   ],
   "refresh": "30s",
