@@ -84,6 +84,10 @@ mockall = "0.13"
 # Assertion helpers
 assert_matches = "1"
 
+[lib]
+name = "identity_service"
+path = "src/lib.rs"
+
 [[bin]]
 name = "identity-service"
 path = "src/main.rs"
