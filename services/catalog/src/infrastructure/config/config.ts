@@ -15,6 +15,7 @@ import { z, type ZodError } from 'zod';
 const ServerConfigSchema = z.object({
   httpPort: z.number().int().min(1).max(65535).default(3000),
   grpcPort: z.number().int().min(1).max(65535).default(50053),
+  protoPath: z.string().min(1).default('catalog/v1/catalog.proto'),
   shutdownTimeoutMs: z.number().int().positive().default(15000),
 });
 
@@ -139,6 +140,7 @@ export function loadConfig(): AppConfig {
     server: {
       httpPort: envInt('CATALOG_HTTP_PORT', 3000),
       grpcPort: envInt('CATALOG_GRPC_PORT', 50053),
+      protoPath: envString('CATALOG_PROTO_PATH', 'catalog/v1/catalog.proto'),
       shutdownTimeoutMs: envInt('CATALOG_SHUTDOWN_TIMEOUT_MS', 15000),
     },
     database: {
