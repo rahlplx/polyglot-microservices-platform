@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package common.v1;
 
-option go_package = "github.com/comprehensive-architecture/services/gen/go/common/v1";
+option go_package = "github.com/rahlplx/polyglot-microservices-platform/gen/go/common/v1";
 
 // Standardized error codes used across all services
 // Maps to HTTP status codes for REST and gRPC status codes for gRPC

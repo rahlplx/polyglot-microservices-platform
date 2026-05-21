@@ -1,13 +1,12 @@
-version: v2
-modules:
-  - path: proto
-    name: buf.build/comprehensive-architecture/services
+version: v1
 lint:
   use:
     - STANDARD
   enum_zero_value_suffix: _UNSPECIFIED
   rpc_allow_same_request_response: false
   service_suffix: Service
+  ignore:
+    - proto/identity/v1
 breaking:
   use:
     - FILE

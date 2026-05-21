@@ -1,0 +1,55 @@
+openapi: "3.1.0"
+info:
+  title: Identity Service API
+  version: "1.0.0"
+  description: |
+    SPIFFE/SPIRE-backed workload identity service. Issues X.509 SVIDs,
+    manages trust bundles, and handles workload attestation.
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Service healthy
+  /v1/svid:
+    post:
+      summary: Attest workload and issue SVID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttestRequest"
+      responses:
+        "200":
+          description: SVID issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SVID"
+        "401":
+          description: Attestation failed
+components:
+  schemas:
+    AttestRequest:
+      type: object
+      required: [workload_id, selectors]
+      properties:
+        workload_id:
+          type: string
+        selectors:
+          type: array
+          items:
+            type: string
+    SVID:
+      type: object
+      properties:
+        spiffe_id:
+          type: string
+        certificate:
+          type: string
+          format: byte
+        expires_at:
+          type: string
+          format: date-time

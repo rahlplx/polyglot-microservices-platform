@@ -4,7 +4,7 @@ package payment.v1;
 
 import "payment/v1/payment.proto";
 
-option go_package = "github.com/comprehensive-architecture/services/gen/go/payment/v1";
+option go_package = "github.com/rahlplx/polyglot-microservices-platform/gen/go/payment/v1";
 
 // Circuit breaker state management (used by the resilience adapter)
 service CircuitBreakerService {

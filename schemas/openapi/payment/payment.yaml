@@ -1,0 +1,102 @@
+openapi: "3.1.0"
+info:
+  title: Payment Service API
+  version: "1.0.0"
+  description: Payment processing with circuit breaker resilience.
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Service healthy
+  /v1/payments:
+    post:
+      summary: Initiate a payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentRequest"
+      responses:
+        "201":
+          description: Payment initiated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+        "422":
+          description: Invalid payment details
+  /v1/payments/{paymentId}/refund:
+    post:
+      summary: Refund a payment
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefundRequest"
+      responses:
+        "200":
+          description: Refund processed
+components:
+  schemas:
+    PaymentRequest:
+      type: object
+      required: [order_id, customer_id, amount, gateway, idempotency_key]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+        amount:
+          $ref: "#/components/schemas/Money"
+        gateway:
+          type: string
+          enum: [STRIPE, ADYEN, BRAINTREE]
+        idempotency_key:
+          type: string
+    Payment:
+      type: object
+      properties:
+        payment_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PENDING, PROCESSING, SUCCEEDED, FAILED, REFUNDED]
+        amount:
+          $ref: "#/components/schemas/Money"
+        created_at:
+          type: string
+          format: date-time
+    RefundRequest:
+      type: object
+      required: [amount, reason]
+      properties:
+        amount:
+          $ref: "#/components/schemas/Money"
+        reason:
+          type: string
+    Money:
+      type: object
+      required: [currency_code, units]
+      properties:
+        currency_code:
+          type: string
+          pattern: "^[A-Z]{3}$"
+        units:
+          type: integer
+          format: int64
+        nanos:
+          type: integer
+          default: 0

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package catalog.v1;
 
-option go_package = "github.com/comprehensive-architecture/services/gen/go/catalog/v1";
+option go_package = "github.com/rahlplx/polyglot-microservices-platform/gen/go/catalog/v1";
 
 import "common/v1/types.proto";
 import "google/protobuf/timestamp.proto";
