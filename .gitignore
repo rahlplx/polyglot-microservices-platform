@@ -32,8 +32,14 @@ Thumbs.db
 # OTel
 *.otel.json
 
-# Embedding cache
-.claude/.embedding-cache/
+# Claude AI tooling (agent artifacts, never commit)
+.claude/
 
 # PDF/Image generation temp files
 download/*.tmp
+
+# Agent context (generated per session)
+agent-ctx/
+
+# Worklog (local development log)
+worklog.md
