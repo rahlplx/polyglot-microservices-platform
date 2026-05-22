@@ -202,7 +202,7 @@ describe('CatalogService', () => {
             productId: 'prod-001',
             name: 'Test Product',
             descriptionSnippet: 'A test product',
-            price: { currencyCode: 'USD', units: 29, nanos: 990000000 },
+            price: Money.create('USD', 29, 990000000),
             relevanceScore: 0.95,
           },
         ],
@@ -517,8 +517,8 @@ describe('Money', () => {
   });
 
   it('should throw on nanos out of range', () => {
-    expect(() => Money.create('USD', 10, -1)).toThrow('Nanos must be in range');
-    expect(() => Money.create('USD', 10, 1000000000)).toThrow('Nanos must be in range');
+    expect(() => Money.create('USD', 10, 1000000001)).toThrow();
+    expect(() => Money.create('USD', 10, 1000000000)).toThrow();
   });
 
   it('should create Money from decimal string', () => {

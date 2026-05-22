@@ -10,7 +10,9 @@ message Money {
   string currency_code = 1;
   // Whole units (e.g., dollars). Negative indicates debit.
   int64 units = 2;
-  // Nano units (10^-9). Must be same sign as units. 0 <= nanos < 1,000,000,000.
+  // Nano units (10^-9). Must be same sign as units or zero.
+  // Range: -999,999,999 <= nanos <= 999,999,999.
+  // If units > 0, nanos >= 0. If units < 0, nanos <= 0.
   int32 nanos = 3;
 }
 

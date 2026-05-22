@@ -27,3 +27,8 @@ __all__ = [
     "TokenBucketState",
     "TrafficPattern",
 ]
+
+from .policy import (
+    Action, Episode, EnvironmentType, Policy, Reward, State,
+    TrainingJob, Transition,
+)

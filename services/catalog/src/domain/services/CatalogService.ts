@@ -20,15 +20,7 @@ import type {
 import type { DeleteProduct, DeleteProductRequest, DeleteProductResponse } from '../ports/inbound/DeleteProduct';
 import type { ProductRepository } from '../ports/outbound/ProductRepository';
 import type { SearchIndex } from '../ports/outbound/SearchIndex';
-import {
-  Product,
-  Money,
-  ProductStatus,
-  ProductNotFoundError,
-  ProductHasActiveOrdersError,
-  SearchIndexUnavailableError,
-  InvalidQueryError,
-} from '../models';
+import { Product, Money, ProductStatus, ProductNotFoundError, ProductHasActiveOrdersError, SearchIndexUnavailableError, InvalidQueryError } from '../models';
 
 // ---------------------------------------------------------------------------
 // Service Dependencies
