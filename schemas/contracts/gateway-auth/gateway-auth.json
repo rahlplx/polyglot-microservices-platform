@@ -1,0 +1,77 @@
+{
+  "consumer": "gateway",
+  "provider": "auth",
+  "pactSpecification": { "version": "2.0.0" },
+  "interactions": [
+    {
+      "description": "A request to validate a valid access token",
+      "providerState": "a valid access token exists for user customer-001",
+      "request": {
+        "method": "POST",
+        "path": "/v1/auth.ValidateToken",
+        "headers": { "Content-Type": "application/grpc" },
+        "body": {
+          "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.valid-token",
+          "required_permission": "catalog:read",
+          "caller_spiffe_id": "spiffe://trust.example.org/ns/production/sa/gateway"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "valid": true,
+          "user_id": "customer-001",
+          "role": "CUSTOMER",
+          "permissions": ["catalog:read", "order:create", "order:read"],
+          "expires_at": "2026-05-19T13:00:00Z"
+        }
+      }
+    },
+    {
+      "description": "A request to validate an expired access token",
+      "providerState": "an expired access token exists",
+      "request": {
+        "method": "POST",
+        "path": "/v1/auth.ValidateToken",
+        "headers": { "Content-Type": "application/grpc" },
+        "body": {
+          "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.expired-token",
+          "required_permission": "order:create",
+          "caller_spiffe_id": "spiffe://trust.example.org/ns/production/sa/gateway"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "valid": false,
+          "invalid_reason": "TOKEN_INVALID_REASON_EXPIRED"
+        }
+      }
+    },
+    {
+      "description": "A request to validate a token with insufficient permissions",
+      "providerState": "a valid access token exists for viewer user",
+      "request": {
+        "method": "POST",
+        "path": "/v1/auth.ValidateToken",
+        "headers": { "Content-Type": "application/grpc" },
+        "body": {
+          "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.viewer-token",
+          "required_permission": "admin:write",
+          "caller_spiffe_id": "spiffe://trust.example.org/ns/production/sa/gateway"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "valid": false,
+          "invalid_reason": "TOKEN_INVALID_REASON_INSUFFICIENT_PERMISSION"
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "pactSpecification": { "version": "2.0.0" },
+    "specification": { "version": "2.0.0" }
+  }
+}

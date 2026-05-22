@@ -1,5 +1,6 @@
 # Grafana Dashboard Provisioning Configuration
 # Points Grafana to the dashboards directory for automatic discovery
+# Dashboards: RED Metrics, USE Metrics, SLO Error Budget
 ---
 apiVersion: v1
 kind: ConfigMap

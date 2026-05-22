@@ -69,12 +69,81 @@ data:
     alerting:
       alertmanagers:
         - static_configs:
-            - targets: []
-          # Uncomment when Alertmanager is deployed:
-          # - targets:
-          #     - alertmanager.production.svc.cluster.local:9093
+            - targets:
+                - alertmanager.production.svc.cluster.local:9093
 
-  # SLO alerting rules
+  # SLO recording rules — pre-compute SLI metrics for error budget tracking
+  slo-recording-rules.yml: |
+    groups:
+      - name: slo:requests
+        interval: 30s
+        rules:
+          # Total requests per service
+          - record: slo:requests:total:rate5m
+            expr: sum(rate(http_server_duration_count[5m])) by (service.name)
+
+          # Error requests per service (5xx)
+          - record: slo:requests:errors:rate5m
+            expr: sum(rate(http_server_duration_count{http.status_code =~ "5.."}[5m])) by (service.name)
+
+          # Error ratio per service
+          - record: slo:errors:ratio:rate5m
+            expr: |
+              (
+                slo:requests:errors:rate5m
+                /
+                slo:requests:total:rate5m
+              )
+
+          # Total gRPC requests per service
+          - record: slo:grpc:requests:total:rate5m
+            expr: sum(rate(rpc_server_duration_count[5m])) by (service.name)
+
+          # gRPC error requests per service
+          - record: slo:grpc:requests:errors:rate5m
+            expr: sum(rate(rpc_server_duration_count{rpc.grpc.status_code != "0"}[5m])) by (service.name)
+
+      - name: slo:latency
+        interval: 30s
+        rules:
+          # p50 latency per service
+          - record: slo:latency:p50:rate5m
+            expr: histogram_quantile(0.50, sum(rate(http_server_duration_bucket[5m])) by (le, service.name))
+
+          # p95 latency per service
+          - record: slo:latency:p95:rate5m
+            expr: histogram_quantile(0.95, sum(rate(http_server_duration_bucket[5m])) by (le, service.name))
+
+          # p99 latency per service
+          - record: slo:latency:p99:rate5m
+            expr: histogram_quantile(0.99, sum(rate(http_server_duration_bucket[5m])) by (le, service.name))
+
+      - name: slo:error_budget
+        interval: 60s
+        rules:
+          # 30-day error budget burn rate (fast burn)
+          - record: slo:burnrate:fast
+            expr: |
+              (
+                sum(rate(http_server_duration_count{http.status_code =~ "5.."}[1h])) by (service.name)
+                /
+                sum(rate(http_server_duration_count[1h])) by (service.name)
+              )
+              /
+              0.001
+
+          # 30-day error budget burn rate (slow burn)
+          - record: slo:burnrate:slow
+            expr: |
+              (
+                sum(rate(http_server_duration_count{http.status_code =~ "5.."}[6h])) by (service.name)
+                /
+                sum(rate(http_server_duration_count[6h])) by (service.name)
+              )
+              /
+              0.001
+
+  # SLO alerting rules — burn-rate based multi-window alerts
   slo-alerts.yml: |
     groups:
       - name: slo-alerts
@@ -131,6 +200,73 @@ data:
             annotations:
               summary: "SVID expiring soon on {{ $labels.pod }}"
               description: "SVID expires in {{ $value }}s"
+
+          # --- Burn-rate alerts (multi-window) ---
+          - alert: ErrorBudgetFastBurn
+            expr: |
+              (
+                sum(rate(http_server_duration_count{http.status_code =~ "5.."}[5m])) by (service.name)
+                /
+                sum(rate(http_server_duration_count[5m])) by (service.name)
+              ) > 0.0144
+              and
+              (
+                sum(rate(http_server_duration_count{http.status_code =~ "5.."}[1h])) by (service.name)
+                /
+                sum(rate(http_server_duration_count[1h])) by (service.name)
+              ) > 0.0144
+            for: 2m
+            labels:
+              severity: critical
+              slo: error-budget
+            annotations:
+              summary: "Error budget burning too fast for {{ $labels.service.name }}"
+              description: >
+                The 5m and 1h error rates both exceed 1.44%, consuming the error budget
+                at 14.4x the allowed rate. Immediate investigation required.
+
+          - alert: ErrorBudgetSlowBurn
+            expr: |
+              (
+                sum(rate(http_server_duration_count{http.status_code =~ "5.."}[30m])) by (service.name)
+                /
+                sum(rate(http_server_duration_count[30m])) by (service.name)
+              ) > 0.0036
+              and
+              (
+                sum(rate(http_server_duration_count{http.status_code =~ "5.."}[6h])) by (service.name)
+                /
+                sum(rate(http_server_duration_count[6h])) by (service.name)
+              ) > 0.0036
+            for: 15m
+            labels:
+              severity: warning
+              slo: error-budget
+            annotations:
+              summary: "Error budget slowly burning for {{ $labels.service.name }}"
+              description: >
+                The 30m and 6h error rates both exceed 0.36%, consuming the error budget
+                at 3.6x the allowed rate. Investigation recommended.
+
+          - alert: KafkaConsumerLagHigh
+            expr: kafka_consumer_group_lag > 10000
+            for: 10m
+            labels:
+              severity: warning
+              slo: data-pipeline
+            annotations:
+              summary: "Kafka consumer lag high for {{ $labels.group_id }}"
+              description: "Consumer group {{ $labels.group_id }} has {{ $value }} messages behind."
+
+          - alert: DebeziumConnectorFailed
+            expr: debezium_connector_status == 0
+            for: 5m
+            labels:
+              severity: critical
+              slo: data-pipeline
+            annotations:
+              summary: "Debezium connector {{ $labels.connector }} failed"
+              description: "Connector {{ $labels.connector }} is not running."
 
 ---
 apiVersion: apps/v1
@@ -231,13 +367,18 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 65534
+            runAsGroup: 65534
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
+            seccompProfile:
+              type: RuntimeDefault
       securityContext:
         fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
       volumes:
         - name: config
           configMap:
@@ -246,6 +387,8 @@ spec:
           configMap:
             name: prometheus-config
             items:
+              - key: slo-recording-rules.yml
+                path: slo-recording-rules.yml
               - key: slo-alerts.yml
                 path: slo-alerts.yml
   volumeClaimTemplates:

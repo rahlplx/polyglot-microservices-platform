@@ -1,0 +1,155 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "github.com/comprehensive-architecture/services/gen/go/auth/v1";
+
+import "google/protobuf/timestamp.proto";
+import "common/v1/types.proto";
+
+// TokenService manages JWT token lifecycle, API keys, and permission definitions.
+// This is an internal-facing service (not exposed directly to external clients)
+// used by the Gateway and other services for authorization decisions.
+service TokenService {
+  // Introspect a token (RFC 7662 OAuth2 Token Introspection)
+  rpc IntrospectToken(IntrospectTokenRequest) returns (IntrospectTokenResponse);
+  // Create an API key for programmatic access
+  rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse);
+  // List API keys for a user
+  rpc ListApiKeys(ListApiKeysRequest) returns (ListApiKeysResponse);
+  // Revoke an API key
+  rpc RevokeApiKey(RevokeApiKeyRequest) returns (RevokeApiKeyResponse);
+  // Get effective permissions for a user (role + explicit grants - revocations)
+  rpc GetPermissions(GetPermissionsRequest) returns (GetPermissionsResponse);
+  // Check if a user has a specific permission (optimized for Gateway hot path)
+  rpc CheckPermission(CheckPermissionRequest) returns (CheckPermissionResponse);
+}
+
+// API key entity for programmatic access
+message ApiKey {
+  string key_id = 1;
+  // Prefix of the key for identification (e.g., "cak_live_abc123...")
+  string key_prefix = 2;
+  // Human-readable name for the key
+  string name = 3;
+  // User who owns this key
+  string user_id = 4;
+  // Permissions granted by this key (subset of user's permissions)
+  repeated string permissions = 5;
+  // Key status
+  ApiKeyStatus status = 6;
+  // Scoping rules
+  repeated string allowed_cidrs = 7;    // IP allowlist (empty = all IPs)
+  repeated string allowed_referrers = 8; // Referrer allowlist
+  // Timestamps
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp expires_at = 10;
+  google.protobuf.Timestamp last_used_at = 11;
+}
+
+enum ApiKeyStatus {
+  API_KEY_STATUS_UNSPECIFIED = 0;
+  API_KEY_STATUS_ACTIVE = 1;
+  API_KEY_STATUS_EXPIRED = 2;
+  API_KEY_STATUS_REVOKED = 3;
+}
+
+// Token introspection (RFC 7662)
+message IntrospectTokenRequest {
+  // The token to introspect (access token or API key)
+  string token = 1;
+  // Token type hint ("access_token" or "api_key")
+  string token_type_hint = 2;
+}
+
+message IntrospectTokenResponse {
+  // Whether the token is active
+  bool active = 1;
+  // Token scope/permissions
+  repeated string scope = 2;
+  // Client ID (user_id for access tokens, key_id for API keys)
+  string client_id = 3;
+  // Subject (user_id)
+  string sub = 4;
+  // Token issuer
+  string iss = 5;
+  // Audience
+  string aud = 6;
+  // Token type ("Bearer" or "ApiKey")
+  string token_type = 7;
+  // Issued at
+  google.protobuf.Timestamp iat = 8;
+  // Expiration
+  google.protobuf.Timestamp exp = 9;
+}
+
+// API key management
+message CreateApiKeyRequest {
+  string user_id = 1;
+  string name = 2;
+  repeated string permissions = 3;
+  // Optional expiry (empty = no expiry)
+  google.protobuf.Timestamp expires_at = 4;
+  // Scoping
+  repeated string allowed_cidrs = 5;
+  repeated string allowed_referrers = 6;
+}
+
+message CreateApiKeyResponse {
+  ApiKey api_key = 1;
+  // The full API key (ONLY returned on creation, never again)
+  // Format: cak_<environment>_<random_32_chars>
+  string secret_key = 2;
+}
+
+message ListApiKeysRequest {
+  string user_id = 1;
+  common.v1.PaginationRequest pagination = 2;
+  ApiKeyStatus status_filter = 3;
+}
+
+message ListApiKeysResponse {
+  repeated ApiKey api_keys = 1;
+  common.v1.PaginationResponse pagination = 2;
+}
+
+message RevokeApiKeyRequest {
+  string key_id = 1;
+  string user_id = 2; // Must match key owner (or caller has admin:write)
+  string reason = 3;
+}
+
+message RevokeApiKeyResponse {
+  bool revoked = 1;
+}
+
+// Permission management
+message GetPermissionsRequest {
+  string user_id = 1;
+}
+
+message GetPermissionsResponse {
+  // Role-based permissions (from UserRole)
+  repeated string role_permissions = 1;
+  // Explicitly granted permissions (beyond role)
+  repeated string granted_permissions = 2;
+  // Explicitly revoked permissions (subtractive)
+  repeated string revoked_permissions = 3;
+  // Effective permissions (role + granted - revoked)
+  repeated string effective_permissions = 4;
+}
+
+// Permission check (hot path — must be sub-millisecond)
+message CheckPermissionRequest {
+  string user_id = 1;
+  // Permission to check (e.g., "order:create", "catalog:read", "admin:write")
+  string permission = 2;
+  // Optional resource scope (e.g., "order:12345" for resource-level checks)
+  string resource = 3;
+}
+
+message CheckPermissionResponse {
+  bool allowed = 1;
+  // Denial reason if not allowed
+  string denial_reason = 2;
+}

@@ -1,62 +1,65 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: analytics
+  name: cdc-relay
   labels:
-    app.kubernetes.io/name: analytics
-    app.kubernetes.io/component: analytics
+    app.kubernetes.io/name: cdc-relay
+    app.kubernetes.io/component: cdc-relay
     app.kubernetes.io/part-of: polyglot-microservices
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app.kubernetes.io/name: analytics
+      app.kubernetes.io/name: cdc-relay
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: analytics
-        app.kubernetes.io/component: analytics
+        app.kubernetes.io/name: cdc-relay
+        app.kubernetes.io/component: cdc-relay
         app.kubernetes.io/part-of: polyglot-microservices
       annotations:
         spiffe.io/inject: "true"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
     spec:
-<<<<<<< HEAD
-=======
       securityContext:
         fsGroup: 10001
+        runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
->>>>>>> origin/release/v0.6.0
-      serviceAccountName: analytics
+      serviceAccountName: cdc-relay
       containers:
-        - name: analytics
-          image: polyglot-platform/analytics:latest
+        - name: cdc-relay
+          image: polyglot-platform/cdc-relay:latest
           ports:
-            - name: grpc
-              containerPort: 50057
-              protocol: TCP
             - name: http
-              containerPort: 8087
+              containerPort: 8088
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
               protocol: TCP
           env:
-            - name: GRPC_PORT
-              value: "50057"
             - name: HTTP_PORT
-              value: "8087"
+              value: "8088"
+            - name: METRICS_PORT
+              value: "9090"
             - name: SPIFFE_ENDPOINT_SOCKET
               value: "unix:///run/spire/sockets/agent.sock"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://otel-gateway.production.svc.cluster.local:4317"
             - name: OTEL_SERVICE_NAME
-              value: "analytics"
-            - name: PYTHONUNBUFFERED
-              value: "1"
+              value: "cdc-relay"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka.production.svc.cluster.local:9092"
+            - name: DEBEZIUM_CONNECTOR_URL
+              value: "http://debezium.production.svc.cluster.local:8083"
             - name: LOG_LEVEL
               value: "info"
           resources:
             requests:
               cpu: 100m
-              memory: 128Mi
+              memory: 256Mi
             limits:
               cpu: 500m
               memory: 512Mi
@@ -79,17 +82,11 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 10001
-<<<<<<< HEAD
-=======
             runAsGroup: 10001
->>>>>>> origin/release/v0.6.0
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
-<<<<<<< HEAD
-=======
             seccompProfile:
               type: RuntimeDefault
->>>>>>> origin/release/v0.6.0

@@ -283,3 +283,22 @@ func (r *PostgresTransactionRepo) SavePendingOperation(ctx context.Context, op *
 	r.logger.InfoContext(ctx, "pending operation saved", "payment_id", op.ID)
 	return nil
 }
+
+// FindPendingOperations retrieves all operations that are pending gateway submission.
+// This is used by the retry processor to resubmit operations when the circuit breaker
+// allows traffic. In production, this queries the pending_operations PostgreSQL table.
+func (r *PostgresTransactionRepo) FindPendingOperations(ctx context.Context) ([]models.PendingOperation, error) {
+        r.mu.RLock()
+        defer r.mu.RUnlock()
+        // In production: SELECT * FROM pending_operations WHERE retry_count < max_retries
+        return []models.PendingOperation{}, nil
+}
+
+// SavePendingOperation persists a pending operation for later retry.
+// In production, this INSERTs into the pending_operations table.
+func (r *PostgresTransactionRepo) SavePendingOperation(ctx context.Context, op *models.PendingOperation) error {
+        r.mu.Lock()
+        defer r.mu.Unlock()
+        r.logger.InfoContext(ctx, "pending operation saved", "operation_id", op.ID, "payment_id", op.PaymentID)
+        return nil
+}

@@ -65,6 +65,7 @@ func (s *SPIFFEIdentity) Start(ctx context.Context) error {
 		slog.String("trust_domain", s.config.TrustDomain),
 	)
 
+<<<<<<< HEAD
 	source, err := workloadapi.NewX509Source(ctx,
 		workloadapi.WithClientOptions(
 			workloadapi.WithAddr(s.config.WorkloadAPIAddr),
@@ -73,6 +74,16 @@ func (s *SPIFFEIdentity) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create X509 source from workload API: %w", err)
 	}
+=======
+        source, err := workloadapi.NewX509Source(ctx,
+                workloadapi.WithClientOptions(
+                        workloadapi.WithAddr(s.config.WorkloadAPIAddr),
+                ),
+        )
+        if err != nil {
+                return fmt.Errorf("failed to create X509 source from workload API: %w", err)
+        }
+>>>>>>> origin/release/v0.6.0
 
 	s.source = source
 
@@ -124,12 +135,21 @@ func (s *SPIFFEIdentity) GetTrustBundle() ([]*x509.Certificate, error) {
 		return nil, fmt.Errorf("SPIFFE X509 source not initialized")
 	}
 
+<<<<<<< HEAD
 	bundle, err := s.source.GetX509BundleForTrustDomain(s.trustDomain)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get X509 bundle for trust domain %q: %w", s.trustDomain, err)
 	}
 
 	return bundle.X509Authorities(), nil
+=======
+        bundle, err := s.source.GetX509BundleForTrustDomain(s.trustDomain)
+        if err != nil {
+                return nil, fmt.Errorf("failed to get X509 bundle for trust domain %q: %w", s.trustDomain, err)
+        }
+
+        return bundle.X509Authorities(), nil
+>>>>>>> origin/release/v0.6.0
 }
 
 // CreateMTLSServerConfig creates a mutual TLS server configuration that

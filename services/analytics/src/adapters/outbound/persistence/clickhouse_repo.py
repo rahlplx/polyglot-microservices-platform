@@ -443,12 +443,17 @@ class ClickHouseTimeSeriesRepository:
 
         if labels:
             for key, value in labels.items():
+<<<<<<< HEAD
                 # Validate each label key before it is used to construct
                 # parameter placeholder names in the WHERE clause.
                 _validate_identifier(key, "label_key")
                 safe_key = key.replace('.', '_').replace('-', '_')
                 param_key = f"label_key_{safe_key}"
                 param_val = f"label_val_{safe_key}"
+=======
+                param_key = f"label_key_{key.replace('.', '_').replace('-', '_')}"
+                param_val = f"label_val_{key.replace('.', '_').replace('-', '_')}"
+>>>>>>> origin/release/v0.6.0
                 where_clauses.append(f"tags[%({param_key})s] = %({param_val})s")
                 query_params[param_key] = key
                 query_params[param_val] = value

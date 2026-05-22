@@ -1,9 +1,13 @@
 // Package resilience implements the outbound circuit breaker adapter for
 // the Payment service. It uses the sony/gobreaker library to implement
 // the CircuitBreakerPort interface, providing Resilience4j-style circuit
+<<<<<<< HEAD
 // breaker semantics with three states: Closed, Open, and HalfOpen. The
 // circuit breaker wraps all calls to the external payment gateway,
 // providing automatic fail-fast behavior when the gateway is unavailable.
+=======
+// breaker semantics with three states: Closed, Open, and HalfOpen.
+>>>>>>> origin/release/v0.6.0
 package resilience
 
 import (
@@ -19,18 +23,30 @@ import (
 )
 
 // CircuitBreakerAdapter implements the CircuitBreakerPort interface using
+<<<<<<< HEAD
 // the sony/gobreaker library. It wraps the gobreaker.CircuitBreaker with
 // the domain-oriented CircuitBreakerPort interface, providing a clean
 // boundary between the infrastructure library and the domain services.
 type CircuitBreakerAdapter struct {
 	cb     *gobreaker.CircuitBreaker
+=======
+// the sony/gobreaker library. It wraps gobreaker.CircuitBreaker with the
+// domain-oriented CircuitBreakerPort interface.
+type CircuitBreakerAdapter struct {
+	cb     *gobreaker.CircuitBreaker
+	config models.CircuitConfig
+>>>>>>> origin/release/v0.6.0
 	logger *slog.Logger
 }
 
 // NewCircuitBreakerAdapter creates a new circuit breaker adapter with the
+<<<<<<< HEAD
 // given configuration. It initializes the gobreaker instance with production
 // defaults: 5 consecutive failures trigger Open, 30s timeout before HalfOpen,
 // and 1 probe request allowed in HalfOpen.
+=======
+// given circuit configuration.
+>>>>>>> origin/release/v0.6.0
 func NewCircuitBreakerAdapter(config models.CircuitConfig, logger *slog.Logger) *CircuitBreakerAdapter {
 	if logger == nil {
 		logger = slog.Default()
@@ -57,34 +73,62 @@ func NewCircuitBreakerAdapter(config models.CircuitConfig, logger *slog.Logger) 
 
 	return &CircuitBreakerAdapter{
 		cb:     cb,
+<<<<<<< HEAD
+=======
+		config: config,
+>>>>>>> origin/release/v0.6.0
 		logger: logger,
 	}
 }
 
 // Execute wraps a function call with circuit breaker protection. If the
+<<<<<<< HEAD
 // circuit is Open, it immediately returns an error without calling the
 // function. If the circuit is Closed or HalfOpen, it calls the function
 // and records the result to update the circuit breaker state.
 func (a *CircuitBreakerAdapter) Execute(ctx context.Context, fn func(ctx context.Context) error) error {
 	_, err := a.cb.Execute(func() (interface{}, error) {
 		return nil, fn(ctx)
+=======
+// circuit is Open, it immediately returns an error without calling fn.
+// If the circuit is Closed or HalfOpen, it calls the function and records
+// the result to update the circuit breaker state.
+func (a *CircuitBreakerAdapter) Execute(ctx context.Context, fn func() (interface{}, error)) (interface{}, error) {
+	result, err := a.cb.Execute(func() (interface{}, error) {
+		return fn()
+>>>>>>> origin/release/v0.6.0
 	})
 
 	if err != nil {
 		if err == gobreaker.ErrOpenState {
+<<<<<<< HEAD
 			return fmt.Errorf("circuit breaker %s is open: %w", a.cb.Name(), err)
 		}
 		if err == gobreaker.ErrTooManyRequests {
 			return fmt.Errorf("circuit breaker %s is half-open with too many requests: %w", a.cb.Name(), err)
+=======
+			return nil, fmt.Errorf("circuit breaker %s is open: gateway unavailable", a.cb.Name())
 		}
-		return err
+		if err == gobreaker.ErrTooManyRequests {
+			return nil, fmt.Errorf("circuit breaker %s is half-open: too many requests", a.cb.Name())
+>>>>>>> origin/release/v0.6.0
+		}
+		return nil, err
 	}
 
+<<<<<<< HEAD
 	return nil
 }
 
 // GetState returns the current circuit breaker state snapshot for observability.
 func (a *CircuitBreakerAdapter) GetState(ctx context.Context) models.CircuitBreakerInfo {
+=======
+	return result, nil
+}
+
+// GetState returns the current circuit breaker state for observability.
+func (a *CircuitBreakerAdapter) GetState(ctx context.Context) (*models.CircuitBreakerInfo, error) {
+>>>>>>> origin/release/v0.6.0
 	var state models.CircuitState
 	switch a.cb.State() {
 	case gobreaker.StateClosed:
@@ -93,6 +137,7 @@ func (a *CircuitBreakerAdapter) GetState(ctx context.Context) models.CircuitBrea
 		state = models.CircuitStateOpen
 	case gobreaker.StateHalfOpen:
 		state = models.CircuitStateHalfOpen
+<<<<<<< HEAD
 	default:
 		state = models.CircuitStateClosed
 	}
@@ -118,11 +163,18 @@ func (a *CircuitBreakerAdapter) Reset(ctx context.Context) error {
 		},
 	}
 	a.cb = gobreaker.NewCircuitBreaker(cbSettings)
+=======
+	}
 
-	a.logger.Info("circuit breaker reset to closed state",
-		slog.String("circuit_id", a.cb.Name()),
-	)
-	return nil
+	counts := a.cb.Counts()
+>>>>>>> origin/release/v0.6.0
+
+	return &models.CircuitBreakerInfo{
+		Name:         a.cb.Name(),
+		State:        state,
+		FailureCount: int(counts.ConsecutiveFailures),
+		SuccessCount: int(counts.ConsecutiveSuccesses),
+	}, nil
 }
 
 // stateString converts a gobreaker.State to a human-readable string.
@@ -139,10 +191,22 @@ func stateString(s gobreaker.State) string {
 	}
 }
 
+<<<<<<< HEAD
 // DefaultCircuitConfig returns a sensible default configuration
 // for the payment gateway circuit breaker.
 func DefaultCircuitConfig(name string) models.CircuitConfig {
 	return models.DefaultCircuitConfig(name)
+=======
+// DefaultCircuitConfig returns a sensible default configuration for the
+// payment gateway circuit breaker.
+func DefaultCircuitConfig() models.CircuitConfig {
+	return models.CircuitConfig{
+		Name:                "payment-gateway",
+		FailureThreshold:    5,
+		Timeout:             30 * time.Second,
+		MaxHalfOpenRequests: 1,
+	}
+>>>>>>> origin/release/v0.6.0
 }
 
 // Ensure CircuitBreakerAdapter implements CircuitBreakerPort at compile time.

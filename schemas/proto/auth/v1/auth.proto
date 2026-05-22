@@ -1,0 +1,333 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "github.com/comprehensive-architecture/services/gen/go/auth/v1";
+
+import "common/v1/types.proto";
+import "common/v1/errors.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+// AuthService handles all user-facing authentication operations.
+// This service is exposed via the Gateway for external client access (REST + gRPC).
+// It is deployed alongside the Identity service in the same Rust binary but
+// operates as a separate gRPC service to maintain clean domain boundaries
+// between workload identity (SPIFFE/SPIRE) and user identity (JWT/OAuth2).
+service AuthService {
+  // Register a new user account
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  // Authenticate a user with credentials and issue tokens
+  rpc Login(LoginRequest) returns (LoginResponse);
+  // Exchange a valid refresh token for new access + refresh token pair
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+  // Invalidate a refresh token (logout)
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+  // Validate an access token and return claims (used by Gateway for authz)
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+  // Initiate password reset flow
+  rpc RequestPasswordReset(RequestPasswordResetRequest) returns (RequestPasswordResetResponse);
+  // Complete password reset with token
+  rpc ResetPassword(ResetPasswordRequest) returns (ResetPasswordResponse);
+  // Change password for authenticated user
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse);
+  // Get current user profile
+  rpc GetProfile(GetProfileRequest) returns (GetProfileResponse);
+  // Update user profile
+  rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse);
+  // List user sessions (for account security review)
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+  // Revoke a specific session (force-logout a device)
+  rpc RevokeSession(RevokeSessionRequest) returns (RevokeSessionResponse);
+}
+
+// User entity — represents a human user in the system
+message User {
+  // Unique user identifier (UUID v4)
+  string user_id = 1;
+  // Email address (used as login identifier)
+  string email = 2;
+  // Display name (may differ from email)
+  string display_name = 3;
+  // User role for RBAC
+  UserRole role = 4;
+  // Account status
+  AccountStatus status = 5;
+  // Whether email has been verified
+  bool email_verified = 6;
+  // Whether multi-factor authentication is enabled
+  bool mfa_enabled = 7;
+  // Timestamps
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  google.protobuf.Timestamp last_login_at = 10;
+}
+
+// User roles for Role-Based Access Control
+enum UserRole {
+  USER_ROLE_UNSPECIFIED = 0;
+  USER_ROLE_VIEWER = 1;      // Read-only access to own data
+  USER_ROLE_CUSTOMER = 2;    // Standard customer (browse, order, pay)
+  USER_ROLE_OPERATOR = 3;    // Internal operator (catalog management, order fulfillment)
+  USER_ROLE_ADMIN = 4;       // System administrator (full access)
+  USER_ROLE_SUPER_ADMIN = 5; // Break-glass admin (security-critical operations)
+}
+
+// Account status lifecycle
+enum AccountStatus {
+  ACCOUNT_STATUS_UNSPECIFIED = 0;
+  ACCOUNT_STATUS_PENDING_VERIFICATION = 1;  // Registered but email not verified
+  ACCOUNT_STATUS_ACTIVE = 2;                // Fully active account
+  ACCOUNT_STATUS_SUSPENDED = 3;             // Admin-suspended (abuse, policy violation)
+  ACCOUNT_STATUS_DEACTIVATED = 4;           // User-initiated deactivation
+  ACCOUNT_STATUS_LOCKED = 5;                // Auto-locked due to failed login attempts
+}
+
+// Registration request
+message RegisterRequest {
+  // Email address (must be unique across the system)
+  string email = 1;
+  // Password (minimum 12 characters, must contain uppercase, lowercase, digit, special)
+  string password = 2;
+  // Display name (optional, defaults to email prefix)
+  string display_name = 3;
+  // Initial role assignment (only VIEWER and CUSTOMER are self-service)
+  UserRole requested_role = 4;
+  // Anti-bot verification token (reCAPTCHA v3 / Turnstile)
+  string verification_token = 5;
+  // Invite code (required for OPERATOR and ADMIN roles)
+  string invite_code = 6;
+}
+
+message RegisterResponse {
+  User user = 1;
+  // Email verification token sent (account is PENDING_VERIFICATION until confirmed)
+  bool verification_email_sent = 2;
+}
+
+// Login request with multiple authentication methods
+message LoginRequest {
+  // Authentication method
+  oneof auth_method {
+    // Email + password authentication
+    EmailPassword email_password = 1;
+    // OAuth2 authorization code (exchange with provider)
+    OAuth2Code oauth2_code = 2;
+    // API key authentication (for service accounts)
+    string api_key = 3;
+  }
+  // Client metadata for session tracking
+  ClientMetadata client_metadata = 4;
+  // Requested token TTL (server may cap this)
+  google.protobuf.Duration requested_ttl = 5;
+}
+
+message EmailPassword {
+  string email = 1;
+  string password = 2;
+  // TOTP code if MFA is enabled
+  string totp_code = 3;
+}
+
+message OAuth2Code {
+  // OAuth2 provider identifier
+  string provider = 1; // "google", "github", "microsoft"
+  // Authorization code from OAuth2 flow
+  string code = 2;
+  // Redirect URI (must match the one used in authorization request)
+  string redirect_uri = 3;
+  // PKCE code verifier (recommended for public clients)
+  string code_verifier = 4;
+}
+
+// Client metadata for session fingerprinting
+message ClientMetadata {
+  // User-Agent header
+  string user_agent = 1;
+  // Client IP address (X-Forwarded-For or direct)
+  string ip_address = 2;
+  // Device fingerprint (browser hash, mobile device ID)
+  string device_fingerprint = 3;
+  // Geographic location (derived from IP, stored for audit)
+  string geo_location = 4;
+  // Client platform identifier
+  string platform = 5; // "web", "ios", "android", "api"
+}
+
+// Login response with token pair
+message LoginResponse {
+  // JWT access token (short-lived, for API authorization)
+  TokenPair tokens = 1;
+  // Authenticated user
+  User user = 2;
+  // Session ID for this login
+  string session_id = 3;
+  // Whether MFA was required and completed
+  bool mfa_completed = 4;
+}
+
+// Access + Refresh token pair
+message TokenPair {
+  // JWT access token (signed RS256, contains user claims + role + permissions)
+  string access_token = 1;
+  // Opaque refresh token (stored hashed in DB, revocable)
+  string refresh_token = 2;
+  // Access token expiry timestamp
+  google.protobuf.Timestamp access_token_expires_at = 3;
+  // Refresh token expiry timestamp
+  google.protobuf.Timestamp refresh_token_expires_at = 4;
+  // JWT token type (always "Bearer")
+  string token_type = 5;
+}
+
+// Refresh token request
+message RefreshTokenRequest {
+  // The refresh token to exchange
+  string refresh_token = 1;
+  // Client metadata for session tracking
+  ClientMetadata client_metadata = 2;
+}
+
+message RefreshTokenResponse {
+  TokenPair tokens = 1;
+  // New session ID (session rotation on refresh)
+  string session_id = 2;
+}
+
+// Logout request
+message LogoutRequest {
+  // Refresh token to invalidate
+  string refresh_token = 1;
+  // Whether to invalidate ALL sessions for this user (global logout)
+  bool everywhere = 2;
+}
+
+message LogoutResponse {
+  // Number of sessions invalidated
+  int32 sessions_revoked = 1;
+}
+
+// Token validation request (used by Gateway as authz check)
+message ValidateTokenRequest {
+  // JWT access token to validate
+  string access_token = 1;
+  // Required permission for the requested operation
+  string required_permission = 2; // e.g., "catalog:read", "order:create", "admin:write"
+  // SPIFFE ID of the calling service (for service-to-service authz)
+  string caller_spiffe_id = 3;
+}
+
+// Token validation response with extracted claims
+message ValidateTokenResponse {
+  // Whether the token is valid
+  bool valid = 1;
+  // User ID from token claims
+  string user_id = 2;
+  // User role from token claims
+  UserRole role = 3;
+  // Effective permissions (role-based + any additional grants)
+  repeated string permissions = 4;
+  // Token expiry timestamp
+  google.protobuf.Timestamp expires_at = 5;
+  // Failure reason if invalid
+  TokenInvalidReason invalid_reason = 6;
+}
+
+enum TokenInvalidReason {
+  TOKEN_INVALID_REASON_UNSPECIFIED = 0;
+  TOKEN_INVALID_REASON_EXPIRED = 1;
+  TOKEN_INVALID_REASON_MALFORMED = 2;
+  TOKEN_INVALID_REASON_INVALID_SIGNATURE = 3;
+  TOKEN_INVALID_REASON_REVOKED = 4;
+  TOKEN_INVALID_REASON_INSUFFICIENT_PERMISSION = 5;
+  TOKEN_INVALID_REASON_ACCOUNT_SUSPENDED = 6;
+  TOKEN_INVALID_REASON_AUDIENCE_MISMATCH = 7;
+}
+
+// Password reset flow
+message RequestPasswordResetRequest {
+  string email = 1;
+}
+
+message RequestPasswordResetResponse {
+  // Reset token sent to email (always returns true to prevent email enumeration)
+  bool reset_initiated = 1;
+}
+
+message ResetPasswordRequest {
+  // Token from password reset email
+  string reset_token = 1;
+  // New password
+  string new_password = 2;
+}
+
+message ResetPasswordResponse {
+  bool reset_successful = 1;
+}
+
+message ChangePasswordRequest {
+  // Current password for verification
+  string current_password = 1;
+  // New password
+  string new_password = 2;
+}
+
+message ChangePasswordResponse {
+  bool changed = 1;
+  // New tokens issued (invalidates old sessions)
+  TokenPair tokens = 2;
+}
+
+// User profile operations
+message GetProfileRequest {
+  // User ID (must match authenticated user, or caller must have admin:read permission)
+  string user_id = 1;
+}
+
+message GetProfileResponse {
+  User user = 1;
+  repeated Session active_sessions = 2;
+  // Last password change timestamp
+  google.protobuf.Timestamp last_password_change = 3;
+}
+
+message UpdateProfileRequest {
+  string user_id = 1;
+  optional string display_name = 2;
+  optional string email = 3; // Email change requires re-verification
+}
+
+message UpdateProfileResponse {
+  User user = 1;
+  bool verification_email_sent = 2; // True if email was changed
+}
+
+// Session management
+message Session {
+  string session_id = 1;
+  string device_fingerprint = 2;
+  string ip_address = 3;
+  string platform = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp last_active_at = 6;
+  google.protobuf.Timestamp expires_at = 7;
+}
+
+message ListSessionsRequest {
+  string user_id = 1;
+  common.v1.PaginationRequest pagination = 2;
+}
+
+message ListSessionsResponse {
+  repeated Session sessions = 1;
+  common.v1.PaginationResponse pagination = 2;
+}
+
+message RevokeSessionRequest {
+  string user_id = 1;
+  string session_id = 2;
+}
+
+message RevokeSessionResponse {
+  bool revoked = 1;
+}

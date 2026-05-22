@@ -131,13 +131,18 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 472
+            runAsGroup: 472
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
+            seccompProfile:
+              type: RuntimeDefault
       securityContext:
         fsGroup: 472
+        seccompProfile:
+          type: RuntimeDefault
       volumes:
         - name: config
           configMap:

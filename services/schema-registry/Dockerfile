@@ -8,7 +8,7 @@
 # ---------------------------------------------------------------------------
 # Stage 1: Builder
 # ---------------------------------------------------------------------------
-FROM golang:1.22.4-bookworm AS builder
+FROM golang:1.25-bookworm AS builder
 
 # Build arguments for version injection
 ARG VERSION=1.0.0
