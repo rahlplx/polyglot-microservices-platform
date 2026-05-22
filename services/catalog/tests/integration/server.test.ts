@@ -35,6 +35,10 @@ describe('Configuration Integration', () => {
     }
     delete process.env.NODE_ENV;
 
+    // Required credentials must always be set — they have no safe defaults
+    process.env['CATALOG_DB_PASSWORD'] = 'test_password';
+    process.env['CATALOG_MEILISEARCH_API_KEY'] = 'test_key';
+
     const config = loadConfig();
 
     expect(config.server.httpPort).toBe(3000);

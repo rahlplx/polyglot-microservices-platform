@@ -1,0 +1,442 @@
+# =============================================================================
+# VerticalPodAutoscaler Recommendations — Polyglot Microservices
+# =============================================================================
+# VPA resources for all 9 application services + OTel Gateway.
+# Operating in "Off" mode (recommendations only — no automatic pod eviction
+# or resource mutation). This is the safe initial posture for production.
+#
+# Right-Sizing Strategy:
+#   1. Deploy in "Off" mode → collect recommendations for 7-14 days
+#   2. Review recommendations via: kubectl describe vpa <name> -n production
+#   3. Compare VPA suggestions against current resource requests in Deployments
+#   4. Manually apply recommendations during maintenance windows
+#   5. After validation, consider switching to "Auto" mode per service
+#
+# Resource Bound Rationale by Language Runtime:
+#   ┌──────────────┬───────────────────┬───────────────────┬──────────────────────────────────┐
+#   │ Runtime      │ CPU Range         │ Memory Range      │ Rationale                        │
+#   ├──────────────┼───────────────────┼───────────────────┼──────────────────────────────────┤
+#   │ Go           │ 50m–2000m         │ 64Mi–2Gi          │ Efficient runtime, low baseline  │
+#   │ Rust         │ 50m–1000m         │ 32Mi–512Mi        │ Zero-cost abstractions, no GC    │
+#   │ Node.js      │ 100m–2000m        │ 256Mi–4Gi         │ V8 heap + GC overhead            │
+#   │ Kotlin/JVM   │ 200m–4000m        │ 512Mi–8Gi         │ JVM heap + metaspace + GC        │
+#   │ Python       │ 100m–2000m        │ 256Mi–4Gi         │ GIL + interpreter overhead       │
+#   └──────────────┴───────────────────┴───────────────────┴──────────────────────────────────┘
+#
+# Service → Language Mapping:
+#   Go:          gateway, payment, schema-registry, otel-gateway
+#   Rust:        identity
+#   Node.js:     catalog
+#   Kotlin/JVM:  order
+#   Python:      notification, analytics, rl-engine
+#
+# Prerequisites:
+#   - VPA admission controller installed (or gatekeeper mutation webhook)
+#   - VPA recommender deployed (typically in kube-system)
+#   - Metrics Server running for resource metrics
+#   - Do NOT run VPA in "Auto" alongside KEDA ScaledObjects without testing
+#     (VPA pod evictions can conflict with HPA scaling decisions)
+#
+# IMPORTANT: VPA "Auto" mode evicts pods to apply new resource settings.
+# With KEDA ScaledObjects active, this can cause thrashing. The recommended
+# approach is: VPA "Off" → manual apply → monitor → then consider "Auto"
+# only after validating that KEDA cooldownPeriod > VPA eviction rate.
+# =============================================================================
+
+---
+# =============================================================================
+# 1. GATEWAY — API Gateway (Go)
+# Bounds: CPU 50m-2000m, Memory 64Mi-2Gi
+# Strategy: Go runtime is efficient but gateway holds connection state.
+# Memory upper bound accommodates connection buffers and routing tables.
+# =============================================================================
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: gateway-vpa
+  namespace: production
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/component: api-gateway
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: vpa
+    vpa.signal: recommendation-only
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gateway
+  updatePolicy:
+    updateMode: "Off"    # Recommendations only — no auto-apply in production
+  resourcePolicy:
+    containerPolicies:
+      - containerName: gateway
+        minAllowed:
+          cpu: 50m
+          memory: 64Mi
+        maxAllowed:
+          cpu: 2000m
+          memory: 2Gi
+        controlledResources:
+          - cpu
+          - memory
+        # Mode "Off" at container level would skip recommendations entirely;
+        # "Auto" at container level (with updatePolicy "Off" above) still
+        # generates recommendations without applying them.
+
+---
+# =============================================================================
+# 2. ORDER — Saga Orchestration (Kotlin/JVM)
+# Bounds: CPU 200m-4000m, Memory 512Mi-8Gi
+# Strategy: JVM services need generous memory headroom for heap + metaspace.
+# The 8Gi upper bound accommodates large saga state objects and event buffers.
+# CPU ceiling of 4000m supports JIT-compiled hot paths during order surges.
+# =============================================================================
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: order-vpa
+  namespace: production
+  labels:
+    app.kubernetes.io/name: order
+    app.kubernetes.io/component: order-service
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: vpa
+    vpa.signal: recommendation-only
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: order
+  updatePolicy:
+    updateMode: "Off"
+  resourcePolicy:
+    containerPolicies:
+      - containerName: order
+        minAllowed:
+          cpu: 200m
+          memory: 512Mi
+        maxAllowed:
+          cpu: 4000m
+          memory: 8Gi
+        controlledResources:
+          - cpu
+          - memory
+
+---
+# =============================================================================
+# 3. CATALOG — Search & Product Service (Node.js)
+# Bounds: CPU 100m-2000m, Memory 256Mi-4Gi
+# Strategy: Node.js V8 runtime requires significant heap for event loop and
+# search index caching. 4Gi ceiling handles peak search traffic with
+# Meilisearch adapter buffers. CPU ceiling supports async I/O saturation.
+# =============================================================================
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: catalog-vpa
+  namespace: production
+  labels:
+    app.kubernetes.io/name: catalog
+    app.kubernetes.io/component: catalog-service
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: vpa
+    vpa.signal: recommendation-only
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: catalog
+  updatePolicy:
+    updateMode: "Off"
+  resourcePolicy:
+    containerPolicies:
+      - containerName: catalog
+        minAllowed:
+          cpu: 100m
+          memory: 256Mi
+        maxAllowed:
+          cpu: 2000m
+          memory: 4Gi
+        controlledResources:
+          - cpu
+          - memory
+
+---
+# =============================================================================
+# 4. PAYMENT — Payment Processing (Go) — CRITICAL PATH
+# Bounds: CPU 50m-2000m, Memory 64Mi-2Gi
+# Strategy: Go runtime for payment processing is efficient but circuit breaker
+# state, retry buffers, and TLS (SPIFFE) overhead justify 2Gi memory ceiling.
+# Conservative bounds prevent oversizing — critical path should be right-sized
+# precisely to avoid resource waste on tier-1 services.
+# =============================================================================
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: payment-vpa
+  namespace: production
+  labels:
+    app.kubernetes.io/name: payment
+    app.kubernetes.io/component: payment-service
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: vpa
+    vpa.signal: recommendation-only
+    criticality: tier-1
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment
+  updatePolicy:
+    updateMode: "Off"    # NEVER auto-evict payment pods — manual apply only
+  resourcePolicy:
+    containerPolicies:
+      - containerName: payment
+        minAllowed:
+          cpu: 50m
+          memory: 64Mi
+        maxAllowed:
+          cpu: 2000m
+          memory: 2Gi
+        controlledResources:
+          - cpu
+          - memory
+
+---
+# =============================================================================
+# 5. NOTIFICATION — Async Channel Delivery (Python)
+# Bounds: CPU 100m-2000m, Memory 256Mi-4Gi
+# Strategy: Python runtime with GIL means CPU scaling is limited per-process,
+# but memory can grow with notification queue depth and template rendering.
+# 4Gi ceiling accommodates burst notification delivery with large templates.
+# =============================================================================
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: notification-vpa
+  namespace: production
+  labels:
+    app.kubernetes.io/name: notification
+    app.kubernetes.io/component: notification-service
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: vpa
+    vpa.signal: recommendation-only
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: notification
+  updatePolicy:
+    updateMode: "Off"
+  resourcePolicy:
+    containerPolicies:
+      - containerName: notification
+        minAllowed:
+          cpu: 100m
+          memory: 256Mi
+        maxAllowed:
+          cpu: 2000m
+          memory: 4Gi
+        controlledResources:
+          - cpu
+          - memory
+
+---
+# =============================================================================
+# 6. ANALYTICS — Data Processing & Reporting (Python)
+# Bounds: CPU 100m-2000m, Memory 256Mi-4Gi
+# Strategy: Analytics aggregation and report generation are memory-intensive
+# (pandas DataFrames, time-series processing). 4Gi ceiling supports complex
+# aggregation queries. CPU ceiling handles concurrent report generation.
+# =============================================================================
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: analytics-vpa
+  namespace: production
+  labels:
+    app.kubernetes.io/name: analytics
+    app.kubernetes.io/component: analytics-service
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: vpa
+    vpa.signal: recommendation-only
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: analytics
+  updatePolicy:
+    updateMode: "Off"
+  resourcePolicy:
+    containerPolicies:
+      - containerName: analytics
+        minAllowed:
+          cpu: 100m
+          memory: 256Mi
+        maxAllowed:
+          cpu: 2000m
+          memory: 4Gi
+        controlledResources:
+          - cpu
+          - memory
+
+---
+# =============================================================================
+# 7. RL-ENGINE — Reinforcement Learning Policy Evaluation (Python)
+# Bounds: CPU 100m-2000m, Memory 256Mi-4Gi
+# Strategy: RL inference loads policy models into memory. Model weights and
+# feature preprocessing buffers drive the 4Gi ceiling. CPU is the primary
+# constraint for real-time inference. Memory recommendations will likely
+# trend toward the upper bound due to model loading patterns.
+# =============================================================================
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: rl-engine-vpa
+  namespace: production
+  labels:
+    app.kubernetes.io/name: rl-engine
+    app.kubernetes.io/component: rl-engine
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: vpa
+    vpa.signal: recommendation-only
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rl-engine
+  updatePolicy:
+    updateMode: "Off"
+  resourcePolicy:
+    containerPolicies:
+      - containerName: rl-engine
+        minAllowed:
+          cpu: 100m
+          memory: 256Mi
+        maxAllowed:
+          cpu: 2000m
+          memory: 4Gi
+        controlledResources:
+          - cpu
+          - memory
+
+---
+# =============================================================================
+# 8. SCHEMA-REGISTRY — Schema Validation Service (Go)
+# Bounds: CPU 50m-2000m, Memory 64Mi-2Gi
+# Strategy: Lightweight Go service — schema validation is CPU-bound with
+# minimal state. 2Gi memory ceiling accommodates schema cache and buf
+# compiler output. Expect recommendations near the lower end of the range.
+# =============================================================================
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: schema-registry-vpa
+  namespace: production
+  labels:
+    app.kubernetes.io/name: schema-registry
+    app.kubernetes.io/component: schema-registry
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: vpa
+    vpa.signal: recommendation-only
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: schema-registry
+  updatePolicy:
+    updateMode: "Off"
+  resourcePolicy:
+    containerPolicies:
+      - containerName: schema-registry
+        minAllowed:
+          cpu: 50m
+          memory: 64Mi
+        maxAllowed:
+          cpu: 2000m
+          memory: 2Gi
+        controlledResources:
+          - cpu
+          - memory
+
+---
+# =============================================================================
+# 9. IDENTITY — SPIFFE/SPIRE Identity Service (Rust)
+# Bounds: CPU 50m-1000m, Memory 32Mi-512Mi
+# Strategy: Rust's zero-cost abstractions and no-GC design mean extremely
+# efficient memory usage. SVID operations are CPU-bound (cryptography) but
+# memory footprint is tiny. 512Mi ceiling is generous — expect recommendations
+# well below this. 32Mi floor ensures minimal viable allocation.
+# =============================================================================
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: identity-vpa
+  namespace: production
+  labels:
+    app.kubernetes.io/name: identity
+    app.kubernetes.io/component: identity-service
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: vpa
+    vpa.signal: recommendation-only
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: identity
+  updatePolicy:
+    updateMode: "Off"
+  resourcePolicy:
+    containerPolicies:
+      - containerName: identity
+        minAllowed:
+          cpu: 50m
+          memory: 32Mi
+        maxAllowed:
+          cpu: 1000m
+          memory: 512Mi
+        controlledResources:
+          - cpu
+          - memory
+
+---
+# =============================================================================
+# 10. OTEL-GATEWAY — Observability Pipeline Gateway (Go)
+# Bounds: CPU 50m-2000m, Memory 64Mi-2Gi
+# Strategy: OTel Collector is Go-based with batch processing and queue
+# management. The 2Gi memory ceiling accounts for the sending_queue
+# (queue_size: 10000 items) and batch processor buffers. CPU scales with
+# telemetry throughput. Current deployment sets 500m/1Gi requests —
+# VPA will refine based on actual collector pipeline utilization.
+# =============================================================================
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: otel-gateway-vpa
+  namespace: production
+  labels:
+    app.kubernetes.io/name: otel-gateway
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: vpa
+    vpa.signal: recommendation-only
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: otel-gateway
+  updatePolicy:
+    updateMode: "Off"
+  resourcePolicy:
+    containerPolicies:
+      - containerName: otel-gateway
+        minAllowed:
+          cpu: 50m
+          memory: 64Mi
+        maxAllowed:
+          cpu: 2000m
+          memory: 2Gi
+        controlledResources:
+          - cpu
+          - memory

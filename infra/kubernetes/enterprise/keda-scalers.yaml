@@ -1,0 +1,798 @@
+# =============================================================================
+# KEDA ScaledObjects — Multi-Metric Autoscaling for Polyglot Microservices
+# =============================================================================
+# Replaces CPU-only HPAs (infra/kubernetes/base/hpa.yaml) with intelligent
+# multi-metric scaling driven by Prometheus metrics, Kafka consumer lag,
+# and application-specific signals.
+#
+# Service Language Mapping (drives resource bounds in VPA companion file):
+#   Go:          gateway, payment, schema-registry, otel-gateway
+#   Rust:        identity
+#   Node.js:     catalog
+#   Kotlin/JVM:  order
+#   Python:      notification, analytics, rl-engine
+#
+# Prerequisites:
+#   - KEDA v2.12+ installed in cluster (keda namespace)
+#   - Prometheus accessible at http://prometheus.production.svc:9090
+#   - Kafka cluster with SASL/SSL (statefulset kafka in production ns)
+#   - OTel Collector exposing metrics to Prometheus
+#   - SPIFFE/SPIRE agent injected via spiffe.io/inject: "true" label
+#
+# Migration: Apply these ScaledObjects AFTER removing base HPAs.
+#   kubectl delete -f infra/kubernetes/base/hpa.yaml
+#   kubectl apply -f infra/kubernetes/enterprise/keda-scalers.yaml
+# =============================================================================
+
+---
+# =============================================================================
+# KEDA TriggerAuthentication — Kafka SASL/SSL
+# Shared authentication for all Kafka consumer services (order, notification,
+# analytics). Credentials sourced from a pre-existing Kubernetes Secret.
+# =============================================================================
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: kafka-sasl-auth
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/component: autoscaling
+spec:
+  secretTargetRef:
+    - parameter: username
+      name: kafka-sasl-secret
+      key: username
+    - parameter: password
+      name: kafka-sasl-secret
+      key: password
+    - parameter: ca
+      name: kafka-sasl-secret
+      key: ca.crt
+    - parameter: cert
+      name: kafka-sasl-secret
+      key: client.crt
+    - parameter: key
+      name: kafka-sasl-secret
+      key: client.key
+
+---
+# =============================================================================
+# KEDA TriggerAuthentication — Prometheus
+# Shared authentication for Prometheus metric queries (Bearer token).
+# =============================================================================
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: prometheus-auth
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/component: autoscaling
+spec:
+  secretTargetRef:
+    - parameter: bearerToken
+      name: prometheus-keda-token
+      key: token
+
+---
+# =============================================================================
+# 1. GATEWAY — Ingress Traffic Router (Go)
+# Triggers: HTTP request rate, CPU utilization, active connections
+# Profile: Aggressive scale-up (30s cooldown), conservative scale-down (300s)
+# =============================================================================
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: gateway-scaler
+  namespace: production
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/component: api-gateway
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: keda
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gateway
+  pollingInterval: 15
+  cooldownPeriod: 30
+  minReplicaCount: 2
+  maxReplicaCount: 10
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 30
+          policies:
+            - type: Percent
+              value: 100
+              periodSeconds: 60
+            - type: Pods
+              value: 3
+              periodSeconds: 60
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Percent
+              value: 25
+              periodSeconds: 120
+          selectPolicy: Min
+  triggers:
+    # Primary: HTTP request rate — scale on incoming traffic volume
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.production.svc.cluster.local:9090
+        metricName: http_requests_rate_gateway
+        query: >
+          sum(rate(http_requests_total{job="gateway",namespace="production"}[2m]))
+        threshold: "500"
+        activationThreshold: "10"
+      authenticationRef:
+        name: prometheus-auth
+    # Secondary: CPU utilization — catch resource saturation
+    - type: cpu
+      metadata:
+        type: Utilization
+        value: "70"
+    # Tertiary: Active connections — handle connection-heavy loads
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.production.svc.cluster.local:9090
+        metricName: active_connections_gateway
+        query: >
+          sum(gateway_active_connections{namespace="production"})
+        threshold: "1000"
+        activationThreshold: "50"
+      authenticationRef:
+        name: prometheus-auth
+
+---
+# =============================================================================
+# 2. ORDER — Saga Orchestration (Kotlin/JVM)
+# Triggers: Kafka consumer lag, order creation rate, CPU utilization
+# Profile: Moderate scale-up (60s cooldown), slow scale-down (300s) for JVM warm-up
+# =============================================================================
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: order-scaler
+  namespace: production
+  labels:
+    app.kubernetes.io/name: order
+    app.kubernetes.io/component: order-service
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: keda
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: order
+  pollingInterval: 30
+  cooldownPeriod: 60
+  minReplicaCount: 2
+  maxReplicaCount: 8
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 60
+          policies:
+            - type: Percent
+              value: 75
+              periodSeconds: 60
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Percent
+              value: 25
+              periodSeconds: 120
+          selectPolicy: Min
+  triggers:
+    # Primary: Kafka consumer lag — scale on unprocessed events
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka-0.kafka-headless.production.svc.cluster.local:9093,kafka-1.kafka-headless.production.svc.cluster.local:9093,kafka-2.kafka-headless.production.svc.cluster.local:9093
+        consumerGroup: order-service-group
+        topic: order-events
+        lagThreshold: "50"
+        activationLagThreshold: "10"
+      authenticationRef:
+        name: kafka-sasl-auth
+    # Secondary: Order creation rate — proactive scaling on incoming orders
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.production.svc.cluster.local:9090
+        metricName: order_creation_rate
+        query: >
+          sum(rate(order_created_total{namespace="production"}[2m]))
+        threshold: "100"
+        activationThreshold: "5"
+      authenticationRef:
+        name: prometheus-auth
+    # Tertiary: CPU utilization — JVM saturation signal
+    - type: cpu
+      metadata:
+        type: Utilization
+        value: "70"
+
+---
+# =============================================================================
+# 3. CATALOG — Search & Product Service (Node.js)
+# Triggers: HTTP request rate, search query rate, CPU utilization
+# Profile: Responsive scale-up (45s cooldown), moderate scale-down (300s)
+# =============================================================================
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: catalog-scaler
+  namespace: production
+  labels:
+    app.kubernetes.io/name: catalog
+    app.kubernetes.io/component: catalog-service
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: keda
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: catalog
+  pollingInterval: 15
+  cooldownPeriod: 45
+  minReplicaCount: 2
+  maxReplicaCount: 6
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 45
+          policies:
+            - type: Percent
+              value: 75
+              periodSeconds: 60
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Percent
+              value: 25
+              periodSeconds: 120
+          selectPolicy: Min
+  triggers:
+    # Primary: HTTP request rate — scale on catalog traffic
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.production.svc.cluster.local:9090
+        metricName: http_requests_rate_catalog
+        query: >
+          sum(rate(http_requests_total{job="catalog",namespace="production"}[2m]))
+        threshold: "400"
+        activationThreshold: "10"
+      authenticationRef:
+        name: prometheus-auth
+    # Secondary: Search query rate — specifically track search-heavy loads
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.production.svc.cluster.local:9090
+        metricName: search_query_rate_catalog
+        query: >
+          sum(rate(catalog_search_queries_total{namespace="production"}[2m]))
+        threshold: "200"
+        activationThreshold: "5"
+      authenticationRef:
+        name: prometheus-auth
+    # Tertiary: CPU utilization — V8 event loop saturation
+    - type: cpu
+      metadata:
+        type: Utilization
+        value: "70"
+
+---
+# =============================================================================
+# 4. PAYMENT — Payment Processing (Go) — CRITICAL PATH
+# Triggers: Payment processing rate, circuit breaker open events, CPU
+# Profile: CONSERVATIVE — minReplicas 3 for zero-downtime guarantee,
+#          slow scale-down (600s) to avoid premature capacity reduction
+# =============================================================================
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: payment-scaler
+  namespace: production
+  labels:
+    app.kubernetes.io/name: payment
+    app.kubernetes.io/component: payment-service
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: keda
+    criticality: tier-1
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment
+  pollingInterval: 15
+  cooldownPeriod: 60
+  minReplicaCount: 3    # Elevated from 2 — critical path requires always-on capacity
+  maxReplicaCount: 6
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 60
+          policies:
+            - type: Percent
+              value: 50
+              periodSeconds: 90
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: 600
+          policies:
+            - type: Percent
+              value: 10
+              periodSeconds: 120
+          selectPolicy: Min
+  triggers:
+    # Primary: Payment processing rate — scale on transaction throughput
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.production.svc.cluster.local:9090
+        metricName: payment_processing_rate
+        query: >
+          sum(rate(payment_processed_total{namespace="production"}[2m]))
+        threshold: "150"
+        activationThreshold: "10"
+      authenticationRef:
+        name: prometheus-auth
+    # Secondary: Circuit breaker open events — scale up when resilience is strained
+    # Inverse logic: scale UP when circuit opens to add capacity and relieve pressure
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.production.svc.cluster.local:9090
+        metricName: circuit_breaker_open_payment
+        query: >
+          sum(increase(circuit_breaker_open_total{service="payment",namespace="production"}[5m]))
+        threshold: "3"
+        activationThreshold: "1"
+      authenticationRef:
+        name: prometheus-auth
+    # Tertiary: CPU utilization — resource saturation
+    - type: cpu
+      metadata:
+        type: Utilization
+        value: "70"
+
+---
+# =============================================================================
+# 5. NOTIFICATION — Async Channel Delivery (Python)
+# Triggers: Kafka consumer lag, queue depth, CPU utilization
+# Scale-to-zero: Enabled during off-hours (22:00-06:00 UTC weekdays, all weekend)
+# via cron trigger. During off-hours, if no Kafka messages, service idles to 0.
+# =============================================================================
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: notification-scaler
+  namespace: production
+  labels:
+    app.kubernetes.io/name: notification
+    app.kubernetes.io/component: notification-service
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: keda
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: notification
+  pollingInterval: 30
+  cooldownPeriod: 120
+  minReplicaCount: 0     # 0 to allow scale-to-zero during off-hours
+  maxReplicaCount: 4
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 60
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 120
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 120
+          selectPolicy: Min
+  triggers:
+    # Primary: Kafka consumer lag — scale on pending notification events
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka-0.kafka-headless.production.svc.cluster.local:9093,kafka-1.kafka-headless.production.svc.cluster.local:9093,kafka-2.kafka-headless.production.svc.cluster.local:9093
+        consumerGroup: notification-service-group
+        topic: notification-events
+        lagThreshold: "30"
+        activationLagThreshold: "5"
+      authenticationRef:
+        name: kafka-sasl-auth
+    # Secondary: Queue depth (Prometheus metric from notification service)
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.production.svc.cluster.local:9090
+        metricName: notification_queue_depth
+        query: >
+          sum(notification_queue_depth{namespace="production"})
+        threshold: "100"
+        activationThreshold: "10"
+      authenticationRef:
+        name: prometheus-auth
+    # Tertiary: CPU utilization
+    - type: cpu
+      metadata:
+        type: Utilization
+        value: "75"
+    # Off-hours gate: Keeps service at minimum during business hours (06:00-22:00 UTC Mon-Fri)
+    # During off-hours, if other triggers are also inactive, service scales to 0
+    - type: cron
+      metadata:
+        timezone: UTC
+        start: "0 6 * * 1-5"
+        end: "0 22 * * 1-5"
+        desiredReplicas: "2"
+
+---
+# =============================================================================
+# 6. ANALYTICS — Data Processing & Reporting (Python)
+# Triggers: Kafka consumer lag, report generation rate, CPU utilization
+# Scale-to-zero: Enabled during off-hours (22:00-06:00 UTC weekdays, all weekend)
+# =============================================================================
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: analytics-scaler
+  namespace: production
+  labels:
+    app.kubernetes.io/name: analytics
+    app.kubernetes.io/component: analytics-service
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: keda
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: analytics
+  pollingInterval: 30
+  cooldownPeriod: 60
+  minReplicaCount: 0     # 0 to allow scale-to-zero during off-hours
+  maxReplicaCount: 6
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 60
+          policies:
+            - type: Percent
+              value: 50
+              periodSeconds: 90
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Percent
+              value: 25
+              periodSeconds: 120
+          selectPolicy: Min
+  triggers:
+    # Primary: Kafka consumer lag — scale on unprocessed analytics events
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka-0.kafka-headless.production.svc.cluster.local:9093,kafka-1.kafka-headless.production.svc.cluster.local:9093,kafka-2.kafka-headless.production.svc.cluster.local:9093
+        consumerGroup: analytics-service-group
+        topic: analytics-events
+        lagThreshold: "100"
+        activationLagThreshold: "20"
+      authenticationRef:
+        name: kafka-sasl-auth
+    # Secondary: Report generation rate — scale on reporting demand
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.production.svc.cluster.local:9090
+        metricName: report_generation_rate
+        query: >
+          sum(rate(report_generated_total{namespace="production"}[2m]))
+        threshold: "10"
+        activationThreshold: "1"
+      authenticationRef:
+        name: prometheus-auth
+    # Tertiary: CPU utilization — data processing is compute-intensive
+    - type: cpu
+      metadata:
+        type: Utilization
+        value: "80"
+    # Off-hours gate: Keeps service at minimum during business hours (06:00-22:00 UTC Mon-Fri)
+    # During off-hours, if other triggers are also inactive, service scales to 0
+    - type: cron
+      metadata:
+        timezone: UTC
+        start: "0 6 * * 1-5"
+        end: "0 22 * * 1-5"
+        desiredReplicas: "2"
+
+---
+# =============================================================================
+# 7. RL-ENGINE — Reinforcement Learning Policy Evaluation (Python)
+# Triggers: Inference request rate, CPU, memory utilization
+# Profile: Compute-intensive with memory pressure from model loading
+#          Slow scale-up (120s cooldown) — model warm-up takes time
+# =============================================================================
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: rl-engine-scaler
+  namespace: production
+  labels:
+    app.kubernetes.io/name: rl-engine
+    app.kubernetes.io/component: rl-engine
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: keda
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rl-engine
+  pollingInterval: 30
+  cooldownPeriod: 120
+  minReplicaCount: 2
+  maxReplicaCount: 4
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 120
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 120
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: 600
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 120
+          selectPolicy: Min
+  triggers:
+    # Primary: Inference request rate — scale on RL policy evaluation demand
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.production.svc.cluster.local:9090
+        metricName: inference_request_rate_rl
+        query: >
+          sum(rate(rl_inference_requests_total{namespace="production"}[2m]))
+        threshold: "50"
+        activationThreshold: "5"
+      authenticationRef:
+        name: prometheus-auth
+    # Secondary: CPU utilization — inference is CPU-bound
+    - type: cpu
+      metadata:
+        type: Utilization
+        value: "80"
+    # Tertiary: Memory utilization — model loading consumes significant memory
+    - type: memory
+      metadata:
+        type: Utilization
+        value: "80"
+
+---
+# =============================================================================
+# 8. SCHEMA-REGISTRY — Schema Validation Service (Go)
+# Triggers: Schema validation rate, CPU utilization
+# Profile: Lightweight service — conservative scaling, low CPU threshold (60%)
+# =============================================================================
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: schema-registry-scaler
+  namespace: production
+  labels:
+    app.kubernetes.io/name: schema-registry
+    app.kubernetes.io/component: schema-registry
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: keda
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: schema-registry
+  pollingInterval: 30
+  cooldownPeriod: 60
+  minReplicaCount: 2
+  maxReplicaCount: 4
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 60
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 120
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 120
+          selectPolicy: Min
+  triggers:
+    # Primary: Schema validation rate — scale on validation throughput demand
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.production.svc.cluster.local:9090
+        metricName: schema_validation_rate
+        query: >
+          sum(rate(schema_validation_total{namespace="production"}[2m]))
+        threshold: "200"
+        activationThreshold: "10"
+      authenticationRef:
+        name: prometheus-auth
+    # Secondary: CPU utilization — Go is efficient, low threshold
+    - type: cpu
+      metadata:
+        type: Utilization
+        value: "60"
+
+---
+# =============================================================================
+# 9. IDENTITY — SPIFFE/SPIRE Identity Service (Rust)
+# Triggers: SVID rotation rate, attestation request rate, CPU utilization
+# Profile: Rust is memory-efficient — CPU is the binding constraint
+#          Moderate scaling — identity is critical but low-volume
+# =============================================================================
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: identity-scaler
+  namespace: production
+  labels:
+    app.kubernetes.io/name: identity
+    app.kubernetes.io/component: identity-service
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: keda
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: identity
+  pollingInterval: 30
+  cooldownPeriod: 60
+  minReplicaCount: 2
+  maxReplicaCount: 4
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 60
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 90
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 120
+          selectPolicy: Min
+  triggers:
+    # Primary: SVID rotation rate — scale on certificate lifecycle demand
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.production.svc.cluster.local:9090
+        metricName: svid_rotation_rate_identity
+        query: >
+          sum(rate(spiffe_svid_rotations_total{namespace="production"}[5m]))
+        threshold: "50"
+        activationThreshold: "5"
+      authenticationRef:
+        name: prometheus-auth
+    # Secondary: Attestation request rate — scale on workload attestation bursts
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.production.svc.cluster.local:9090
+        metricName: attestation_rate_identity
+        query: >
+          sum(rate(spiffe_attestation_requests_total{namespace="production"}[2m]))
+        threshold: "100"
+        activationThreshold: "10"
+      authenticationRef:
+        name: prometheus-auth
+    # Tertiary: CPU utilization — Rust is efficient but attestation can be CPU-bound
+    - type: cpu
+      metadata:
+        type: Utilization
+        value: "70"
+
+---
+# =============================================================================
+# 10. OTEL-GATEWAY — Observability Pipeline Gateway (Go)
+# Triggers: OTLP export queue size (Prometheus metric from collector telemetry)
+# Profile: 2-6 replicas, scale on queue depth to prevent telemetry backpressure
+# =============================================================================
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: otel-gateway-scaler
+  namespace: production
+  labels:
+    app.kubernetes.io/name: otel-gateway
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: keda
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: otel-gateway
+  pollingInterval: 15
+  cooldownPeriod: 60
+  minReplicaCount: 2
+  maxReplicaCount: 6
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 30
+          policies:
+            - type: Pods
+              value: 2
+              periodSeconds: 60
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 120
+          selectPolicy: Min
+  triggers:
+    # Primary: Export queue size — scale on telemetry pipeline backpressure
+    # Uses OTel Collector's own sending_queue metrics
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.production.svc.cluster.local:9090
+        metricName: otel_queue_size
+        query: >
+          sum(otelcol_exporter_queue_size{exporter="otlp/tempo",namespace="production"})
+          + sum(otelcol_exporter_queue_size{exporter="loki",namespace="production"})
+        threshold: "500"
+        activationThreshold: "50"
+      authenticationRef:
+        name: prometheus-auth
+    # Secondary: Failed send events — scale up on export failures (backoff pressure)
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.production.svc.cluster.local:9090
+        metricName: otel_send_failed_rate
+        query: >
+          sum(rate(otelcol_exporter_send_failed_total{namespace="production"}[2m]))
+        threshold: "10"
+        activationThreshold: "1"
+      authenticationRef:
+        name: prometheus-auth
+    # Tertiary: CPU utilization
+    - type: cpu
+      metadata:
+        type: Utilization
+        value: "70"
+    # Quaternary: Memory utilization — batch processing can be memory-intensive
+    - type: memory
+      metadata:
+        type: Utilization
+        value: "80"

@@ -76,7 +76,10 @@ const AppConfigSchema = z.object({
   otel: OtelConfigSchema,
   spiffe: SpiffeConfigSchema,
   features: FeatureFlagsSchema,
-});
+}).refine(
+  (data) => data.server.httpPort !== data.server.grpcPort,
+  { message: 'server.httpPort and server.grpcPort must be different', path: ['server'] }
+);
 
 // ---------------------------------------------------------------------------
 // Derived Types

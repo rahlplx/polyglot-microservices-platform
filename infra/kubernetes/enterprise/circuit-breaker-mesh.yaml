@@ -1,0 +1,1799 @@
+# =============================================================================
+# Circuit Breaker Mesh — Polyglot Microservices Platform
+# =============================================================================
+# This file defines a comprehensive cross-service circuit breaker mesh that
+# protects every inter-service communication path from cascading failures.
+#
+# Contents:
+#   1. Circuit Breaker Policy ConfigMap (per-path failure isolation)
+#   2. Bulkhead Isolation ConfigMap (thread pool isolation per service)
+#   3. Retry Policy ConfigMap (per-path retry with backoff)
+#   4. Timeout Budget ConfigMap (end-to-end + per-hop deadline propagation)
+#   5. Rate Limiting ConfigMap (per-service, per-endpoint, per-client limits)
+#
+# Communication paths:
+#   Gateway → {identity, catalog, order, payment, analytics, schema-registry}
+#   Order   → {catalog, payment, notification, kafka}
+#   CDC Relay → {postgresql, kafka, schema-registry}
+#   Analytics → {kafka, olap-store}
+#
+# Namespace: production
+# Identity: SPIFFE/SPIRE | Observability: OpenTelemetry
+# =============================================================================
+
+---
+# =============================================================================
+# 1. CIRCUIT BREAKER POLICY CONFIGMAP
+# =============================================================================
+# Defines circuit breaker policies for every inter-service communication path.
+# Based on Resilience4j-style semantics with three states:
+#   CLOSED  → normal operation, calls pass through, failures counted
+#   OPEN    → fail-fast, no calls permitted, waits for timeout
+#   HALF_OPEN → limited probe calls to test recovery
+#
+# Each path is tuned based on:
+#   - Criticality of the downstream service
+#   - Tolerance for latency vs. fail-fast
+#   - Expected call volume and error profile
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: circuit-breaker-policies
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/component: resilience-mesh
+data:
+  policies.yaml: |
+    # ---------------------------------------------------------------------------
+    # Global circuit breaker defaults
+    # ---------------------------------------------------------------------------
+    defaults:
+      # Metrics export to OTel
+      metrics:
+        enabled: true
+        export_interval: 10s
+        otel_endpoint: otel-collector.production.svc.cluster.local:4317
+      # SPIFFE identity verification for circuit breaker events
+      identity:
+        verify_mtls: true
+        spiffe_trust_domain: polyglot.platform
+      # Shared sliding window config
+      sliding_window_type: COUNT_BASED
+      sliding_window_size: 100
+      failure_rate_threshold: 50
+      slow_call_rate_threshold: 80
+      slow_call_duration: 3s
+      minimum_number_of_calls: 10
+      wait_duration_in_open_state: 30s
+      permitted_number_of_calls_in_half_open_state: 5
+      automatic_transition_from_open_to_half_open: true
+
+    # ===========================================================================
+    # GATEWAY OUTBOUND CIRCUIT BREAKERS
+    # ===========================================================================
+    # Gateway is the front door — its circuit breakers must be aggressive
+    # to prevent cascading latency to end users.
+    # ===========================================================================
+    gateway:
+      # Gateway → Identity (auth checks, must be resilient)
+      identity:
+        failure_rate_threshold: 60
+        slow_call_rate_threshold: 70
+        slow_call_duration: 2s
+        minimum_number_of_calls: 20
+        sliding_window_type: COUNT_BASED
+        sliding_window_size: 100
+        wait_duration_in_open_state: 20s
+        permitted_number_of_calls_in_half_open_state: 3
+        automatic_transition_from_open_to_half_open: true
+        # Record exceptions that count as failures
+        record_exceptions:
+          - java.io.IOException
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+          - io.grpc.StatusRuntimeException
+        ignore_exceptions:
+          - com.example.identity.InvalidCredentialsException
+        tags:
+          team: platform
+          criticality: high
+
+      # Gateway → Catalog (product search, moderate criticality)
+      catalog:
+        failure_rate_threshold: 50
+        slow_call_rate_threshold: 80
+        slow_call_duration: 3s
+        minimum_number_of_calls: 20
+        sliding_window_type: COUNT_BASED
+        sliding_window_size: 100
+        wait_duration_in_open_state: 30s
+        permitted_number_of_calls_in_half_open_state: 5
+        automatic_transition_from_open_to_half_open: true
+        record_exceptions:
+          - java.io.IOException
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+        tags:
+          team: catalog
+          criticality: medium
+
+      # Gateway → Order (order placement, high criticality)
+      order:
+        failure_rate_threshold: 40
+        slow_call_rate_threshold: 60
+        slow_call_duration: 2s
+        minimum_number_of_calls: 10
+        sliding_window_type: COUNT_BASED
+        sliding_window_size: 50
+        wait_duration_in_open_state: 15s
+        permitted_number_of_calls_in_half_open_state: 3
+        automatic_transition_from_open_to_half_open: true
+        record_exceptions:
+          - java.io.IOException
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+          - io.grpc.StatusRuntimeException
+        tags:
+          team: commerce
+          criticality: critical
+
+      # Gateway → Payment (payment processing, CRITICAL — tight thresholds)
+      payment:
+        failure_rate_threshold: 30
+        slow_call_rate_threshold: 50
+        slow_call_duration: 2s
+        minimum_number_of_calls: 5
+        sliding_window_type: COUNT_BASED
+        sliding_window_size: 20
+        wait_duration_in_open_state: 10s
+        permitted_number_of_calls_in_half_open_state: 2
+        automatic_transition_from_open_to_half_open: true
+        record_exceptions:
+          - java.io.IOException
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+          - io.grpc.StatusRuntimeException
+        ignore_exceptions:
+          - com.example.payment.PaymentDeclinedException
+          - com.example.payment.InsufficientFundsException
+        tags:
+          team: payments
+          criticality: critical
+
+      # Gateway → Analytics (reporting, low criticality — can tolerate failures)
+      analytics:
+        failure_rate_threshold: 70
+        slow_call_rate_threshold: 90
+        slow_call_duration: 5s
+        minimum_number_of_calls: 10
+        sliding_window_type: TIME_BASED
+        sliding_window_size: 60
+        wait_duration_in_open_state: 60s
+        permitted_number_of_calls_in_half_open_state: 3
+        automatic_transition_from_open_to_half_open: true
+        tags:
+          team: analytics
+          criticality: low
+
+      # Gateway → Schema Registry (schema lookups, moderate criticality)
+      schema-registry:
+        failure_rate_threshold: 50
+        slow_call_rate_threshold: 80
+        slow_call_duration: 1s
+        minimum_number_of_calls: 20
+        sliding_window_type: COUNT_BASED
+        sliding_window_size: 100
+        wait_duration_in_open_state: 30s
+        permitted_number_of_calls_in_half_open_state: 5
+        automatic_transition_from_open_to_half_open: true
+        tags:
+          team: platform
+          criticality: medium
+
+    # ===========================================================================
+    # ORDER OUTBOUND CIRCUIT BREAKERS
+    # ===========================================================================
+    # Order service orchestrates the purchase saga. Circuit breakers here
+    # protect the saga from downstream failures triggering compensations.
+    # ===========================================================================
+    order:
+      # Order → Catalog (inventory validation)
+      catalog:
+        failure_rate_threshold: 50
+        slow_call_rate_threshold: 70
+        slow_call_duration: 2s
+        minimum_number_of_calls: 10
+        sliding_window_type: COUNT_BASED
+        sliding_window_size: 50
+        wait_duration_in_open_state: 20s
+        permitted_number_of_calls_in_half_open_state: 3
+        automatic_transition_from_open_to_half_open: true
+        tags:
+          team: commerce
+          criticality: high
+
+      # Order → Payment (payment processing — tightest thresholds)
+      payment:
+        failure_rate_threshold: 30
+        slow_call_rate_threshold: 50
+        slow_call_duration: 3s
+        minimum_number_of_calls: 5
+        sliding_window_type: COUNT_BASED
+        sliding_window_size: 20
+        wait_duration_in_open_state: 10s
+        permitted_number_of_calls_in_half_open_state: 2
+        automatic_transition_from_open_to_half_open: true
+        record_exceptions:
+          - java.io.IOException
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+          - io.grpc.StatusRuntimeException
+        ignore_exceptions:
+          - com.example.payment.PaymentDeclinedException
+          - com.example.payment.InsufficientFundsException
+          - com.example.payment.DuplicateTransactionException
+        tags:
+          team: payments
+          criticality: critical
+
+      # Order → Notification (async, can tolerate failures)
+      notification:
+        failure_rate_threshold: 60
+        slow_call_rate_threshold: 80
+        slow_call_duration: 3s
+        minimum_number_of_calls: 10
+        sliding_window_type: COUNT_BASED
+        sliding_window_size: 50
+        wait_duration_in_open_state: 30s
+        permitted_number_of_calls_in_half_open_state: 3
+        automatic_transition_from_open_to_half_open: true
+        tags:
+          team: notifications
+          criticality: medium
+
+      # Order → Kafka (event publishing — CRITICAL for saga state)
+      kafka:
+        failure_rate_threshold: 30
+        slow_call_rate_threshold: 40
+        slow_call_duration: 1s
+        minimum_number_of_calls: 5
+        sliding_window_type: COUNT_BASED
+        sliding_window_size: 20
+        wait_duration_in_open_state: 10s
+        permitted_number_of_calls_in_half_open_state: 2
+        automatic_transition_from_open_to_half_open: true
+        tags:
+          team: platform
+          criticality: critical
+
+    # ===========================================================================
+    # CDC RELAY OUTBOUND CIRCUIT BREAKERS
+    # ===========================================================================
+    # CDC Relay captures WAL changes and publishes to Kafka. Circuit breakers
+    # protect against database and Kafka unavailability.
+    # ===========================================================================
+    cdc-relay:
+      # CDC Relay → PostgreSQL (WAL capture — source of truth)
+      postgresql:
+        failure_rate_threshold: 40
+        slow_call_rate_threshold: 50
+        slow_call_duration: 5s
+        minimum_number_of_calls: 5
+        sliding_window_type: COUNT_BASED
+        sliding_window_size: 20
+        wait_duration_in_open_state: 15s
+        permitted_number_of_calls_in_half_open_state: 1
+        automatic_transition_from_open_to_half_open: true
+        tags:
+          team: data-platform
+          criticality: critical
+
+      # CDC Relay → Kafka (event publishing)
+      kafka:
+        failure_rate_threshold: 40
+        slow_call_rate_threshold: 50
+        slow_call_duration: 2s
+        minimum_number_of_calls: 5
+        sliding_window_type: COUNT_BASED
+        sliding_window_size: 20
+        wait_duration_in_open_state: 15s
+        permitted_number_of_calls_in_half_open_state: 2
+        automatic_transition_from_open_to_half_open: true
+        tags:
+          team: data-platform
+          criticality: critical
+
+      # CDC Relay → Schema Registry (schema validation for CDC events)
+      schema-registry:
+        failure_rate_threshold: 60
+        slow_call_rate_threshold: 80
+        slow_call_duration: 2s
+        minimum_number_of_calls: 10
+        sliding_window_type: COUNT_BASED
+        sliding_window_size: 50
+        wait_duration_in_open_state: 30s
+        permitted_number_of_calls_in_half_open_state: 3
+        automatic_transition_from_open_to_half_open: true
+        tags:
+          team: data-platform
+          criticality: medium
+
+    # ===========================================================================
+    # ANALYTICS OUTBOUND CIRCUIT BREAKERS
+    # ===========================================================================
+    # Analytics consumes Kafka events and writes to OLAP store. Failures
+    # here are non-blocking for the main transaction path.
+    # ===========================================================================
+    analytics:
+      # Analytics → Kafka (event consumption)
+      kafka:
+        failure_rate_threshold: 60
+        slow_call_rate_threshold: 80
+        slow_call_duration: 3s
+        minimum_number_of_calls: 10
+        sliding_window_type: TIME_BASED
+        sliding_window_size: 60
+        wait_duration_in_open_state: 30s
+        permitted_number_of_calls_in_half_open_state: 3
+        automatic_transition_from_open_to_half_open: true
+        tags:
+          team: analytics
+          criticality: medium
+
+      # Analytics → OLAP Store (ClickHouse — write path)
+      olap-store:
+        failure_rate_threshold: 50
+        slow_call_rate_threshold: 70
+        slow_call_duration: 5s
+        minimum_number_of_calls: 10
+        sliding_window_type: TIME_BASED
+        sliding_window_size: 60
+        wait_duration_in_open_state: 30s
+        permitted_number_of_calls_in_half_open_state: 3
+        automatic_transition_from_open_to_half_open: true
+        tags:
+          team: analytics
+          criticality: medium
+
+    # ===========================================================================
+    # IDENTITY OUTBOUND CIRCUIT BREAKERS
+    # ===========================================================================
+    # Identity primarily serves inbound requests. Outbound calls are limited
+    # to SPIRE server for SVID rotation.
+    # ===========================================================================
+    identity:
+      spire-server:
+        failure_rate_threshold: 50
+        slow_call_rate_threshold: 80
+        slow_call_duration: 2s
+        minimum_number_of_calls: 5
+        sliding_window_type: COUNT_BASED
+        sliding_window_size: 20
+        wait_duration_in_open_state: 30s
+        permitted_number_of_calls_in_half_open_state: 1
+        automatic_transition_from_open_to_half_open: true
+        tags:
+          team: platform
+          criticality: high
+
+    # ===========================================================================
+    # NOTIFICATION OUTBOUND CIRCUIT BREAKERS
+    # ===========================================================================
+    # Notification calls external providers (email, SMS, push). Circuit
+    # breakers prevent provider outages from backing up internal queues.
+    # ===========================================================================
+    notification:
+      # Notification → External email provider
+      email-provider:
+        failure_rate_threshold: 50
+        slow_call_rate_threshold: 70
+        slow_call_duration: 5s
+        minimum_number_of_calls: 10
+        sliding_window_type: COUNT_BASED
+        sliding_window_size: 50
+        wait_duration_in_open_state: 60s
+        permitted_number_of_calls_in_half_open_state: 3
+        automatic_transition_from_open_to_half_open: true
+        tags:
+          team: notifications
+          criticality: medium
+
+      # Notification → External SMS provider
+      sms-provider:
+        failure_rate_threshold: 50
+        slow_call_rate_threshold: 70
+        slow_call_duration: 5s
+        minimum_number_of_calls: 10
+        sliding_window_type: COUNT_BASED
+        sliding_window_size: 50
+        wait_duration_in_open_state: 60s
+        permitted_number_of_calls_in_half_open_state: 3
+        automatic_transition_from_open_to_half_open: true
+        tags:
+          team: notifications
+          criticality: medium
+
+      # Notification → Kafka (event consumption)
+      kafka:
+        failure_rate_threshold: 60
+        slow_call_rate_threshold: 80
+        slow_call_duration: 3s
+        minimum_number_of_calls: 10
+        sliding_window_type: COUNT_BASED
+        sliding_window_size: 50
+        wait_duration_in_open_state: 30s
+        permitted_number_of_calls_in_half_open_state: 3
+        automatic_transition_from_open_to_half_open: true
+        tags:
+          team: notifications
+          criticality: medium
+
+    # ===========================================================================
+    # PAYMENT OUTBOUND CIRCUIT BREAKERS
+    # ===========================================================================
+    # Payment already has an internal circuit breaker (gobreaker). These
+    # mesh-level policies augment it for inter-service calls.
+    # ===========================================================================
+    payment:
+      # Payment → External payment gateway (Stripe, etc.)
+      external-gateway:
+        failure_rate_threshold: 50
+        slow_call_rate_threshold: 60
+        slow_call_duration: 3s
+        minimum_number_of_calls: 5
+        sliding_window_type: COUNT_BASED
+        sliding_window_size: 20
+        wait_duration_in_open_state: 30s
+        permitted_number_of_calls_in_half_open_state: 2
+        automatic_transition_from_open_to_half_open: true
+        record_exceptions:
+          - java.io.IOException
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+        ignore_exceptions:
+          - com.example.payment.PaymentDeclinedException
+          - com.example.payment.InsufficientFundsException
+        tags:
+          team: payments
+          criticality: critical
+
+      # Payment → Kafka (event publishing for payment events)
+      kafka:
+        failure_rate_threshold: 40
+        slow_call_rate_threshold: 50
+        slow_call_duration: 1s
+        minimum_number_of_calls: 5
+        sliding_window_type: COUNT_BASED
+        sliding_window_size: 20
+        wait_duration_in_open_state: 15s
+        permitted_number_of_calls_in_half_open_state: 2
+        automatic_transition_from_open_to_half_open: true
+        tags:
+          team: payments
+          criticality: high
+
+---
+# =============================================================================
+# 2. BULKHEAD ISOLATION CONFIGMAP
+# =============================================================================
+# Defines bulkhead configurations per service to prevent cascading failures.
+# Each service gets:
+#   - Separate thread pools for gRPC vs REST traffic
+#   - Queue capacity limits to prevent memory exhaustion
+#   - Per-downstream isolation to prevent one slow dependency from
+#     starving others
+#
+# Bulkhead types:
+#   SEMAPHORE: Limits concurrent executions (lightweight, no queueing)
+#   THREADPOOL: Limits concurrent executions with queue (isolated threads)
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bulkhead-isolation
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/component: resilience-mesh
+data:
+  bulkheads.yaml: |
+    # ---------------------------------------------------------------------------
+    # Global bulkhead defaults
+    # ---------------------------------------------------------------------------
+    defaults:
+      metrics:
+        enabled: true
+        otel_endpoint: otel-collector.production.svc.cluster.local:4317
+
+    # ===========================================================================
+    # GATEWAY BULKHEADS
+    # ===========================================================================
+    # Gateway receives external traffic and fans out to backend services.
+    # Must isolate per-downstream to prevent one slow service from
+    # exhausting all gateway worker threads.
+    # ===========================================================================
+    gateway:
+      # Inbound traffic isolation
+      inbound:
+        rest:
+          type: THREADPOOL
+          max_concurrent_calls: 200
+          max_queue_capacity: 100
+          core_thread_pool_size: 50
+          keep_alive_duration: 20s
+        grpc:
+          type: THREADPOOL
+          max_concurrent_calls: 300
+          max_queue_capacity: 150
+          core_thread_pool_size: 75
+          keep_alive_duration: 20s
+
+      # Outbound per-downstream isolation
+      outbound:
+        identity:
+          type: SEMAPHORE
+          max_concurrent_calls: 50
+        catalog:
+          type: SEMAPHORE
+          max_concurrent_calls: 100
+        order:
+          type: SEMAPHORE
+          max_concurrent_calls: 80
+        payment:
+          type: SEMAPHORE
+          max_concurrent_calls: 30    # Payment is expensive, limit concurrency
+        analytics:
+          type: SEMAPHORE
+          max_concurrent_calls: 20    # Low priority
+        schema-registry:
+          type: SEMAPHORE
+          max_concurrent_calls: 40
+
+    # ===========================================================================
+    # IDENTITY BULKHEADS
+    # ===========================================================================
+    identity:
+      inbound:
+        rest:
+          type: SEMAPHORE
+          max_concurrent_calls: 100
+        grpc:
+          type: SEMAPHORE
+          max_concurrent_calls: 150
+      outbound:
+        spire-server:
+          type: SEMAPHORE
+          max_concurrent_calls: 10
+
+    # ===========================================================================
+    # CATALOG BULKHEADS
+    # ===========================================================================
+    catalog:
+      inbound:
+        rest:
+          type: THREADPOOL
+          max_concurrent_calls: 150
+          max_queue_capacity: 50
+          core_thread_pool_size: 50
+        grpc:
+          type: SEMAPHORE
+          max_concurrent_calls: 100
+      outbound:
+        postgresql:
+          type: SEMAPHORE
+          max_concurrent_calls: 50
+        meilisearch:
+          type: SEMAPHORE
+          max_concurrent_calls: 30
+
+    # ===========================================================================
+    # ORDER BULKHEADS
+    # ===========================================================================
+    # Order orchestrates sagas — must isolate per-downstream so that one
+    # slow compensation doesn't block new saga initiations.
+    # ===========================================================================
+    order:
+      inbound:
+        rest:
+          type: SEMAPHORE
+          max_concurrent_calls: 100
+        grpc:
+          type: SEMAPHORE
+          max_concurrent_calls: 80
+        # Kafka consumer thread pool (saga event processing)
+        kafka-consumer:
+          type: THREADPOOL
+          max_concurrent_calls: 50
+          max_queue_capacity: 200
+          core_thread_pool_size: 20
+      outbound:
+        catalog:
+          type: SEMAPHORE
+          max_concurrent_calls: 30
+        payment:
+          type: SEMAPHORE
+          max_concurrent_calls: 20    # Tight limit — payment is expensive
+        notification:
+          type: SEMAPHORE
+          max_concurrent_calls: 20
+        kafka:
+          type: SEMAPHORE
+          max_concurrent_calls: 40
+
+    # ===========================================================================
+    # PAYMENT BULKHEADS
+    # ===========================================================================
+    # Payment is the most critical path. Aggressive isolation to ensure
+    # external gateway calls never starve internal processing.
+    # ===========================================================================
+    payment:
+      inbound:
+        rest:
+          type: SEMAPHORE
+          max_concurrent_calls: 50
+        grpc:
+          type: SEMAPHORE
+          max_concurrent_calls: 40
+      outbound:
+        external-gateway:
+          type: THREADPOOL
+          max_concurrent_calls: 20
+          max_queue_capacity: 10
+          core_thread_pool_size: 10
+          keep_alive_duration: 30s
+        postgresql:
+          type: SEMAPHORE
+          max_concurrent_calls: 30
+        kafka:
+          type: SEMAPHORE
+          max_concurrent_calls: 20
+
+    # ===========================================================================
+    # NOTIFICATION BULKHEADS
+    # ===========================================================================
+    notification:
+      inbound:
+        rest:
+          type: SEMAPHORE
+          max_concurrent_calls: 50
+        grpc:
+          type: SEMAPHORE
+          max_concurrent_calls: 30
+        kafka-consumer:
+          type: THREADPOOL
+          max_concurrent_calls: 20
+          max_queue_capacity: 100
+          core_thread_pool_size: 10
+      outbound:
+        email-provider:
+          type: THREADPOOL
+          max_concurrent_calls: 10
+          max_queue_capacity: 50
+          core_thread_pool_size: 5
+        sms-provider:
+          type: THREADPOOL
+          max_concurrent_calls: 10
+          max_queue_capacity: 50
+          core_thread_pool_size: 5
+        push-provider:
+          type: THREADPOOL
+          max_concurrent_calls: 15
+          max_queue_capacity: 75
+          core_thread_pool_size: 5
+
+    # ===========================================================================
+    # ANALYTICS BULKHEADS
+    # ===========================================================================
+    analytics:
+      inbound:
+        rest:
+          type: SEMAPHORE
+          max_concurrent_calls: 50
+        grpc:
+          type: SEMAPHORE
+          max_concurrent_calls: 30
+        kafka-consumer:
+          type: THREADPOOL
+          max_concurrent_calls: 20
+          max_queue_capacity: 500
+          core_thread_pool_size: 10
+      outbound:
+        clickhouse:
+          type: THREADPOOL
+          max_concurrent_calls: 15
+          max_queue_capacity: 100
+          core_thread_pool_size: 5
+          keep_alive_duration: 60s
+        postgresql:
+          type: SEMAPHORE
+          max_concurrent_calls: 10
+
+    # ===========================================================================
+    # RL-ENGINE BULKHEADS
+    # ===========================================================================
+    rl-engine:
+      inbound:
+        rest:
+          type: SEMAPHORE
+          max_concurrent_calls: 30
+        grpc:
+          type: SEMAPHORE
+          max_concurrent_calls: 20
+      outbound:
+        kafka:
+          type: SEMAPHORE
+          max_concurrent_calls: 10
+        redis:
+          type: SEMAPHORE
+          max_concurrent_calls: 20
+
+    # ===========================================================================
+    # SCHEMA-REGISTRY BULKHEADS
+    # ===========================================================================
+    schema-registry:
+      inbound:
+        rest:
+          type: SEMAPHORE
+          max_concurrent_calls: 80
+        grpc:
+          type: SEMAPHORE
+          max_concurrent_calls: 60
+      outbound:
+        kafka:
+          type: SEMAPHORE
+          max_concurrent_calls: 20
+        postgresql:
+          type: SEMAPHORE
+          max_concurrent_calls: 15
+
+    # ===========================================================================
+    # CDC-RELAY BULKHEADS
+    # ===========================================================================
+    cdc-relay:
+      inbound:
+        # Debezium connector pool
+        debezium:
+          type: THREADPOOL
+          max_concurrent_calls: 10
+          max_queue_capacity: 100
+          core_thread_pool_size: 5
+      outbound:
+        postgresql:
+          type: SEMAPHORE
+          max_concurrent_calls: 5     # Single WAL stream per connector
+        kafka:
+          type: SEMAPHORE
+          max_concurrent_calls: 10
+        schema-registry:
+          type: SEMAPHORE
+          max_concurrent_calls: 5
+
+---
+# =============================================================================
+# 3. RETRY POLICY CONFIGMAP
+# =============================================================================
+# Defines retry policies for each inter-service communication path.
+# Key principles:
+#   - Never retry non-idempotent operations (POST to payment/process)
+#   - Exponential backoff with jitter to prevent thundering herd
+#   - Per-service timeout budgets that prevent retry storms
+#   - gRPC UNAVAILABLE and HTTP 503 are safe to retry
+#   - HTTP 4xx and gRPC INVALID_ARGUMENT are NEVER retried
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: retry-policies
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/component: resilience-mesh
+data:
+  retries.yaml: |
+    # ---------------------------------------------------------------------------
+    # Global retry defaults
+    # ---------------------------------------------------------------------------
+    defaults:
+      max_retries: 3
+      backoff:
+        strategy: exponential_with_jitter
+        initial_interval: 100ms
+        multiplier: 2.0
+        max_interval: 5s
+        jitter_factor: 0.5
+      # Retryable gRPC status codes
+      retryable_grpc_codes:
+        - UNAVAILABLE
+        - DEADLINE_EXCEEDED
+        - RESOURCE_EXHAUSTED
+        - ABORTED
+      # Non-retryable gRPC status codes
+      non_retryable_grpc_codes:
+        - INVALID_ARGUMENT
+        - NOT_FOUND
+        - PERMISSION_DENIED
+        - UNAUTHENTICATED
+        - ALREADY_EXISTS
+        - FAILED_PRECONDITION
+        - OUT_OF_RANGE
+        - UNIMPLEMENTED
+        - INTERNAL
+        - DATA_LOSS
+      # Retryable HTTP status codes
+      retryable_http_codes:
+        - 502
+        - 503
+        - 504
+      # Non-retryable HTTP status codes
+      non_retryable_http_codes:
+        - 400
+        - 401
+        - 403
+        - 404
+        - 405
+        - 409
+        - 422
+        - 429
+      metrics:
+        enabled: true
+        otel_endpoint: otel-collector.production.svc.cluster.local:4317
+
+    # ===========================================================================
+    # GATEWAY RETRY POLICIES
+    # ===========================================================================
+    gateway:
+      # Gateway → Identity (idempotent reads — safe to retry)
+      identity:
+        max_retries: 2
+        backoff:
+          initial_interval: 50ms
+          multiplier: 2.0
+          max_interval: 1s
+          jitter_factor: 0.5
+        retryable_http_codes: [502, 503, 504]
+        retryable_grpc_codes: [UNAVAILABLE, DEADLINE_EXCEEDED]
+        # Total retry budget — must not exceed downstream timeout
+        retry_budget_timeout: 2s
+
+      # Gateway → Catalog (search queries — idempotent, safe to retry)
+      catalog:
+        max_retries: 3
+        backoff:
+          initial_interval: 100ms
+          multiplier: 2.0
+          max_interval: 2s
+          jitter_factor: 0.5
+        retryable_http_codes: [502, 503, 504]
+        retryable_grpc_codes: [UNAVAILABLE, DEADLINE_EXCEEDED]
+        retry_budget_timeout: 3s
+
+      # Gateway → Order (order placement — NOT idempotent, no retry on POST)
+      order:
+        # Only retry on GET (order status queries)
+        max_retries: 2
+        backoff:
+          initial_interval: 100ms
+          multiplier: 2.0
+          max_interval: 1s
+          jitter_factor: 0.5
+        retryable_http_codes: [502, 503, 504]
+        retryable_grpc_codes: [UNAVAILABLE]
+        # POST /orders is NOT retried — use saga compensation instead
+        methods_excluded_from_retry:
+          - POST
+        retry_budget_timeout: 2s
+
+      # Gateway → Payment (CRITICAL — no retry on payment processing)
+      payment:
+        # Only retry on GET (payment status queries)
+        max_retries: 1
+        backoff:
+          initial_interval: 200ms
+          multiplier: 1.5
+          max_interval: 500ms
+          jitter_factor: 0.3
+        retryable_grpc_codes: [UNAVAILABLE]
+        # Payment processing is NOT retried — circuit breaker handles failures
+        methods_excluded_from_retry:
+          - POST
+          - PUT
+        retry_budget_timeout: 1s
+
+      # Gateway → Analytics (reporting — idempotent, safe to retry)
+      analytics:
+        max_retries: 3
+        backoff:
+          initial_interval: 200ms
+          multiplier: 2.0
+          max_interval: 5s
+          jitter_factor: 0.5
+        retryable_http_codes: [502, 503, 504]
+        retryable_grpc_codes: [UNAVAILABLE, DEADLINE_EXCEEDED, RESOURCE_EXHAUSTED]
+        retry_budget_timeout: 5s
+
+      # Gateway → Schema Registry (schema lookups — idempotent)
+      schema-registry:
+        max_retries: 2
+        backoff:
+          initial_interval: 100ms
+          multiplier: 2.0
+          max_interval: 1s
+          jitter_factor: 0.5
+        retryable_http_codes: [502, 503, 504]
+        retryable_grpc_codes: [UNAVAILABLE]
+        retry_budget_timeout: 1s
+
+    # ===========================================================================
+    # ORDER RETRY POLICIES
+    # ===========================================================================
+    order:
+      # Order → Catalog (inventory check — idempotent read)
+      catalog:
+        max_retries: 3
+        backoff:
+          initial_interval: 100ms
+          multiplier: 2.0
+          max_interval: 2s
+          jitter_factor: 0.5
+        retryable_grpc_codes: [UNAVAILABLE, DEADLINE_EXCEEDED, ABORTED]
+        retry_budget_timeout: 2s
+
+      # Order → Payment (CRITICAL — limited retries, saga compensation backup)
+      payment:
+        max_retries: 2
+        backoff:
+          initial_interval: 200ms
+          multiplier: 2.0
+          max_interval: 2s
+          jitter_factor: 0.3
+        retryable_grpc_codes: [UNAVAILABLE, RESOURCE_EXHAUSTED]
+        # Payment processing gRPC calls — only retry transient errors
+        # Saga compensation handles business failures
+        retry_budget_timeout: 3s
+
+      # Order → Notification (fire-and-forget — limited retries)
+      notification:
+        max_retries: 2
+        backoff:
+          initial_interval: 200ms
+          multiplier: 2.0
+          max_interval: 3s
+          jitter_factor: 0.5
+        retryable_grpc_codes: [UNAVAILABLE, DEADLINE_EXCEEDED]
+        retry_budget_timeout: 3s
+
+      # Order → Kafka (event publishing — critical, retry with backoff)
+      kafka:
+        max_retries: 5
+        backoff:
+          initial_interval: 100ms
+          multiplier: 2.0
+          max_interval: 10s
+          jitter_factor: 0.5
+        retryable_errors:
+          - LEADER_NOT_AVAILABLE
+          - NOT_ENOUGH_REPLICAS
+          - REQUEST_TIMED_OUT
+        non_retryable_errors:
+          - MESSAGE_TOO_LARGE
+          - UNKNOWN_TOPIC_OR_PARTITION
+        retry_budget_timeout: 10s
+
+    # ===========================================================================
+    # CDC-RELAY RETRY POLICIES
+    # ===========================================================================
+    cdc-relay:
+      # CDC Relay → PostgreSQL (WAL connection — critical, aggressive retry)
+      postgresql:
+        max_retries: 10
+        backoff:
+          initial_interval: 1s
+          multiplier: 2.0
+          max_interval: 60s
+          jitter_factor: 0.5
+        retryable_errors:
+          - CONNECTION_EXCEPTION
+          - CONNECTION_DOES_NOT_EXIST
+          - CONNECTION_FAILURE
+          - SQL_EXCEPTION_COMMUNICATION
+        non_retryable_errors:
+          - AUTHENTICATION_FAILED
+          - AUTHORIZATION_FAILED
+          - INVALID_SQL
+        retry_budget_timeout: 120s
+
+      # CDC Relay → Kafka (event publishing — critical, aggressive retry)
+      kafka:
+        max_retries: 10
+        backoff:
+          initial_interval: 500ms
+          multiplier: 2.0
+          max_interval: 30s
+          jitter_factor: 0.5
+        retryable_errors:
+          - LEADER_NOT_AVAILABLE
+          - NOT_ENOUGH_REPLICAS
+          - REQUEST_TIMED_OUT
+          - BROKER_NOT_AVAILABLE
+        non_retryable_errors:
+          - MESSAGE_TOO_LARGE
+          - UNKNOWN_TOPIC_OR_PARTITION
+          - INVALID_TOPIC_EXCEPTION
+        retry_budget_timeout: 60s
+
+      # CDC Relay → Schema Registry (schema validation — moderate retry)
+      schema-registry:
+        max_retries: 3
+        backoff:
+          initial_interval: 500ms
+          multiplier: 2.0
+          max_interval: 10s
+          jitter_factor: 0.5
+        retryable_http_codes: [502, 503, 504]
+        retry_budget_timeout: 10s
+
+    # ===========================================================================
+    # ANALYTICS RETRY POLICIES
+    # ===========================================================================
+    analytics:
+      # Analytics → Kafka (event consumption — consumer handles retries via offset)
+      kafka:
+        max_retries: 5
+        backoff:
+          initial_interval: 1s
+          multiplier: 2.0
+          max_interval: 30s
+          jitter_factor: 0.5
+        retryable_errors:
+          - LEADER_NOT_AVAILABLE
+          - REQUEST_TIMED_OUT
+        retry_budget_timeout: 30s
+
+      # Analytics → OLAP Store (ClickHouse writes — moderate retry)
+      olap-store:
+        max_retries: 3
+        backoff:
+          initial_interval: 500ms
+          multiplier: 2.0
+          max_interval: 10s
+          jitter_factor: 0.5
+        retryable_http_codes: [502, 503, 504]
+        non_retryable_http_codes: [400, 401, 403, 404]
+        retry_budget_timeout: 10s
+
+    # ===========================================================================
+    # NOTIFICATION RETRY POLICIES
+    # ===========================================================================
+    notification:
+      # Notification → Email provider (external, aggressive retry with backoff)
+      email-provider:
+        max_retries: 5
+        backoff:
+          initial_interval: 1s
+          multiplier: 2.0
+          max_interval: 60s
+          jitter_factor: 0.5
+        retryable_http_codes: [429, 502, 503, 504]
+        # Respect Retry-After header from providers
+        respect_retry_after: true
+        retry_budget_timeout: 30s
+
+      # Notification → SMS provider (external, aggressive retry)
+      sms-provider:
+        max_retries: 5
+        backoff:
+          initial_interval: 1s
+          multiplier: 2.0
+          max_interval: 60s
+          jitter_factor: 0.5
+        retryable_http_codes: [429, 502, 503, 504]
+        respect_retry_after: true
+        retry_budget_timeout: 30s
+
+      # Notification → Kafka (event consumption)
+      kafka:
+        max_retries: 3
+        backoff:
+          initial_interval: 1s
+          multiplier: 2.0
+          max_interval: 30s
+          jitter_factor: 0.5
+        retryable_errors:
+          - LEADER_NOT_AVAILABLE
+          - REQUEST_TIMED_OUT
+        retry_budget_timeout: 30s
+
+    # ===========================================================================
+    # PAYMENT RETRY POLICIES
+    # ===========================================================================
+    payment:
+      # Payment → External Gateway (Stripe, etc.)
+      external-gateway:
+        # Idempotency key must be set on all requests for safe retry
+        max_retries: 2
+        backoff:
+          initial_interval: 500ms
+          multiplier: 2.0
+          max_interval: 5s
+          jitter_factor: 0.3
+        retryable_http_codes: [429, 502, 503, 504]
+        non_retryable_http_codes: [400, 401, 402, 403, 422]
+        # Idempotency key header for safe retries
+        idempotency_key_header: Idempotency-Key
+        respect_retry_after: true
+        retry_budget_timeout: 5s
+
+      # Payment → Kafka (event publishing)
+      kafka:
+        max_retries: 5
+        backoff:
+          initial_interval: 100ms
+          multiplier: 2.0
+          max_interval: 10s
+          jitter_factor: 0.5
+        retryable_errors:
+          - LEADER_NOT_AVAILABLE
+          - NOT_ENOUGH_REPLICAS
+          - REQUEST_TIMED_OUT
+        non_retryable_errors:
+          - MESSAGE_TOO_LARGE
+        retry_budget_timeout: 10s
+
+---
+# =============================================================================
+# 4. TIMEOUT BUDGET CONFIGMAP
+# =============================================================================
+# End-to-end timeout budgets ensuring that:
+#   - Gateway total request budget: 5s
+#   - Per-service downstream call budgets fit within the gateway budget
+#   - gRPC deadline propagation ensures downstream services respect time limits
+#   - Retry budgets are accounted for in the total timeout
+#
+# Budget hierarchy:
+#   Gateway (5s) → Identity (1s), Catalog (2s), Order (3s), Payment (3s)
+#                   Order (3s) → Catalog (1s), Payment (2s), Notification (2s)
+#   CDC Relay → PostgreSQL (30s), Kafka (10s), Schema Registry (2s)
+#   Analytics → Kafka (30s), OLAP Store (10s)
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: timeout-budgets
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/component: resilience-mesh
+data:
+  timeouts.yaml: |
+    # ---------------------------------------------------------------------------
+    # Global timeout defaults
+    # ---------------------------------------------------------------------------
+    defaults:
+      # Default per-call timeout
+      connect_timeout: 500ms
+      read_timeout: 3s
+      write_timeout: 3s
+      # gRPC deadline propagation
+      grpc:
+        deadline_propagation: true
+        # Minimum remaining deadline before forwarding a gRPC call
+        # If remaining deadline < min_forward_deadline, fail immediately
+        min_forward_deadline: 100ms
+      metrics:
+        enabled: true
+        otel_endpoint: otel-collector.production.svc.cluster.local:4317
+
+    # ===========================================================================
+    # GATEWAY TIMEOUT BUDGETS
+    # ===========================================================================
+    # Gateway total request budget: 5 seconds
+    # This is the SLA-bound timeout for all external requests.
+    # ===========================================================================
+    gateway:
+      # Total external request budget
+      total_request_budget: 5s
+
+      # Per-downstream call budgets (must fit within 5s total)
+      downstream:
+        identity:
+          connect_timeout: 200ms
+          read_timeout: 1s
+          write_timeout: 500ms
+          grpc_deadline: 1s
+          # Gateway may call identity multiple times per request (auth check)
+          max_calls_per_request: 2
+
+        catalog:
+          connect_timeout: 200ms
+          read_timeout: 2s
+          write_timeout: 500ms
+          grpc_deadline: 2s
+          max_calls_per_request: 1
+
+        order:
+          connect_timeout: 200ms
+          read_timeout: 3s
+          write_timeout: 1s
+          grpc_deadline: 3s
+          max_calls_per_request: 1
+
+        payment:
+          connect_timeout: 300ms
+          read_timeout: 3s
+          write_timeout: 1s
+          grpc_deadline: 3s
+          max_calls_per_request: 1
+
+        analytics:
+          connect_timeout: 200ms
+          read_timeout: 2s
+          write_timeout: 500ms
+          grpc_deadline: 2s
+          max_calls_per_request: 1
+
+        schema-registry:
+          connect_timeout: 100ms
+          read_timeout: 500ms
+          write_timeout: 200ms
+          grpc_deadline: 500ms
+          max_calls_per_request: 1
+
+    # ===========================================================================
+    # ORDER TIMEOUT BUDGETS
+    # ===========================================================================
+    # Order service total saga step budget: 5 seconds per step
+    # Each saga step calls one downstream service.
+    # ===========================================================================
+    order:
+      # Per-saga-step budget
+      total_saga_step_budget: 5s
+
+      downstream:
+        catalog:
+          connect_timeout: 200ms
+          read_timeout: 1s
+          write_timeout: 500ms
+          grpc_deadline: 1s
+
+        payment:
+          connect_timeout: 300ms
+          read_timeout: 2s
+          write_timeout: 1s
+          grpc_deadline: 2s
+
+        notification:
+          connect_timeout: 200ms
+          read_timeout: 2s
+          write_timeout: 500ms
+          grpc_deadline: 2s
+
+        kafka:
+          # Kafka produce timeout (per message)
+          produce_timeout: 2s
+          # Kafka consumer poll timeout
+          consumer_poll_timeout: 500ms
+          # Kafka admin client timeout
+          admin_timeout: 5s
+
+    # ===========================================================================
+    # CDC-RELAY TIMEOUT BUDGETS
+    # ===========================================================================
+    # CDC Relay has longer timeouts as it handles streaming WAL capture.
+    # ===========================================================================
+    cdc-relay:
+      total_pipeline_budget: 60s
+
+      downstream:
+        postgresql:
+          # WAL streaming connection timeout
+          connect_timeout: 10s
+          # WAL replication slot read timeout
+          read_timeout: 30s
+          # Query timeout for snapshot mode
+          query_timeout: 30s
+
+        kafka:
+          produce_timeout: 10s
+          admin_timeout: 15s
+          # Max time to wait for Kafka to become available on startup
+          startup_connection_timeout: 60s
+
+        schema-registry:
+          connect_timeout: 2s
+          read_timeout: 2s
+          write_timeout: 1s
+
+    # ===========================================================================
+    # ANALYTICS TIMEOUT BUDGETS
+    # ===========================================================================
+    analytics:
+      total_request_budget: 30s
+
+      downstream:
+        kafka:
+          consumer_poll_timeout: 1s
+          produce_timeout: 5s
+        olap-store:
+          connect_timeout: 2s
+          read_timeout: 10s
+          write_timeout: 10s
+          # Batch insert timeout (aggregated metrics)
+          batch_insert_timeout: 30s
+
+    # ===========================================================================
+    # IDENTITY TIMEOUT BUDGETS
+    # ===========================================================================
+    identity:
+      total_request_budget: 2s
+
+      downstream:
+        spire-server:
+          connect_timeout: 500ms
+          read_timeout: 2s
+          grpc_deadline: 2s
+
+    # ===========================================================================
+    # NOTIFICATION TIMEOUT BUDGETS
+    # ===========================================================================
+    notification:
+      total_request_budget: 10s
+
+      downstream:
+        email-provider:
+          connect_timeout: 3s
+          read_timeout: 5s
+          write_timeout: 3s
+        sms-provider:
+          connect_timeout: 3s
+          read_timeout: 5s
+          write_timeout: 3s
+        kafka:
+          consumer_poll_timeout: 1s
+
+    # ===========================================================================
+    # PAYMENT TIMEOUT BUDGETS
+    # ===========================================================================
+    payment:
+      total_request_budget: 5s
+
+      downstream:
+        external-gateway:
+          connect_timeout: 1s
+          read_timeout: 3s
+          write_timeout: 2s
+          # Stripe API timeout — must be well under our SLA
+          http_timeout: 3s
+        kafka:
+          produce_timeout: 5s
+        postgresql:
+          connect_timeout: 1s
+          read_timeout: 2s
+          write_timeout: 1s
+
+    # ===========================================================================
+    # RL-ENGINE TIMEOUT BUDGETS
+    # ===========================================================================
+    rl-engine:
+      total_request_budget: 3s
+
+      downstream:
+        kafka:
+          consumer_poll_timeout: 1s
+        redis:
+          connect_timeout: 200ms
+          read_timeout: 500ms
+          write_timeout: 200ms
+
+    # ===========================================================================
+    # SCHEMA-REGISTRY TIMEOUT BUDGETS
+    # ===========================================================================
+    schema-registry:
+      total_request_budget: 2s
+
+      downstream:
+        kafka:
+          produce_timeout: 3s
+        postgresql:
+          connect_timeout: 500ms
+          read_timeout: 1s
+          write_timeout: 500ms
+
+---
+# =============================================================================
+# 5. RATE LIMITING CONFIGMAP
+# =============================================================================
+# Per-service rate limits to prevent:
+#   - Any single client from overwhelming a service
+#   - Retry storms from cascading across the mesh
+#   - Legitimate but excessive traffic from degrading service health
+#
+# Rate limits are enforced at the service mesh sidecar level.
+# SPIFFE identity is used as the rate limit key for inter-service calls.
+# External (gateway) limits use client IP + API key.
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rate-limiting-policies
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/component: resilience-mesh
+data:
+  rate-limits.yaml: |
+    # ---------------------------------------------------------------------------
+    # Global rate limit defaults
+    # ---------------------------------------------------------------------------
+    defaults:
+      # Rate limit response headers (RFC 6585 + draft-ietf-httpapi-ratelimit-headers)
+      response_headers:
+        x_rate_limit_limit: true
+        x_rate_limit_remaining: true
+        x_rate_limit_reset: true
+        retry_after: true
+      # Rate limit exceeded response
+      exceeded_response:
+        status_code: 429
+        content_type: application/json
+        body: '{"error":"rate_limit_exceeded","message":"Too many requests. Please retry later.","retry_after_seconds":{{ .RetryAfter }}}'
+      metrics:
+        enabled: true
+        otel_endpoint: otel-collector.production.svc.cluster.local:4317
+
+    # ===========================================================================
+    # GATEWAY RATE LIMITS
+    # ===========================================================================
+    # Gateway is the external entry point. Rate limits protect against:
+    #   - DDoS attacks
+    #   - Misbehaving clients
+    #   - Traffic spikes beyond capacity
+    # ===========================================================================
+    gateway:
+      # Global per-client rate limit (external clients)
+      global:
+        requests_per_second: 1000
+        burst: 2000
+        # Rate limit key: client IP + API key (if present)
+        key_type: client_ip_api_key
+        # Response when rate limit exceeded
+        exceeded_response:
+          status_code: 429
+
+      # Per-endpoint limits (more granular control)
+      endpoints:
+        # Health endpoint — generous limit for load balancers
+        - path: /healthz
+          method: GET
+          requests_per_second: 50
+          burst: 100
+        # Product search — high volume, cacheable
+        - path: /api/v1/catalog/search
+          method: GET
+          requests_per_second: 500
+          burst: 1000
+        # Product detail — moderate volume
+        - path: /api/v1/catalog/products/*
+          method: GET
+          requests_per_second: 300
+          burst: 600
+        # Order creation — expensive, limited
+        - path: /api/v1/orders
+          method: POST
+          requests_per_second: 50
+          burst: 100
+        # Order status — cheap reads
+        - path: /api/v1/orders/*
+          method: GET
+          requests_per_second: 200
+          burst: 400
+        # Payment processing — CRITICAL, strict limit
+        - path: /api/v1/payments/process
+          method: POST
+          requests_per_second: 10
+          burst: 20
+        # Payment status — moderate
+        - path: /api/v1/payments/*
+          method: GET
+          requests_per_second: 100
+          burst: 200
+        # Authentication — strict limit to prevent brute force
+        - path: /api/v1/auth/login
+          method: POST
+          requests_per_second: 5
+          burst: 10
+        - path: /api/v1/auth/token
+          method: POST
+          requests_per_second: 10
+          burst: 20
+        # Analytics reports — compute-heavy
+        - path: /api/v1/analytics/*
+          method: GET
+          requests_per_second: 20
+          burst: 40
+
+      # Per-downstream service rate limits (internal)
+      # Prevents gateway from overwhelming any single backend
+      downstream_limits:
+        identity:
+          requests_per_second: 500
+          burst: 1000
+          key_type: spiffe_id
+        catalog:
+          requests_per_second: 400
+          burst: 800
+          key_type: spiffe_id
+        order:
+          requests_per_second: 200
+          burst: 400
+          key_type: spiffe_id
+        payment:
+          requests_per_second: 50
+          burst: 100
+          key_type: spiffe_id
+        analytics:
+          requests_per_second: 30
+          burst: 60
+          key_type: spiffe_id
+        schema-registry:
+          requests_per_second: 100
+          burst: 200
+          key_type: spiffe_id
+
+    # ===========================================================================
+    # IDENTITY RATE LIMITS
+    # ===========================================================================
+    identity:
+      global:
+        requests_per_second: 500
+        burst: 1000
+        key_type: spiffe_id
+      endpoints:
+        - path: /api/v1/auth/login
+          method: POST
+          requests_per_second: 20
+          burst: 40
+          # Strict per-IP limit for login attempts
+          key_type: client_ip
+        - path: /api/v1/auth/verify
+          method: POST
+          requests_per_second: 500
+          burst: 1000
+          key_type: spiffe_id
+        - path: /api/v1/auth/refresh
+          method: POST
+          requests_per_second: 100
+          burst: 200
+          key_type: spiffe_id
+
+    # ===========================================================================
+    # CATALOG RATE LIMITS
+    # ===========================================================================
+    catalog:
+      global:
+        requests_per_second: 400
+        burst: 800
+        key_type: spiffe_id
+      endpoints:
+        - path: /api/v1/products/search
+          method: GET
+          requests_per_second: 300
+          burst: 600
+          key_type: spiffe_id
+        - path: /api/v1/products
+          method: POST
+          requests_per_second: 20
+          burst: 40
+          key_type: spiffe_id
+        - path: /api/v1/products/*
+          method: PUT
+          requests_per_second: 20
+          burst: 40
+          key_type: spiffe_id
+        - path: /api/v1/products/*
+          method: DELETE
+          requests_per_second: 10
+          burst: 20
+          key_type: spiffe_id
+
+    # ===========================================================================
+    # ORDER RATE LIMITS
+    # ===========================================================================
+    order:
+      global:
+        requests_per_second: 200
+        burst: 400
+        key_type: spiffe_id
+      endpoints:
+        - path: /api/v1/orders
+          method: POST
+          requests_per_second: 50
+          burst: 100
+          key_type: spiffe_id
+        - path: /api/v1/orders/*
+          method: GET
+          requests_per_second: 200
+          burst: 400
+          key_type: spiffe_id
+        - path: /api/v1/orders/*/cancel
+          method: POST
+          requests_per_second: 20
+          burst: 40
+          key_type: spiffe_id
+
+      # Outbound rate limits to downstream services
+      downstream_limits:
+        catalog:
+          requests_per_second: 50
+          burst: 100
+        payment:
+          requests_per_second: 30
+          burst: 60
+        notification:
+          requests_per_second: 40
+          burst: 80
+        kafka:
+          requests_per_second: 100
+          burst: 200
+
+    # ===========================================================================
+    # PAYMENT RATE LIMITS
+    # ===========================================================================
+    payment:
+      global:
+        requests_per_second: 100
+        burst: 200
+        key_type: spiffe_id
+      endpoints:
+        # Payment processing — STRICT limit
+        - path: /api/v1/payments/process
+          method: POST
+          requests_per_second: 10
+          burst: 20
+          key_type: spiffe_id
+        # Refund processing — moderate limit
+        - path: /api/v1/payments/refund
+          method: POST
+          requests_per_second: 5
+          burst: 10
+          key_type: spiffe_id
+        # Payment status — cheap reads
+        - path: /api/v1/payments/*
+          method: GET
+          requests_per_second: 100
+          burst: 200
+          key_type: spiffe_id
+
+      # Outbound rate limits
+      downstream_limits:
+        external-gateway:
+          requests_per_second: 10
+          burst: 20
+        kafka:
+          requests_per_second: 50
+          burst: 100
+
+    # ===========================================================================
+    # NOTIFICATION RATE LIMITS
+    # ===========================================================================
+    notification:
+      global:
+        requests_per_second: 100
+        burst: 200
+        key_type: spiffe_id
+      endpoints:
+        - path: /api/v1/notifications/send
+          method: POST
+          requests_per_second: 50
+          burst: 100
+          key_type: spiffe_id
+        - path: /api/v1/notifications/*
+          method: GET
+          requests_per_second: 100
+          burst: 200
+          key_type: spiffe_id
+
+      # Outbound rate limits to external providers
+      downstream_limits:
+        email-provider:
+          requests_per_second: 20
+          burst: 40
+        sms-provider:
+          requests_per_second: 10
+          burst: 20
+
+    # ===========================================================================
+    # ANALYTICS RATE LIMITS
+    # ===========================================================================
+    analytics:
+      global:
+        requests_per_second: 50
+        burst: 100
+        key_type: spiffe_id
+      endpoints:
+        - path: /api/v1/analytics/dashboard
+          method: GET
+          requests_per_second: 20
+          burst: 40
+          key_type: spiffe_id
+        - path: /api/v1/analytics/reports
+          method: GET
+          requests_per_second: 10
+          burst: 20
+          key_type: spiffe_id
+        - path: /api/v1/analytics/metrics
+          method: POST
+          requests_per_second: 100
+          burst: 200
+          key_type: spiffe_id
+
+      downstream_limits:
+        olap-store:
+          requests_per_second: 30
+          burst: 60
+
+    # ===========================================================================
+    # RL-ENGINE RATE LIMITS
+    # ===========================================================================
+    rl-engine:
+      global:
+        requests_per_second: 30
+        burst: 60
+        key_type: spiffe_id
+      endpoints:
+        - path: /api/v1/rl/evaluate
+          method: POST
+          requests_per_second: 20
+          burst: 40
+          key_type: spiffe_id
+        - path: /api/v1/rl/policy
+          method: GET
+          requests_per_second: 30
+          burst: 60
+          key_type: spiffe_id
+        - path: /api/v1/rl/feedback
+          method: POST
+          requests_per_second: 10
+          burst: 20
+          key_type: spiffe_id
+
+    # ===========================================================================
+    # SCHEMA-REGISTRY RATE LIMITS
+    # ===========================================================================
+    schema-registry:
+      global:
+        requests_per_second: 200
+        burst: 400
+        key_type: spiffe_id
+      endpoints:
+        - path: /api/v1/schemas
+          method: GET
+          requests_per_second: 200
+          burst: 400
+          key_type: spiffe_id
+        - path: /api/v1/schemas
+          method: POST
+          requests_per_second: 20
+          burst: 40
+          key_type: spiffe_id
+        - path: /api/v1/schemas/*/versions
+          method: GET
+          requests_per_second: 150
+          burst: 300
+          key_type: spiffe_id
+        - path: /api/v1/compatibility/subjects/*/versions/*
+          method: POST
+          requests_per_second: 10
+          burst: 20
+          key_type: spiffe_id
+        - path: /api/v1/subjects
+          method: GET
+          requests_per_second: 100
+          burst: 200
+          key_type: spiffe_id

@@ -1,0 +1,1076 @@
+# OOM Protection Resources for Polyglot Microservices Platform
+# ──────────────────────────────────────────────────────────
+# Prevents Out-of-Memory kills through proactive detection, automatic right-sizing,
+# runtime-specific tuning, and OOM-aware resource defaults.
+#
+# Contents:
+#   1. VerticalPodAutoscaler (Auto mode) for OOM-prone services
+#   2. PrometheusRule for OOM prediction and memory pressure alerts
+#   3. Runtime-specific ConfigMaps (JVM, Node.js, Python)
+#   4. LimitRange with OOM-aware defaults
+#
+# Service Runtime Map:
+# ┌──────────────────┬────────────────────┬─────────────────────────────────┐
+# │ Service          │ Runtime            │ OOM Risk Factors                │
+# ├──────────────────┼────────────────────┼─────────────────────────────────┤
+# │ order            │ Kotlin/JVM         │ Heap, metaspace, GC overhead   │
+# │ catalog          │ Node.js/TypeScript │ V8 heap, libuv threadpool      │
+# │ analytics        │ Python             │ GIL, glibc arenas, GC          │
+# │ notification     │ Python             │ Template rendering, glibc      │
+# │ rl-engine        │ Python             │ Model inference, numpy/ML libs │
+# │ gateway          │ Go                 │ Goroutine leaks (low risk)     │
+# │ identity         │ Rust               │ Low risk (no GC)               │
+# │ payment          │ Kotlin/JVM         │ Heap, circuit breaker state    │
+# │ schema-registry  │ Go                 │ Low risk (lightweight)         │
+# └──────────────────┴────────────────────┴─────────────────────────────────┘
+#
+# VPA Auto mode will evict and resize pods when recommendations exceed current
+# allocations. minAllowed ensures services always have baseline resources.
+# maxAllowed prevents runaway resource consumption.
+#
+# Complements: infra/kubernetes/base/resource-quotas.yaml (base LimitRange)
+#              infra/kubernetes/platform/prometheus-alerts.yaml (OOMKilled alert)
+---
+
+# ══════════════════════════════════════════════════════════════════════
+# SECTION 1: VerticalPodAutoscaler — Auto Mode for OOM-Prone Services
+# ══════════════════════════════════════════════════════════════════════
+
+# Order Service (Kotlin/JVM) — HIGHEST OOM RISK
+# JVM heap + metaspace + GC overhead + Kafka buffers + saga state machines
+# Current deployment: 128Mi request / 512Mi limit (UNDERSIZED per performance-budget.md)
+# Performance budget target: 512Mi request / 2Gi limit
+# VPA will right-size based on actual usage, starting from minAllowed floor
+---
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: order-vpa-oom
+  namespace: production
+  labels:
+    app.kubernetes.io/name: order
+    app.kubernetes.io/component: order
+    app.kubernetes.io/part-of: polyglot-microservices
+    oom-protection: enabled
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: order
+  updatePolicy:
+    updateMode: Auto
+    minReplicas: 2
+  resourcePolicy:
+    containerPolicies:
+      - containerName: order
+        mode: Auto
+        minAllowed:
+          cpu: 500m
+          memory: 768Mi
+        maxAllowed:
+          cpu: "4"
+          memory: 4Gi
+        controlledResources:
+          - cpu
+          - memory
+        controlledValues: RequestsAndLimits
+  recommenders:
+    - name: default
+
+# Catalog Service (Node.js) — HIGH OOM RISK
+# V8 heap + libuv threadpool + search index cache + connection pools
+# Current deployment: 128Mi request / 512Mi limit (UNDERSIZED)
+# Performance budget target: 256Mi request / 1Gi limit
+# Node.js needs headroom for V8 garbage collection and I/O buffers
+---
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: catalog-vpa-oom
+  namespace: production
+  labels:
+    app.kubernetes.io/name: catalog
+    app.kubernetes.io/component: catalog
+    app.kubernetes.io/part-of: polyglot-microservices
+    oom-protection: enabled
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: catalog
+  updatePolicy:
+    updateMode: Auto
+    minReplicas: 2
+  resourcePolicy:
+    containerPolicies:
+      - containerName: catalog
+        mode: Auto
+        minAllowed:
+          cpu: 200m
+          memory: 512Mi
+        maxAllowed:
+          cpu: "2"
+          memory: 2Gi
+        controlledResources:
+          - cpu
+          - memory
+        controlledValues: RequestsAndLimits
+  recommenders:
+    - name: default
+
+# Analytics Service (Python) — HIGH OOM RISK
+# Python GIL + glibc malloc arenas + numpy/ML libraries + large query results
+# Current deployment: 128Mi request / 512Mi limit (SEVERELY UNDERSIZED)
+# Performance budget target: 1Gi request / 4Gi limit
+# Python's glibc malloc creates multiple arenas that fragment memory aggressively
+---
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: analytics-vpa-oom
+  namespace: production
+  labels:
+    app.kubernetes.io/name: analytics
+    app.kubernetes.io/component: analytics
+    app.kubernetes.io/part-of: polyglot-microservices
+    oom-protection: enabled
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: analytics
+  updatePolicy:
+    updateMode: Auto
+    minReplicas: 2
+  resourcePolicy:
+    containerPolicies:
+      - containerName: analytics
+        mode: Auto
+        minAllowed:
+          cpu: 500m
+          memory: 1Gi
+        maxAllowed:
+          cpu: "4"
+          memory: 8Gi
+        controlledResources:
+          - cpu
+          - memory
+        controlledValues: RequestsAndLimits
+  recommenders:
+    - name: default
+
+# Notification Service (Python) — MODERATE OOM RISK
+# Python + template rendering + delivery queue + Kafka consumer buffers
+# Current deployment: 128Mi request / 512Mi limit (UNDERSIZED)
+# Performance budget target: 256Mi request / 512Mi limit
+---
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: notification-vpa-oom
+  namespace: production
+  labels:
+    app.kubernetes.io/name: notification
+    app.kubernetes.io/component: notification
+    app.kubernetes.io/part-of: polyglot-microservices
+    oom-protection: enabled
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: notification
+  updatePolicy:
+    updateMode: Auto
+    minReplicas: 2
+  resourcePolicy:
+    containerPolicies:
+      - containerName: notification
+        mode: Auto
+        minAllowed:
+          cpu: 100m
+          memory: 384Mi
+        maxAllowed:
+          cpu: "1"
+          memory: 2Gi
+        controlledResources:
+          - cpu
+          - memory
+        controlledValues: RequestsAndLimits
+  recommenders:
+    - name: default
+
+# RL Engine Service (Python) — HIGH OOM RISK
+# Python + model inference + numpy/scipy + knowledge base + Kafka consumer
+# ML libraries load large matrices into memory; knowledge base can grow unbounded
+# Current deployment: 128Mi request / 512Mi limit (SEVERELY UNDERSIZED)
+---
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: rl-engine-vpa-oom
+  namespace: production
+  labels:
+    app.kubernetes.io/name: rl-engine
+    app.kubernetes.io/component: rl-engine
+    app.kubernetes.io/part-of: polyglot-microservices
+    oom-protection: enabled
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rl-engine
+  updatePolicy:
+    updateMode: Auto
+    minReplicas: 2
+  resourcePolicy:
+    containerPolicies:
+      - containerName: rl-engine
+        mode: Auto
+        minAllowed:
+          cpu: 200m
+          memory: 512Mi
+        maxAllowed:
+          cpu: "2"
+          memory: 4Gi
+        controlledResources:
+          - cpu
+          - memory
+        controlledValues: RequestsAndLimits
+  recommenders:
+    - name: default
+
+# Payment Service (Kotlin/JVM) — MODERATE OOM RISK
+# JVM heap + circuit breaker state + payment token cache + retry queues
+# Current deployment: 128Mi request / 512Mi limit (UNDERSIZED for JVM)
+# Performance budget target: 256Mi request / 1Gi limit
+---
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: payment-vpa-oom
+  namespace: production
+  labels:
+    app.kubernetes.io/name: payment
+    app.kubernetes.io/component: payment
+    app.kubernetes.io/part-of: polyglot-microservices
+    oom-protection: enabled
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment
+  updatePolicy:
+    updateMode: Auto
+    minReplicas: 2
+  resourcePolicy:
+    containerPolicies:
+      - containerName: payment
+        mode: Auto
+        minAllowed:
+          cpu: 200m
+          memory: 512Mi
+        maxAllowed:
+          cpu: "2"
+          memory: 2Gi
+        controlledResources:
+          - cpu
+          - memory
+        controlledValues: RequestsAndLimits
+  recommenders:
+    - name: default
+
+---
+# ══════════════════════════════════════════════════════════════════════
+# SECTION 2: OOM Prediction & Memory Pressure PrometheusRule
+# ══════════════════════════════════════════════════════════════════════
+# Uses container_memory_working_set_bytes which is the metric the OOM killer
+# uses to determine when to kill a process. This is the ACTUAL metric that
+# matters — NOT container_memory_usage_bytes (which includes page cache).
+#
+# container_memory_working_set_bytes = usage_in_bytes - total_inactive_file
+# This includes: RSS, page tables, kernel stacks, and non-reclaimable memory
+#
+# Alert thresholds:
+#   70% — Early warning (investigate during business hours)
+#   80% — Action required (5min buffer before OOM kill)
+#   90% — Critical (OOM kill likely within minutes)
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: oom-prediction
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    prometheus: k8s
+    role: oom-prediction-rules
+    oom-protection: enabled
+spec:
+  groups:
+    - name: oom-prediction
+      rules:
+        # ──────────────────────────────────────────────────────────────────
+        # Memory Pressure Early Warning — 70% of limit
+        # ──────────────────────────────────────────────────────────────────
+        - alert: MemoryPressureWarning
+          expr: |
+            (
+              container_memory_working_set_bytes{namespace="production", container!=""}
+              /
+              kube_pod_container_resource_limits{namespace="production", resource="memory"}
+            ) > 0.70
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+            oom_risk: elevated
+            runbook: docs/runbooks/platform-runbook.md
+          annotations:
+            summary: "Container {{ $labels.container }} memory usage exceeds 70% of limit"
+            description: >-
+              Container {{ $labels.container }} in pod {{ $labels.pod }} is using
+              {{ $value | humanizePercentage }} of its memory limit for 10 minutes.
+              This is an early indicator of potential OOM issues. The OOM killer
+              triggers when working set memory reaches 100% of the limit.
+            action: >-
+              Check memory usage trend in Grafana. If this is a JVM service, review
+              heap usage and GC patterns. For Python services, check for memory leaks.
+              For Node.js, review V8 heap snapshot. Consider proactive restart during
+              low-traffic period if trend is upward.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Memory Pressure — 80% of limit (5 minute buffer before OOM)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: MemoryPressureHigh
+          expr: |
+            (
+              container_memory_working_set_bytes{namespace="production", container!=""}
+              /
+              kube_pod_container_resource_limits{namespace="production", resource="memory"}
+            ) > 0.80
+          for: 5m
+          labels:
+            severity: high
+            team: platform
+            oom_risk: high
+            runbook: docs/runbooks/platform-runbook.md
+          annotations:
+            summary: "Container {{ $labels.container }} memory usage exceeds 80% of limit"
+            description: >-
+              Container {{ $labels.container }} in pod {{ $labels.pod }} is using
+              {{ $value | humanizePercentage }} of its memory limit for 5 minutes.
+              This is a strong OOM predictor. At 80% of limit with only 20% headroom,
+              a sudden allocation spike (GC, query result, model inference) could
+              trigger an OOM kill within minutes.
+            action: >-
+              IMMEDIATE ACTION REQUIRED:
+              1. Check if VPA has pending recommendations: kubectl describe vpa -n production
+              2. For JVM services: Check heap usage vs container limit. If heap < 75% of
+                 limit, the issue may be off-heap (metaspace, native). If heap > 75%, consider
+                 increasing MaxRAMPercentage or container limit.
+              3. For Python services: Check for growing memory trend. Consider MALLOC_ARENA_MAX=2
+                 and manual gc.collect(). Consider proactive pod restart.
+              4. For Node.js: Check V8 heap usage with --inspect. Consider max-old-space-size
+                 increase. Review for event listener leaks.
+              5. If VPA is enabled, it will resize on next restart. Consider rolling restart.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Memory Pressure Critical — 90% of limit (OOM imminent)
+        # ──────────────────────────────────────────────────────────────────
+        - alert: MemoryPressureCritical
+          expr: |
+            (
+              container_memory_working_set_bytes{namespace="production", container!=""}
+              /
+              kube_pod_container_resource_limits{namespace="production", resource="memory"}
+            ) > 0.90
+          for: 2m
+          labels:
+            severity: critical
+            team: platform
+            oom_risk: imminent
+            runbook: docs/runbooks/platform-runbook.md
+          annotations:
+            summary: "Container {{ $labels.container }} at 90% memory limit — OOM kill imminent"
+            description: >-
+              Container {{ $labels.container }} in pod {{ $labels.pod }} is using
+              {{ $value | humanizePercentage }} of its memory limit for 2 minutes.
+              OOM kill is IMMINENT. The kernel OOM killer will terminate this process
+              within minutes unless memory is freed or the limit is increased.
+            action: >-
+              EMERGENCY — OOM kill imminent:
+              1. Immediate: Increase memory limit if possible:
+                 kubectl set resources deployment/{{ $labels.container }} -n production
+                 --limits=memory=<increased_value>
+              2. If limit cannot be increased: Proactively restart the pod to free memory:
+                 kubectl delete pod {{ $labels.pod }} -n production
+              3. For JVM: The JVM may be in a GC death spiral. A restart with increased
+                 heap is the fastest fix.
+              4. For Python: Memory fragmentation may require process restart. Apply
+                 MALLOC_ARENA_MAX=2 if not already set.
+              5. After resolution: Review VPA recommendations and apply resource adjustments.
+
+        # ──────────────────────────────────────────────────────────────────
+        # JVM-Specific: Heap approaching container limit
+        # Detects when JVM heap usage is high relative to container memory,
+        # accounting for the ~25-35% overhead JVM needs beyond heap
+        # ──────────────────────────────────────────────────────────────────
+        - alert: JVMHeapNearContainerLimit
+          expr: |
+            (
+              jvm_memory_bytes_used{area="heap", namespace="production"}
+              /
+              kube_pod_container_resource_limits{namespace="production", resource="memory"}
+            ) > 0.55
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+            oom_risk: elevated
+            runtime: jvm
+            runbook: docs/runbooks/platform-runbook.md
+          annotations:
+            summary: "JVM heap usage exceeds 55% of container memory limit"
+            description: >-
+              JVM heap usage for {{ $labels.pod }} is {{ $value | humanizePercentage }}
+              of the container memory limit. JVM requires 25-35% overhead for
+              metaspace, native memory, GC, and thread stacks. When heap exceeds
+              55% of container limit, there may not be enough headroom for off-heap
+              allocations, leading to OOM despite heap appearing to have capacity.
+            action: >-
+              1. Check MaxRAMPercentage setting — should be 75% max for production.
+              2. Review GC log for frequent full GC cycles (indicates memory pressure).
+              3. Consider increasing container memory limit or reducing heap via
+                 MaxRAMPercentage.
+              4. Check metaspace usage: jvm_memory_bytes_used{area="nonheap"}
+
+        # ──────────────────────────────────────────────────────────────────
+        # Node.js-Specific: V8 heap approaching limit
+        # V8's memory management includes new space, old space, code space, etc.
+        # When the total V8 heap approaches max-old-space-size, GC runs constantly
+        # ──────────────────────────────────────────────────────────────────
+        - alert: NodeJSHeapPressure
+          expr: |
+            (
+              nodejs_heap_space_used_bytes{namespace="production"}
+              /
+              kube_pod_container_resource_limits{namespace="production", resource="memory"}
+            ) > 0.50
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+            oom_risk: elevated
+            runtime: nodejs
+            runbook: docs/runbooks/platform-runbook.md
+          annotations:
+            summary: "Node.js V8 heap usage exceeds 50% of container memory limit"
+            description: >-
+              Node.js V8 heap for {{ $labels.pod }} is {{ $value | humanizePercentage }}
+              of the container memory limit. V8 needs headroom for:
+              - New space (young generation): ~1-2 MB per isolate
+              - Code space: compiled JavaScript code
+              - Map space: hidden classes / shapes
+              - Large object space: >128KB objects
+              - Stack space: per-execution context
+              Plus libuv threadpool and native addon memory.
+            action: >-
+              1. Check max-old-space-size setting — should leave ~30% for non-V8 memory.
+              2. Review for event listener leaks and closure accumulation.
+              3. Consider taking a V8 heap snapshot for analysis.
+              4. If trend is upward, schedule proactive restart during low-traffic.
+
+        # ──────────────────────────────────────────────────────────────────
+        # Python-Specific: RSS approaching container limit
+        # Python's memory usage is hard to track from inside the process.
+        # container_memory_rss gives the resident set size which is most accurate.
+        # ──────────────────────────────────────────────────────────────────
+        - alert: PythonMemoryFragmentation
+          expr: |
+            (
+              container_memory_working_set_bytes{namespace="production", container=~"analytics|notification|rl-engine"}
+              -
+              container_memory_rss{namespace="production", container=~"analytics|notification|rl-engine"}
+            )
+            /
+            kube_pod_container_resource_limits{namespace="production", resource="memory", container=~"analytics|notification|rl-engine"}
+            > 0.20
+          for: 15m
+          labels:
+            severity: warning
+            team: platform
+            oom_risk: elevated
+            runtime: python
+            runbook: docs/runbooks/platform-runbook.md
+          annotations:
+            summary: "Python service memory fragmentation detected"
+            description: >-
+              Python service {{ $labels.container }} has {{ $value | humanizePercentage }}
+              of its container memory limit in non-RSS working set (likely glibc malloc
+              arena fragmentation). Python's glibc allocator creates per-thread arenas
+              that are rarely returned to the OS, causing apparent memory leaks.
+            action: >-
+              1. Set MALLOC_ARENA_MAX=2 in the container environment (reduces arena count).
+              2. Consider using jemalloc or tcmalloc instead of glibc malloc.
+              3. Add explicit gc.collect() calls at strategic points in the application.
+              4. For analytics: Check if large pandas DataFrames are being held in memory.
+              5. For rl-engine: Check if model inference is caching results unnecessarily.
+
+        # ──────────────────────────────────────────────────────────────────
+        # OOM Kill Trending — Multiple OOM kills in short window
+        # ──────────────────────────────────────────────────────────────────
+        - alert: OOMKillTrending
+          expr: |
+            count by (namespace, container (
+              increase(kube_pod_container_status_restarts_total{namespace="production", reason="OOMKilled"}[1h])
+              or
+              kube_pod_container_status_last_terminated_reason{namespace="production", reason="OOMKilled"} == 1
+            ) > 0) > 0
+          for: 5m
+          labels:
+            severity: critical
+            team: platform
+            oom_risk: active
+            runbook: docs/runbooks/platform-runbook.md
+          annotations:
+            summary: "OOM kills detected for {{ $labels.container }}"
+            description: >-
+              Container {{ $labels.container }} in namespace {{ $labels.namespace }}
+              has experienced OOM kills in the last hour. This indicates the memory
+              limit is insufficient for the current workload. The VPA should be
+              adjusting resources, but if OOM kills persist, manual intervention
+              is needed.
+            action: >-
+              1. Check VPA recommendations: kubectl get vpa -n production
+              2. Review current memory limit vs actual usage in Grafana.
+              3. Immediately increase memory limit if VPA hasn't adjusted yet.
+              4. For JVM: Review MaxRAMPercentage — should be ≤75%.
+              5. For Python: Apply MALLOC_ARENA_MAX=2 and review for memory leaks.
+              6. For Node.js: Review max-old-space-size and check for leaks.
+
+---
+# ══════════════════════════════════════════════════════════════════════
+# SECTION 3: Runtime-Specific Tuning ConfigMaps
+# ══════════════════════════════════════════════════════════════════════
+
+# JVM Tuning ConfigMap — For Order and Payment services (Kotlin/JVM)
+# ──────────────────────────────────────────────────────────────────────
+# Key principles:
+# - Use MaxRAMPercentage instead of -Xmx for container-aware heap sizing
+# - G1GC is optimal for latency-sensitive services with large heaps
+# - Container support is on by default in JDK 10+ but explicit for clarity
+# - Heap dump on OOM for post-mortem analysis
+# - Metaspace must be capped to prevent unbounded native memory growth
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jvm-tuning-config
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    runtime: jvm
+    oom-protection: enabled
+data:
+  # ── JVM Flags (JAVA_OPTS / JAVA_TOOL_OPTIONS) ──
+  jvm-flags: >-
+    -XX:+UseContainerSupport
+    -XX:MaxRAMPercentage=75.0
+    -XX:InitialRAMPercentage=50.0
+    -XX:+UseG1GC
+    -XX:MaxGCPauseMillis=200
+    -XX:G1HeapRegionSize=4M
+    -XX:InitiatingHeapOccupancyPercent=45
+    -XX:MaxMetaspaceSize=256m
+    -XX:CompressedClassSpaceSize=128m
+    -XX:+HeapDumpOnOutOfMemoryError
+    -XX:HeapDumpPath=/tmp/heapdump.hprof
+    -XX:OnOutOfMemoryError="kill -9 %p"
+    -XX:+ExitOnOutOfMemoryError
+    -XX:+UseStringDeduplication
+    -XX:+ParallelRefProcEnabled
+    -Djava.security.egd=file:/dev/./urandom
+    -Dnetworkaddress.cache.ttl=5
+
+  # ── GC Logging (JDK 11+ unified logging) ──
+  gc-logging: >-
+    -Xlog:gc*:stdout:time,uptime,level,tags
+    -Xlog:gc+heap=debug:stdout
+
+  # ── JVM Diagnostic Flags (enable for troubleshooting, disable in production) ──
+  jvm-diagnostic-flags: >-
+    -XX:+PrintSafepointStatistics
+    -XX:PrintSafepointStatisticsCount=1
+
+  # ── Environment Variables ──
+  env-jvm-memory: |
+    JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+    JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+    JAVA_MAX_HEAP_RATIO="0.75"
+    GC_LOG_ENABLED="true"
+
+  # ── Memory Sizing Guide ──
+  memory-sizing-guide: |
+    # JVM Container Memory Sizing Guide
+    # ==================================
+    #
+    # Container memory limit allocation:
+    # ┌──────────────────────────────┬──────────────────────┐
+    # │ Component                    │ Allocation           │
+    # ├──────────────────────────────┼──────────────────────┤
+    # │ Java Heap (MaxRAMPercentage) │ 75% of container     │
+    # │ Metaspace                    │ Up to 256m (capped)   │
+    # │ Compressed Class Space       │ Up to 128m (capped)   │
+    # │ Thread Stacks                │ ~1MB per thread       │
+    # │ Direct Buffers               │ ~64m default          │
+    # │ JIT Code Cache               │ 240m default          │
+    # │ GC Overhead                  │ ~5-10% of heap        │
+    # │ Native / JNI                 │ Variable              │
+    # │ Container overhead           │ ~32m                  │
+    # └──────────────────────────────┴──────────────────────┘
+    #
+    # Example: 2Gi container limit
+    #   Heap = 2Gi * 0.75 = 1.5Gi
+    #   Metaspace = 256m (max)
+    #   Thread stacks (50 threads) = 50m
+    #   Code cache = 240m
+    #   GC + other = ~200m
+    #   Total ≈ 2.2Gi (slight over-provisioning acceptable)
+    #
+    # CRITICAL: Never set -Xmx directly in containers.
+    # Use MaxRAMPercentage so the JVM adapts to the container limit.
+
+  # ── G1GC Tuning Notes ──
+  gc-tuning-notes: |
+    # G1GC Tuning for Latency-Sensitive Microservices
+    # ================================================
+    #
+    # -XX:MaxGCPauseMillis=200
+    #   Target 200ms max pause. G1 will attempt to meet this but does NOT
+    #   guarantee it. For order service, 200ms is acceptable because:
+    #   - Sagas have multi-second total timeouts
+    #   - Network I/O dominates over GC pauses
+    #   - G1 young generation pauses are typically 10-50ms
+    #
+    # -XX:G1HeapRegionSize=4M
+    #   4MB regions for heaps up to 2GB. For heaps >2GB, use 8MB.
+    #   Larger regions reduce remapping overhead but increase pause times.
+    #
+    # -XX:InitiatingHeapOccupancyPercent=45
+    #   Start concurrent marking at 45% heap usage (default is 45%).
+    #   Starting earlier prevents full GC in allocation-heavy workloads.
+    #
+    # -XX:+UseStringDeduplication
+    #   Deduplicate String objects in old generation. Typically reduces
+    #   heap usage by 10-15% for services with many duplicate strings
+    #   (e.g., order IDs, product IDs, log messages).
+    #
+    # -XX:+ExitOnOutOfMemoryError
+    #   CRITICAL for Kubernetes: When OOM occurs inside the JVM, the
+    #   container exits with code 3. This allows Kubernetes to restart
+    #   the pod with fresh memory rather than continuing in a degraded state.
+    #   The heap dump is written BEFORE the process exits.
+
+---
+# Node.js Tuning ConfigMap — For Catalog service (Node.js/TypeScript)
+# ──────────────────────────────────────────────────────────────────────
+# Key principles:
+# - V8 heap is NOT the entire memory usage; leave 30% for native code
+# - UV_THREADPOOL_SIZE affects I/O parallelism (default 4 is too low)
+# - max-old-space-size should be ~70% of container memory limit
+# - Generate heap snapshot on OOM for post-mortem analysis
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nodejs-tuning-config
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    runtime: nodejs
+    oom-protection: enabled
+data:
+  # ── Node.js Startup Flags (NODE_OPTIONS) ──
+  node-options: >-
+    --max-old-space-size=768
+    --max-semi-space-size=16
+    --initial-old-space-size=256
+    --optimize-for-size=false
+    --gc-interval=100
+    --max-http-header-size=16384
+    --unhandled-rejections=strict
+
+  # ── Environment Variables ──
+  env-nodejs: |
+    NODE_OPTIONS=--max-old-space-size=768 --max-semi-space-size=16
+    UV_THREADPOOL_SIZE=8
+    NODE_ENV=production
+    NODE_NO_WARNINGS=1
+    NODE_EXTRA_CA_CERTS=/run/spire/certs/ca.crt
+    # Enable V8 heap snapshot on OOM signal
+    NODE_V8_HEAP_SNAPSHOT=1
+
+  # ── Memory Sizing Guide ──
+  memory-sizing-guide: |
+    # Node.js Container Memory Sizing Guide
+    # ======================================
+    #
+    # Container memory limit allocation for Node.js:
+    # ┌──────────────────────────────┬──────────────────────┐
+    # │ Component                    │ Allocation           │
+    # ├──────────────────────────────┼──────────────────────┤
+    # │ V8 Heap (old + new space)    │ 70% of container     │
+    # │ V8 Code space                │ ~5% of heap          │
+    # │ V8 Map space                 │ ~2% of heap          │
+    # │ V8 Large object space        │ Variable             │
+    # │ libuv threadpool             │ UV_THREADPOOL_SIZE*  │
+    # │ Native addons / bindings     │ Variable             │
+    # │ Buffer pool                  │ ~128m                │
+    # │ C++ heap (non-V8)            │ ~10-15% of container │
+    # │ Stack (per thread)           │ ~8MB per thread      │
+    # │ Container overhead           │ ~32m                 │
+    # └──────────────────────────────┴──────────────────────┘
+    #
+    # Example: 1Gi container limit
+    #   V8 Heap (max-old-space-size) = 768m
+    #   New space = 16m
+    #   Code + Map space = ~50m
+    #   libuv + buffers = ~100m
+    #   C++ heap + stacks = ~100m
+    #   Container overhead = ~32m
+    #   Total ≈ 1.06Gi (slight over, V8 won't use all of max)
+    #
+    # CRITICAL: max-old-space-size controls the OLD generation only.
+    # Total V8 heap can exceed this by 10-20% due to new space and code space.
+    # Set max-old-space-size to ~70% of container limit to leave room.
+
+  # ── UV Threadpool Notes ──
+  uv-threadpool-notes: |
+    # UV Threadpool Sizing for Catalog Service
+    # =========================================
+    #
+    # Default UV_THREADPOOL_SIZE=4 is too low for a service with:
+    # - PostgreSQL queries via node-postgres (uses threadpool for DNS + TLS)
+    # - Meilisearch HTTP calls (DNS resolution)
+    # - File I/O for configuration
+    # - gRPC metadata exchange
+    #
+    # Set UV_THREADPOOL_SIZE=8 (2x default) for the catalog service.
+    # This prevents threadpool starvation where DNS lookups or TLS handshakes
+    # block I/O operations for other connections.
+    #
+    # Higher values (16+) increase memory usage (~8MB stack per thread)
+    # and can cause context switch overhead. 8 is optimal for a service
+    # with ~100 concurrent connections.
+    #
+    # Monitor: If you see latency spikes correlated with DNS resolution
+    # or TLS handshake events, increase this to 12 or 16.
+
+  # ── V8 GC Tuning Notes ──
+  v8-gc-notes: |
+    # V8 Garbage Collection Tuning for Production
+    # ============================================
+    #
+    # --max-old-space-size=768
+    #   Maximum old generation heap size. V8 will trigger GC more
+    #   aggressively as it approaches this limit. If the heap grows
+    #   beyond this, V8 enters "GC death spiral" where it spends
+    #   more time collecting than executing JavaScript.
+    #
+    # --max-semi-space-size=16
+    #   Size of each semi-space in the young generation (2 spaces).
+    #   Larger semi-spaces reduce scavenge frequency but increase
+    #   pause time. 16MB is good for services with moderate object
+    #   creation rates.
+    #
+    # --initial-old-space-size=256
+    #   Pre-allocate 256MB for old generation on startup. This
+    #   reduces GC pauses during warmup by avoiding incremental
+    #   heap expansion.
+    #
+    # --optimize-for-size=false
+    #   DO NOT enable this for latency-sensitive services. It
+    #   optimizes for memory at the expense of execution speed.
+    #
+    # Detecting GC pressure:
+    #   - Frequent "GC in old space requested" log entries
+    #   - nodejs_gc_duration_seconds increasing
+    #   - nodejs_gc_released_bytes decreasing over time
+    #   - Latency spikes correlating with GC events
+
+---
+# Python Tuning ConfigMap — For Analytics, Notification, RL Engine (Python)
+# ──────────────────────────────────────────────────────────────────────────
+# Key principles:
+# - MALLOC_ARENA_MAX=2 prevents glibc malloc fragmentation (THE #1 OOM cause)
+# - PYTHONHASHSEED=random for security (don't set to fixed value in production)
+# - PYTHONMALLOC=malloc for better memory tracking (debugging)
+# - Explicit GC thresholds prevent unbounded memory growth
+# - PYTHONUNBUFFERED=1 for real-time log output in containers
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: python-tuning-config
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    runtime: python
+    oom-protection: enabled
+data:
+  # ── Environment Variables ──
+  env-python: |
+    # ── CRITICAL: glibc malloc arena limit ──
+    # Prevents glibc from creating per-thread memory arenas that never
+    # return memory to the OS. This is THE #1 cause of apparent memory
+    # leaks in Python containers. Without this, each thread gets its own
+    # 64MB arena, and with 8 threads that's 512MB of "leaked" memory.
+    MALLOC_ARENA_MAX=2
+
+    # ── Python memory allocator ──
+    # Use Python's internal malloc (pymalloc) for small allocations.
+    # For debugging memory leaks, set PYTHONMALLOC=malloc to use
+    # system malloc with tracemalloc support.
+    # PYTHONMALLOC=pymalloc
+
+    # ── Garbage collection ──
+    # Python GC thresholds control when cyclic GC runs.
+    # Default (700, 10, 10) is aggressive for containerized services.
+    # We use (1000, 15, 15) to reduce GC frequency while still
+    # collecting cyclic references. For analytics with large objects,
+    # consider (2000, 20, 20) to reduce pauses.
+    PYTHON_GC_THRESHOLDS="1000,15,15"
+
+    # ── Hash randomization (SECURITY) ──
+    # Random hash seed prevents hash collision DoS attacks.
+    # DO NOT set to a fixed value in production.
+    PYTHONHASHSEED=random
+
+    # ── Unbuffered I/O ──
+    # Ensures stdout/stderr are flushed immediately.
+    # Critical for container log collection and health checks.
+    PYTHONUNBUFFERED=1
+
+    # ── Bytecode optimization ──
+    # -O removes assert statements and __debug__ code
+    # -OO also removes docstrings (further memory reduction)
+    PYTHONOPTIMIZE=1
+
+    # ── UTF-8 mode ──
+    # Forces UTF-8 I/O encoding. Prevents encoding errors in
+    # multi-language data processing.
+    PYTHONUTF8=1
+
+    # ── Don't write .pyc files ──
+    # Reduces filesystem writes in containers with read-only root FS.
+    PYTHONDONTWRITEBYTECODE=1
+
+    # ── Warning filters ──
+    # Suppress deprecation warnings in production logs.
+    PYTHONWARNINGS=ignore::DeprecationWarning
+
+  # ── Memory Sizing Guide ──
+  memory-sizing-guide: |
+    # Python Container Memory Sizing Guide
+    # =====================================
+    #
+    # Container memory limit allocation for Python:
+    # ┌──────────────────────────────┬──────────────────────┐
+    # │ Component                    │ Allocation           │
+    # ├──────────────────────────────┼──────────────────────┤
+    # │ Python object heap           │ 40-50% of container  │
+    # │ glibc malloc arenas          │ 10-20% (2 arenas)    │
+    # │ numpy/pandas buffers         │ 15-25% (if used)     │
+    # │ Thread stacks                │ ~8MB per thread      │
+    # │ Shared libraries (.so)       │ 50-200m              │
+    # │ Buffer cache / I/O           │ ~64m                 │
+    # │ Container overhead           │ ~32m                 │
+    # │ Headroom (anti-OOM)          │ 10-15%               │
+    # └──────────────────────────────┴──────────────────────┘
+    #
+    # Example: 4Gi container limit (analytics)
+    #   Python objects = 1.6Gi
+    #   glibc arenas (MALLOC_ARENA_MAX=2) = 128m
+    #   numpy/pandas buffers = 1Gi
+    #   Thread stacks (4 threads) = 32m
+    #   Shared libraries = 150m
+    #   Buffer cache = 64m
+    #   Container overhead = 32m
+    #   Headroom = ~800m
+    #   Total ≈ 3.8Gi (safe margin)
+    #
+    # CRITICAL: MALLOC_ARENA_MAX=2
+    # Without this, Python with glibc creates one 64MB arena per thread.
+    # A service with 8 threads = 512MB of permanently "leaked" memory
+    # that is never returned to the OS. With MALLOC_ARENA_MAX=2, only
+    # 128MB is used for arenas, and memory is better shared.
+
+  # ── GC Tuning Notes ──
+  gc-tuning-notes: |
+    # Python GC Tuning for Containerized Services
+    # ============================================
+    #
+    # Python uses reference counting for immediate deallocation and
+    # a cyclic GC for detecting reference cycles. The cyclic GC is
+    # controlled by thresholds (threshold0, threshold1, threshold2).
+    #
+    # Default: (700, 10, 10)
+    #   - GC runs when allocations exceed 700 * threshold1 multiplier
+    #   - Generation 0: every 700 allocations
+    #   - Generation 1: every 7000 allocations
+    #   - Generation 2: every 70000 allocations
+    #
+    # Our setting: (1000, 15, 15)
+    #   - Less frequent GC, reducing CPU overhead
+    #   - Slightly more memory used before collection
+    #   - Better for services with high allocation rates
+    #
+    # For analytics service with large dataframes:
+    #   Consider (2000, 20, 20) to reduce GC pauses during queries
+    #
+    # For notification service with many small objects:
+    #   Keep (1000, 15, 15) for timely cycle collection
+    #
+    # Emergency: If memory is growing unbounded:
+    #   1. Add gc.collect() after processing large objects
+    #   2. Reduce thresholds to (500, 10, 10)
+    #   3. Use tracemalloc to identify the leak:
+    #      import tracemalloc; tracemalloc.start()
+
+  # ── malloc Alternative Recommendations ──
+  malloc-recommendations: |
+    # Alternative Memory Allocators for Python
+    # =========================================
+    #
+    # If MALLOC_ARENA_MAX=2 doesn't sufficiently reduce fragmentation,
+    # consider replacing glibc malloc entirely:
+    #
+    # 1. jemalloc (RECOMMENDED for Python services)
+    #    - Better fragmentation resistance
+    #    - Active development and production-tested
+    #    - Install: apt-get install libjemalloc2
+    #    - Enable: LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
+    #    - Typically reduces memory usage by 20-40%
+    #
+    # 2. tcmalloc (from Google)
+    #    - Good for multi-threaded applications
+    #    - Install: apt-get install libtcmalloc-minimal4
+    #    - Enable: LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4
+    #
+    # 3. Python pymalloc only (PYTHONMALLOC=pymalloc)
+    #    - Uses Python's internal allocator for objects <512 bytes
+    #    - Falls back to system malloc for larger allocations
+    #    - Already the default in CPython 3.x
+    #
+    # To test which allocator works best:
+    #   1. Run load test with default glibc malloc
+    #   2. Run same test with MALLOC_ARENA_MAX=2
+    #   3. Run same test with jemalloc
+    #   4. Compare RSS and container_memory_working_set_bytes
+
+  # ── Service-Specific Overrides ──
+  analytics-overrides: |
+    # Analytics Service Memory Overrides
+    # ===================================
+    MALLOC_ARENA_MAX=2
+    PYTHON_GC_THRESHOLDS="2000,20,20"
+    # Analytics processes large datasets - allow more GC breathing room
+    # Consider LD_PRELOAD=libjemalloc.so.2 for this service
+
+  notification-overrides: |
+    # Notification Service Memory Overrides
+    # ======================================
+    MALLOC_ARENA_MAX=2
+    PYTHON_GC_THRESHOLDS="1000,15,15"
+    # Template rendering creates many small strings - keep GC active
+    # Watch for template cache growing unbounded
+
+  rl-engine-overrides: |
+    # RL Engine Service Memory Overrides
+    # ====================================
+    MALLOC_ARENA_MAX=2
+    PYTHON_GC_THRESHOLDS="1500,15,15"
+    # Model inference allocates large numpy arrays - tune for fewer GC pauses
+    # Consider numpy.setbufsize() for large array allocations
+    # Watch for knowledge base growth: set max_size in application config
+
+---
+# ══════════════════════════════════════════════════════════════════════
+# SECTION 4: OOM-Aware LimitRange
+# ══════════════════════════════════════════════════════════════════════
+# Overrides the base LimitRange from resource-quotas.yaml with runtime-aware
+# defaults that account for JVM headroom, V8 overhead, and Python fragmentation.
+#
+# Key changes from base LimitRange:
+# - Default memory request raised from 128Mi → 256Mi (minimum for any runtime)
+# - Default memory limit raised from 512Mi → 1Gi (JVM/Node.js need more headroom)
+# - Minimum memory raised from 64Mi → 128Mi (no runtime works below 128Mi)
+# - Memory limit/request ratio tightened from 8 → 6 (prevent extreme overcommit)
+# - Added explicit documentation for runtime-specific minimums
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: oom-aware-limits
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    environment: production
+    oom-protection: enabled
+  annotations:
+    # Document runtime-specific minimum memory requirements
+    runtime-minimums: |
+      Minimum memory for production workloads:
+      - Go (gateway, schema-registry): 128Mi minimum, 256Mi recommended
+      - Rust (identity): 128Mi minimum, 256Mi recommended
+      - Node.js (catalog): 256Mi minimum, 512Mi recommended (V8 overhead)
+      - Kotlin/JVM (order): 512Mi minimum, 768Mi recommended (JVM overhead)
+      - Kotlin/JVM (payment): 256Mi minimum, 512Mi recommended
+      - Python (analytics): 512Mi minimum, 1Gi recommended (numpy/pandas)
+      - Python (notification): 256Mi minimum, 384Mi recommended
+      - Python (rl-engine): 256Mi minimum, 512Mi recommended (ML libs)
+spec:
+  limits:
+    # ── Container Limits ──
+    # These defaults apply when a container doesn't specify its own resources.
+    # The raised defaults prevent OOM kills for containers that forget to
+    # set resources, which would otherwise get the old 128Mi/512Mi defaults.
+    - type: Container
+      default:
+        # Default limit (applied when limit not specified)
+        # Raised to 1Gi from 512Mi — JVM and Node.js need this minimum
+        cpu: "1"
+        memory: 1Gi
+      defaultRequest:
+        # Default request (applied when request not specified)
+        # Raised to 256Mi from 128Mi — any runtime needs at least this
+        cpu: 200m
+        memory: 256Mi
+      max:
+        # Maximum allowed limit per container
+        cpu: "4"
+        memory: 8Gi
+      min:
+        # Minimum allowed request per container
+        # Raised to 128Mi from 64Mi — nothing works below 128Mi in production
+        cpu: 50m
+        memory: 128Mi
+      maxLimitRequestRatio:
+        # Maximum ratio of limit to request
+        # Tightened from 8 to 6 for memory — prevents extreme overcommit
+        # that leads to OOM kills when multiple pods hit limits simultaneously
+        cpu: "10"
+        memory: "6"
+
+    # ── Pod Limits ──
+    - type: Pod
+      max:
+        cpu: "8"
+        memory: 16Gi
+
+    # ── PVC Storage Limits ──
+    - type: PersistentVolumeClaim
+      max:
+        storage: 100Gi
+      min:
+        storage: 1Gi

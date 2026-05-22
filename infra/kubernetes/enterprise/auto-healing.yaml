@@ -1,0 +1,1458 @@
+# =============================================================================
+# Auto-Healing Infrastructure — Polyglot Microservices Platform
+# =============================================================================
+# This file defines a comprehensive auto-healing system that goes BEYOND
+# ArgoCD's built-in selfHeal. It provides:
+#   1. Remediation policies ConfigMap (event-driven healing actions)
+#   2. Health probe configurations ConfigMap (per-service probe tuning)
+#   3. ArgoCD self-heal enhancement ConfigMap (extended sync/health rules)
+#   4. Remediation controller RBAC (ServiceAccount, ClusterRole, Binding)
+#
+# Services: gateway, identity, catalog, order, payment, notification,
+#           analytics, rl-engine, schema-registry
+# Namespace: production
+# Identity: SPIFFE/SPIRE | Observability: OpenTelemetry
+# =============================================================================
+
+---
+# =============================================================================
+# 1. REMEDIATION POLICIES CONFIGMAP
+# =============================================================================
+# Structured remediation policies consumed by the auto-healing controller.
+# Each policy defines a trigger condition, a sequence of remediation actions,
+# cooldown period, and max retry budget to prevent flapping.
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auto-healing-policies
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/component: auto-healing
+data:
+  policies.yaml: |
+    # ---------------------------------------------------------------------------
+    # Global remediation settings
+    # ---------------------------------------------------------------------------
+    global:
+      # Default notification channel when not overridden per-policy
+      default_notify_channel: slack
+      # Maximum concurrent remediations across all policies
+      max_concurrent_remediations: 5
+      # Global cooldown between ANY remediation on the same object
+      global_cooldown: 60s
+      # Enable/disable dry-run mode (logs actions without executing)
+      dry_run: false
+      # OTel trace propagation — every remediation emits a span
+      tracing:
+        enabled: true
+        service_name: auto-healing-controller
+        endpoint: otel-collector.production.svc.cluster.local:4317
+      # Audit log — all remediation actions recorded
+      audit:
+        enabled: true
+        backend: kafka
+        topic: platform.remediation.audit
+        # SPIFFE identity the controller uses when producing audit events
+        spiffe_id: spiffe://polyglot.platform/auto-healing/controller
+
+    # ---------------------------------------------------------------------------
+    # Policy: CrashLoopBackoff Recovery
+    # ---------------------------------------------------------------------------
+    # Triggered when a pod enters CrashLoopBackOff due to application errors,
+    # misconfiguration, or dependency failures. After N restarts, the controller
+    # annotates, performs a rolling restart, and notifies.
+    # ---------------------------------------------------------------------------
+    policies:
+      - name: crash-loop-backoff
+        description: >
+          Recover pods stuck in CrashLoopBackOff by annotating the deployment
+          and triggering a rolling restart after sustained restart failures.
+        trigger:
+          alert: PodCrashLooping
+          promql: >
+            rate(kube_pod_container_status_restarts_total[10m]) > 0.5
+            and kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"} == 1
+          condition: restart_count > 5 in 10m
+        actions:
+          - type: annotate
+            key: remediation/reason
+            value: crash-loop-detected
+          - type: annotate
+            key: remediation/restarted-at
+            value: "{{ .Timestamp }}"
+          - type: restart
+            strategy: rolling
+            # Respect PDB — maxUnavailable must not be violated
+            respect_pdb: true
+          - type: notify
+            channel: slack
+            severity: warning
+            message: >
+              :warning: Pod {{ .PodName }} in {{ .Namespace }} hit CrashLoopBackOff.
+              Rolling restart initiated for deployment {{ .DeploymentName }}.
+        cooldown: 300s
+        max_retries: 3
+        # Service-specific overrides
+        overrides:
+          - selector:
+              app.kubernetes.io/name: order
+            trigger:
+              condition: restart_count > 3 in 10m
+            cooldown: 180s
+          - selector:
+              app.kubernetes.io/name: payment
+            trigger:
+              condition: restart_count > 2 in 5m
+            cooldown: 120s
+            max_retries: 2
+
+      # -------------------------------------------------------------------------
+      # Policy: OOM Recovery
+      # -------------------------------------------------------------------------
+      # Triggered when a pod is OOMKilled. Increases resource recommendation
+      # via VPA, replaces the pod, and escalates as critical.
+      # -------------------------------------------------------------------------
+      - name: oom-recovery
+        description: >
+          Recover from OOMKilled events by recommending a VPA memory increase,
+          replacing the killed pod, and alerting the on-call team.
+        trigger:
+          alert: OOMKilled
+          promql: >
+            kube_pod_container_status_terminated_reason{reason="OOMKilled"} == 1
+          condition: last_terminated_reason == OOMKilled
+        actions:
+          - type: annotate
+            key: remediation/reason
+            value: oom-detected
+          - type: annotate
+            key: remediation/oom-memory-limit
+            value: "{{ .ContainerMemoryLimit }}"
+          - type: vpa-recommend
+            increase_percent: 25
+            # Cap increase to prevent unbounded growth
+            max_memory_limit: 8Gi
+          - type: restart
+            strategy: replace
+            respect_pdb: true
+          - type: notify
+            channel: slack
+            severity: critical
+            message: >
+              :rotating_light: Pod {{ .PodName }} OOMKilled in {{ .Namespace }}.
+              VPA recommendation: increase memory by 25%. Pod replaced.
+        cooldown: 60s
+        max_retries: 2
+        overrides:
+          - selector:
+              app.kubernetes.io/name: analytics
+            actions:
+              - type: annotate
+                key: remediation/reason
+                value: oom-detected
+              - type: vpa-recommend
+                increase_percent: 50
+                max_memory_limit: 16Gi
+              - type: restart
+                strategy: replace
+                respect_pdb: true
+              - type: notify
+                channel: slack
+                severity: critical
+          - selector:
+              app.kubernetes.io/name: order
+            actions:
+              - type: annotate
+                key: remediation/reason
+                value: oom-detected
+              - type: vpa-recommend
+                increase_percent: 30
+                max_memory_limit: 8Gi
+              - type: restart
+                strategy: replace
+                respect_pdb: true
+              - type: notify
+                channel: slack
+                severity: critical
+
+      # -------------------------------------------------------------------------
+      # Policy: Circuit Breaker Open
+      # -------------------------------------------------------------------------
+      # Triggered when the payment service's circuit breaker transitions to OPEN.
+      # Scales up the downstream dependency and notifies.
+      # -------------------------------------------------------------------------
+      - name: circuit-breaker-open
+        description: >
+          When a circuit breaker opens, scale up the downstream dependency
+          to increase availability and allow faster recovery when the circuit
+          transitions to half-open.
+        trigger:
+          alert: CircuitBreakerOpen
+          promql: >
+            circuit_breaker_state{state="open"} == 1
+            and on(service) rate(circuit_breaker_state_changes_total[2m]) > 0
+          condition: state == open for 2m
+        actions:
+          - type: annotate
+            key: remediation/reason
+            value: circuit-breaker-open
+          - type: annotate
+            key: remediation/circuit-breaker-service
+            value: "{{ .ServiceName }}"
+          - type: scale-up
+            target: downstream-service
+            replicas: +1
+            # Respect HPA max — do not exceed HPA maxReplicas
+            respect_hpa_max: true
+          - type: notify
+            channel: slack
+            severity: warning
+            message: >
+              :zap: Circuit breaker OPEN on {{ .ServiceName }}.
+              Scaling downstream {{ .DownstreamService }} by +1 replica.
+        cooldown: 120s
+        max_retries: 2
+        overrides:
+          - selector:
+              app.kubernetes.io/name: payment
+            actions:
+              - type: annotate
+                key: remediation/reason
+                value: circuit-breaker-open
+              - type: scale-up
+                target: payment
+                replicas: +2
+                respect_hpa_max: true
+              - type: notify
+                channel: slack
+                severity: critical
+                message: >
+                  :rotating_light: Payment circuit breaker OPEN.
+                  Scaling payment +2 replicas. Downstream: external gateway.
+
+      # -------------------------------------------------------------------------
+      # Policy: SPIFFE/SPIRE SVID Expiry
+      # -------------------------------------------------------------------------
+      # Triggered when a workload SVID is approaching expiry. Forces rotation
+      # via the SPIRE agent and restarts the affected pod.
+      # -------------------------------------------------------------------------
+      - name: spire-svid-expiry
+        description: >
+          Force SVID rotation when a workload certificate is within 24h of
+          expiry. Restarts the spire-agent on the node and rolling-restarts
+          the affected pod to pick up the fresh SVID.
+        trigger:
+          alert: CertificateExpiry
+          promql: >
+            spire_svid_ttl_seconds < 86400
+          condition: svid_ttl < 24h
+        actions:
+          - type: annotate
+            key: remediation/reason
+            value: svid-expiry-imminent
+          - type: annotate
+            key: remediation/spiffe-id
+            value: "{{ .SpiffeID }}"
+          - type: force-rotation
+            target: spire-agent
+            # Signal the spire-agent on the affected node to rotate
+            method: api
+            endpoint: "http://spire-agent.production.svc.cluster.local:8081/rotate"
+          - type: restart
+            target: affected-pod
+            strategy: rolling
+            respect_pdb: true
+          - type: notify
+            channel: slack
+            severity: critical
+            message: >
+              :lock: SVID expiry imminent for {{ .SpiffeID }}.
+              Forced rotation triggered. Pod {{ .PodName }} restarting.
+        cooldown: 300s
+        max_retries: 2
+
+      # -------------------------------------------------------------------------
+      # Policy: Kafka Consumer Lag
+      # -------------------------------------------------------------------------
+      # Triggered when consumer group lag exceeds threshold. Scales up the
+      # consumer service and auto-scales back down after the lag is resolved.
+      # -------------------------------------------------------------------------
+      - name: kafka-consumer-lag
+        description: >
+          Scale up consumer instances when Kafka consumer group lag exceeds
+          the threshold. Automatically scales back down after lag is consumed.
+        trigger:
+          alert: KafkaConsumerLag
+          promql: >
+            kafka_consumer_group_lag > 1000
+            and on(group) rate(kafka_consumer_group_lag[5m]) > 0
+          condition: lag > 1000 for 5m
+        actions:
+          - type: annotate
+            key: remediation/reason
+            value: kafka-consumer-lag
+          - type: annotate
+            key: remediation/consumer-group
+            value: "{{ .ConsumerGroup }}"
+          - type: annotate
+            key: remediation/current-lag
+            value: "{{ .CurrentLag }}"
+          - type: scale-up
+            target: consumer-service
+            replicas: +2
+            respect_hpa_max: true
+          - type: notify
+            channel: slack
+            severity: warning
+            message: >
+              :chart_with_upwards_trend: Kafka consumer lag {{ .CurrentLag }}
+              on group {{ .ConsumerGroup }}. Scaling +2 replicas.
+        cooldown: 300s
+        max_retries: 2
+        auto_scale_down: true
+        scale_down_after: 600s
+        scale_down_by: 2
+        overrides:
+          - selector:
+              app.kubernetes.io/name: notification
+            trigger:
+              condition: lag > 500 for 3m
+            actions:
+              - type: scale-up
+                target: notification
+                replicas: +1
+                respect_hpa_max: true
+              - type: notify
+                channel: slack
+                severity: warning
+          - selector:
+              app.kubernetes.io/name: analytics
+            trigger:
+              condition: lag > 2000 for 5m
+            actions:
+              - type: scale-up
+                target: analytics
+                replicas: +3
+                respect_hpa_max: true
+              - type: notify
+                channel: slack
+                severity: warning
+
+      # -------------------------------------------------------------------------
+      # Policy: Disk Pressure
+      # -------------------------------------------------------------------------
+      # Triggered when node or PVC disk usage exceeds threshold. Rotates logs,
+      # expands PVCs, and notifies.
+      # -------------------------------------------------------------------------
+      - name: disk-pressure
+        description: >
+          Mitigate disk pressure by rotating application logs and expanding
+          PVCs when usage exceeds 80%. Escalates to critical at 90%.
+        trigger:
+          alert: DiskUsageHigh
+          promql: >
+            kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes > 0.80
+          condition: usage > 80%
+        actions:
+          - type: annotate
+            key: remediation/reason
+            value: disk-pressure
+          - type: annotate
+            key: remediation/disk-usage-percent
+            value: "{{ .DiskUsagePercent }}"
+          - type: log-rotation
+            # Trigger log rotation on the affected node
+            method: signal
+            signal: SIGUSR1
+          - type: pvc-expand
+            increase_percent: 50
+            # Maximum PVC size cap
+            max_size: 100Gi
+          - type: notify
+            channel: slack
+            severity: warning
+            message: >
+              :floppy_disk: Disk usage {{ .DiskUsagePercent }}% on PVC {{ .PVCName }}.
+              Log rotation triggered. PVC expansion +50% initiated.
+        cooldown: 1800s
+        max_retries: 1
+        overrides:
+          - selector:
+              app.kubernetes.io/name: analytics
+            trigger:
+              condition: usage > 70%
+            actions:
+              - type: log-rotation
+              - type: pvc-expand
+                increase_percent: 100
+                max_size: 500Gi
+              - type: notify
+                channel: slack
+                severity: critical
+
+      # -------------------------------------------------------------------------
+      # Policy: High Error Rate
+      # -------------------------------------------------------------------------
+      # Triggered when a service's 5xx error rate exceeds threshold. Rolls
+      # back to the last known good deployment via canary rollback.
+      # -------------------------------------------------------------------------
+      - name: high-error-rate
+        description: >
+          Roll back the last deployment when error rate spikes above 5%.
+          Uses canary rollback strategy to shift traffic back to the stable
+          revision. This is a high-severity, low-retry policy.
+        trigger:
+          alert: HighErrorRate
+          promql: >
+            sum(rate(http_server_requests_seconds_count{status_code=~"5.."}[5m]))
+            by (service)
+            /
+            sum(rate(http_server_requests_seconds_count[5m]))
+            by (service) > 0.05
+          condition: error_rate > 5% for 5m
+        actions:
+          - type: annotate
+            key: remediation/reason
+            value: high-error-rate
+          - type: annotate
+            key: remediation/error-rate
+            value: "{{ .ErrorRate }}"
+          - type: traffic-shift
+            strategy: canary-rollback
+            # Rollback to the previous stable revision
+            target_revision: previous
+          - type: notify
+            channel: slack
+            severity: critical
+            message: >
+              :rotating_light: Error rate {{ .ErrorRate }}% on {{ .ServiceName }}.
+              Canary rollback initiated to previous stable revision.
+        cooldown: 600s
+        max_retries: 1
+        overrides:
+          - selector:
+              app.kubernetes.io/name: payment
+            trigger:
+              condition: error_rate > 2% for 3m
+            cooldown: 300s
+          - selector:
+              app.kubernetes.io/name: gateway
+            trigger:
+              condition: error_rate > 3% for 3m
+            cooldown: 300s
+
+      # -------------------------------------------------------------------------
+      # Policy: Deployment Health Degraded
+      # -------------------------------------------------------------------------
+      # Triggered when ArgoCD reports an application as Degraded. Rolls back
+      # to the last known good sync.
+      # -------------------------------------------------------------------------
+      - name: deployment-health-degraded
+        description: >
+          Roll back to the last known good deployment when ArgoCD reports
+          the application health as Degraded. Critical escalation path.
+        trigger:
+          alert: ArgoCDAppDegraded
+          promql: >
+            argocd_app_info{health_status="Degraded"} == 1
+          condition: argocd_app_health == Degraded
+        actions:
+          - type: annotate
+            key: remediation/reason
+            value: argocd-health-degraded
+          - type: annotate
+            key: remediation/previous-revision
+            value: "{{ .PreviousRevision }}"
+          - type: rollback
+            strategy: last-known-good
+            # Uses ArgoCD's revision history to find the last healthy sync
+            source: argocd-revision-history
+          - type: notify
+            channel: slack
+            severity: critical
+            message: >
+              :rotating_light: ArgoCD app {{ .AppName }} DEGRADED.
+              Rolling back to revision {{ .PreviousRevision }}.
+        cooldown: 300s
+        max_retries: 1
+
+      # -------------------------------------------------------------------------
+      # Policy: ImagePullBackOff
+      # -------------------------------------------------------------------------
+      # Triggered when a pod cannot pull its container image. Annotates and
+      # notifies — does NOT auto-restart as this is likely a registry issue.
+      # -------------------------------------------------------------------------
+      - name: image-pull-backoff
+        description: >
+          Detect ImagePullBackOff and notify. No automatic restart — the
+          root cause is typically a missing image tag or registry outage
+          which requires manual intervention.
+        trigger:
+          alert: ImagePullBackOff
+          promql: >
+            kube_pod_container_status_waiting_reason{reason="ImagePullBackOff"} == 1
+          condition: waiting_reason == ImagePullBackOff for 5m
+        actions:
+          - type: annotate
+            key: remediation/reason
+            value: image-pull-backoff
+          - type: annotate
+            key: remediation/image
+            value: "{{ .ContainerImage }}"
+          - type: notify
+            channel: slack
+            severity: critical
+            message: >
+              :x: ImagePullBackOff for {{ .ContainerImage }} on pod {{ .PodName }}.
+              Manual intervention required — check registry and image tag.
+        cooldown: 600s
+        max_retries: 0
+
+      # -------------------------------------------------------------------------
+      # Policy: Node NotReady
+      # -------------------------------------------------------------------------
+      # Triggered when a node transitions to NotReady. Annotates affected pods
+      # and notifies. Kubernetes handles pod rescheduling via PDBs.
+      # -------------------------------------------------------------------------
+      - name: node-not-ready
+        description: >
+          Detect when a node becomes NotReady and annotate all affected
+          pods. Relies on existing PDBs and kube-controller-manager for
+          pod eviction and rescheduling.
+        trigger:
+          alert: NodeNotReady
+          promql: >
+            kube_node_status_condition{condition="Ready",status="unknown"} == 1
+            or kube_node_status_condition{condition="Ready",status="false"} == 1
+          condition: node_ready == false for 3m
+        actions:
+          - type: annotate
+            key: remediation/reason
+            value: node-not-ready
+          - type: annotate
+            key: remediation/affected-node
+            value: "{{ .NodeName }}"
+          - type: notify
+            channel: slack
+            severity: critical
+            message: >
+              :server: Node {{ .NodeName }} is NotReady.
+              Affected pods will be rescheduled per PDB constraints.
+        cooldown: 120s
+        max_retries: 0
+
+      # -------------------------------------------------------------------------
+      # Policy: Pod Stuck in Pending
+      # -------------------------------------------------------------------------
+      # Triggered when a pod stays in Pending state, typically due to
+      # insufficient resources or PVC binding issues.
+      # -------------------------------------------------------------------------
+      - name: pod-pending
+        description: >
+          Detect pods stuck in Pending state for extended periods. Annotates
+          the pod and notifies for manual investigation — the root cause
+          may be resource exhaustion, PVC unavailability, or scheduling
+          constraints.
+        trigger:
+          alert: PodPending
+          promql: >
+            kube_pod_status_phase{phase="Pending"} == 1
+          condition: phase == Pending for 10m
+        actions:
+          - type: annotate
+            key: remediation/reason
+            value: pod-stuck-pending
+          - type: annotate
+            key: remediation/pending-reason
+            value: "{{ .PendingReason }}"
+          - type: notify
+            channel: slack
+            severity: warning
+            message: >
+              :hourglass: Pod {{ .PodName }} stuck in Pending for 10m.
+              Reason: {{ .PendingReason }}. Check resource quotas and PVCs.
+        cooldown: 600s
+        max_retries: 0
+
+---
+# =============================================================================
+# 2. HEALTH PROBE CONFIGURATIONS CONFIGMAP
+# =============================================================================
+# Per-service probe tuning based on language runtime characteristics:
+#   - Go services: fast startup, short probes
+#   - JVM/Kotlin services: slow JIT warmup, long startup probes
+#   - Node.js/TypeScript: moderate startup
+#   - Python: moderate startup, longer health check timeouts
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: health-probe-configs
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/component: auto-healing
+data:
+  probes.yaml: |
+    # ---------------------------------------------------------------------------
+    # Global probe defaults
+    # ---------------------------------------------------------------------------
+    defaults:
+      liveness:
+        http_get: &default-health-path
+          path: /healthz
+          port: 9090
+          scheme: HTTP
+        initial_delay_seconds: 10
+        period_seconds: 15
+        timeout_seconds: 5
+        success_threshold: 1
+        failure_threshold: 3
+      readiness:
+        http_get:
+          <<: *default-health-path
+        initial_delay_seconds: 5
+        period_seconds: 10
+        timeout_seconds: 3
+        success_threshold: 1
+        failure_threshold: 3
+      startup:
+        http_get:
+          <<: *default-health-path
+        initial_delay_seconds: 0
+        period_seconds: 5
+        timeout_seconds: 3
+        success_threshold: 1
+        failure_threshold: 30
+
+    # ---------------------------------------------------------------------------
+    # Per-service probe configurations
+    # ---------------------------------------------------------------------------
+    services:
+      # =========================================================================
+      # GATEWAY — Go (fast startup, latency-sensitive)
+      # =========================================================================
+      gateway:
+        runtime: go
+        startup_probe:
+          http_get:
+            path: /healthz
+            port: 8080
+          initial_delay_seconds: 0
+          period_seconds: 5
+          timeout_seconds: 3
+          failure_threshold: 12    # 60s max startup
+        liveness_probe:
+          http_get:
+            path: /healthz
+            port: 8080
+          initial_delay_seconds: 5
+          period_seconds: 10
+          timeout_seconds: 3
+          failure_threshold: 3     # Kill after 30s of failures
+        readiness_probe:
+          http_get:
+            path: /readyz
+            port: 8080
+          initial_delay_seconds: 3
+          period_seconds: 5
+          timeout_seconds: 2
+          failure_threshold: 3     # Remove from LB after 15s of failures
+          success_threshold: 1     # Back in LB on first success
+
+      # =========================================================================
+      # IDENTITY — Rust (moderate startup, crypto initialization)
+      # =========================================================================
+      identity:
+        runtime: rust
+        startup_probe:
+          http_get:
+            path: /health
+            port: 8080
+          initial_delay_seconds: 0
+          period_seconds: 5
+          timeout_seconds: 3
+          failure_threshold: 18    # 90s max startup (crypto init)
+        liveness_probe:
+          http_get:
+            path: /health
+            port: 8080
+          initial_delay_seconds: 10
+          period_seconds: 15
+          timeout_seconds: 5
+          failure_threshold: 3     # Kill after 45s of failures
+        readiness_probe:
+          http_get:
+            path: /ready
+            port: 8080
+          initial_delay_seconds: 5
+          period_seconds: 10
+          timeout_seconds: 3
+          failure_threshold: 3     # Remove from LB after 30s
+          success_threshold: 1
+
+      # =========================================================================
+      # CATALOG — TypeScript/Node.js (fast startup, search warmup)
+      # =========================================================================
+      catalog:
+        runtime: nodejs
+        startup_probe:
+          http_get:
+            path: /health
+            port: 3000
+          initial_delay_seconds: 0
+          period_seconds: 5
+          timeout_seconds: 3
+          failure_threshold: 12    # 60s max startup
+        liveness_probe:
+          http_get:
+            path: /health
+            port: 3000
+          initial_delay_seconds: 5
+          period_seconds: 10
+          timeout_seconds: 3
+          failure_threshold: 3
+        readiness_probe:
+          http_get:
+            path: /ready
+            port: 3000
+          initial_delay_seconds: 3
+          period_seconds: 5
+          timeout_seconds: 2
+          failure_threshold: 3
+          success_threshold: 1
+
+      # =========================================================================
+      # ORDER — Kotlin/JVM (SLOW startup — JIT, classloading, GraalVM warmup)
+      # =========================================================================
+      order:
+        runtime: jvm
+        startup_probe:
+          http_get:
+            path: /health
+            port: 8084
+          initial_delay_seconds: 0
+          period_seconds: 5
+          timeout_seconds: 5
+          failure_threshold: 60    # 300s / 5min max startup — JVM is SLOW
+        liveness_probe:
+          http_get:
+            path: /health
+            port: 8084
+          initial_delay_seconds: 0   # Startup probe covers initial delay
+          period_seconds: 15
+          timeout_seconds: 5
+          failure_threshold: 3     # Kill after 45s of failures
+        readiness_probe:
+          http_get:
+            path: /ready
+            port: 8084
+          initial_delay_seconds: 0   # Startup probe covers initial delay
+          period_seconds: 10
+          timeout_seconds: 3
+          failure_threshold: 3     # Remove from LB after 30s
+          success_threshold: 1
+
+      # =========================================================================
+      # PAYMENT — Go (fast startup, critical path)
+      # =========================================================================
+      payment:
+        runtime: go
+        startup_probe:
+          http_get:
+            path: /healthz
+            port: 9091
+          initial_delay_seconds: 0
+          period_seconds: 5
+          timeout_seconds: 3
+          failure_threshold: 12    # 60s max startup
+        liveness_probe:
+          http_get:
+            path: /healthz
+            port: 9091
+          initial_delay_seconds: 5
+          period_seconds: 10
+          timeout_seconds: 3
+          failure_threshold: 3     # Kill after 30s — payment is critical
+        readiness_probe:
+          http_get:
+            path: /readyz
+            port: 9091
+          initial_delay_seconds: 3
+          period_seconds: 5
+          timeout_seconds: 2
+          failure_threshold: 2     # Remove from LB after 10s — tighter for payment
+          success_threshold: 1
+
+      # =========================================================================
+      # NOTIFICATION — Kotlin/JVM (moderate startup, async worker)
+      # =========================================================================
+      notification:
+        runtime: jvm
+        startup_probe:
+          http_get:
+            path: /health
+            port: 8086
+          initial_delay_seconds: 0
+          period_seconds: 5
+          timeout_seconds: 5
+          failure_threshold: 48    # 240s / 4min max startup
+        liveness_probe:
+          http_get:
+            path: /health
+            port: 8086
+          initial_delay_seconds: 0
+          period_seconds: 15
+          timeout_seconds: 5
+          failure_threshold: 3
+        readiness_probe:
+          http_get:
+            path: /ready
+            port: 8086
+          initial_delay_seconds: 0
+          period_seconds: 10
+          timeout_seconds: 3
+          failure_threshold: 3
+          success_threshold: 1
+
+      # =========================================================================
+      # ANALYTICS — Python (moderate startup, data pipeline init)
+      # =========================================================================
+      analytics:
+        runtime: python
+        startup_probe:
+          http_get:
+            path: /health
+            port: 8087
+          initial_delay_seconds: 0
+          period_seconds: 5
+          timeout_seconds: 5
+          failure_threshold: 24    # 120s max startup (Python + gRPC)
+        liveness_probe:
+          http_get:
+            path: /health
+            port: 8087
+          initial_delay_seconds: 10
+          period_seconds: 15
+          timeout_seconds: 5
+          failure_threshold: 3
+        readiness_probe:
+          http_get:
+            path: /ready
+            port: 8087
+          initial_delay_seconds: 5
+          period_seconds: 10
+          timeout_seconds: 3
+          failure_threshold: 3
+          success_threshold: 1
+
+      # =========================================================================
+      # RL-ENGINE — Python (compute-heavy, model loading)
+      # =========================================================================
+      rl-engine:
+        runtime: python
+        startup_probe:
+          http_get:
+            path: /healthz
+            port: 8088
+          initial_delay_seconds: 0
+          period_seconds: 5
+          timeout_seconds: 5
+          failure_threshold: 36    # 180s / 3min max startup (model loading)
+        liveness_probe:
+          http_get:
+            path: /healthz
+            port: 8088
+          initial_delay_seconds: 10
+          period_seconds: 20
+          timeout_seconds: 5
+          failure_threshold: 3     # Kill after 60s — model evaluation may be slow
+        readiness_probe:
+          http_get:
+            path: /readyz
+            port: 8088
+          initial_delay_seconds: 5
+          period_seconds: 10
+          timeout_seconds: 3
+          failure_threshold: 3
+          success_threshold: 1
+
+      # =========================================================================
+      # SCHEMA-REGISTRY — Go (fast startup, lightweight service)
+      # =========================================================================
+      schema-registry:
+        runtime: go
+        startup_probe:
+          http_get:
+            path: /healthz
+            port: 8089
+          initial_delay_seconds: 0
+          period_seconds: 5
+          timeout_seconds: 3
+          failure_threshold: 12    # 60s max startup
+        liveness_probe:
+          http_get:
+            path: /healthz
+            port: 8089
+          initial_delay_seconds: 5
+          period_seconds: 10
+          timeout_seconds: 3
+          failure_threshold: 3
+        readiness_probe:
+          http_get:
+            path: /readyz
+            port: 8089
+          initial_delay_seconds: 3
+          period_seconds: 5
+          timeout_seconds: 2
+          failure_threshold: 3
+          success_threshold: 1
+
+      # =========================================================================
+      # CDC-RELAY — Debezium (JVM-based, moderate startup)
+      # =========================================================================
+      cdc-relay:
+        runtime: jvm
+        startup_probe:
+          http_get:
+            path: /healthz
+            port: 8085
+          initial_delay_seconds: 0
+          period_seconds: 5
+          timeout_seconds: 5
+          failure_threshold: 48    # 240s max startup (Debezium connector init)
+        liveness_probe:
+          http_get:
+            path: /healthz
+            port: 8085
+          initial_delay_seconds: 0
+          period_seconds: 15
+          timeout_seconds: 5
+          failure_threshold: 3
+        readiness_probe:
+          http_get:
+            path: /readyz
+            port: 8085
+          initial_delay_seconds: 0
+          period_seconds: 10
+          timeout_seconds: 3
+          failure_threshold: 3
+          success_threshold: 1
+
+---
+# =============================================================================
+# 3. ARGOCD SELF-HEAL ENHANCEMENT CONFIGMAP
+# =============================================================================
+# Extends ArgoCD's built-in selfHeal with:
+#   - Enhanced sync policy with retry backoff
+#   - Custom health assessment rules per resource kind
+#   - Self-heal bypass rules (prevent auto-heal for specific conditions)
+#   - Progressive delivery integration
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-healing-config
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/component: auto-healing
+data:
+  # ---------------------------------------------------------------------------
+  # Enhanced sync policy — applied to all ArgoCD Applications in production
+  # ---------------------------------------------------------------------------
+  sync-policy: |
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - ServerSideApply=true
+      - CreateNamespace=false
+      - PrunePropagationPolicy=foreground
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+    # Ignore differences that should NOT trigger re-sync
+    ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jsonPointers:
+          - /spec/replicas          # HPA manages replicas
+          - /metadata/annotations/remediation~1*   # Remediation annotations
+      - group: autoscaling
+        kind: HorizontalPodAutoscaler
+        jsonPointers:
+          - /spec/minReplicas       # Auto-healing may adjust minReplicas
+
+  # ---------------------------------------------------------------------------
+  # Custom health assessment rules
+  # ---------------------------------------------------------------------------
+  health-assessment: |
+    customHealthChecks:
+      # --- Deployment health ---
+      - group: apps
+        kind: Deployment
+        checks:
+          - healthField: status.availableReplicas
+            condition: ">= 1"
+            message: "No available replicas"
+          - healthField: status.updatedReplicas
+            condition: "== status.replicas"
+            message: "Rolling update in progress"
+          - healthField: status.conditions[].type
+            condition: "Progressing == True"
+            message: "Deployment not progressing"
+          - healthField: status.conditions[].type
+            condition: "Available == True"
+            message: "Deployment not available"
+          # Custom: check for CrashLoopBackOff pods
+          - healthField: status.unavailableReplicas
+            condition: "<= 1"
+            message: "Too many unavailable replicas"
+
+      # --- StatefulSet health (Kafka, etc.) ---
+      - group: apps
+        kind: StatefulSet
+        checks:
+          - healthField: status.readyReplicas
+            condition: "== status.replicas"
+            message: "Not all replicas ready"
+          - healthField: status.currentReplicas
+            condition: "== status.replicas"
+            message: "StatefulSet not at desired replicas"
+
+      # --- DaemonSet health (SPIRE Agent) ---
+      - group: apps
+        kind: DaemonSet
+        checks:
+          - healthField: status.numberReady
+            condition: "== status.desiredNumberScheduled"
+            message: "Not all DaemonSet pods ready"
+
+      # --- PVC health ---
+      - group: ""
+        kind: PersistentVolumeClaim
+        checks:
+          - healthField: status.phase
+            condition: "== Bound"
+            message: "PVC not bound"
+
+      # --- Job health ---
+      - group: batch
+        kind: Job
+        checks:
+          - healthField: status.succeeded
+            condition: ">= 1"
+            message: "Job not completed successfully"
+          - healthField: status.failed
+            condition: "< 3"
+            message: "Job failed too many times"
+
+  # ---------------------------------------------------------------------------
+  # Self-heal bypass rules — conditions where selfHeal should NOT trigger
+  # ---------------------------------------------------------------------------
+  bypass-rules: |
+    bypassRules:
+      # Do NOT self-heal during active incidents
+      - name: active-incident
+        condition: >
+          label_exists(argocd-application, "incident.active") == true
+        action: skip-self-heal
+        message: "Active incident — self-heal bypassed"
+
+      # Do NOT self-heal during maintenance windows
+      - name: maintenance-window
+        condition: >
+          time_in_range("Sat 00:00", "Sat 23:59") == true
+          or time_in_range("Sun 00:00", "Sun 23:59") == true
+        action: skip-self-heal
+        message: "Weekend maintenance window — self-heal bypassed"
+
+      # Do NOT self-heal replica count changes (HPA manages this)
+      - name: hpa-managed-replicas
+        condition: >
+          diff.field == "spec.replicas"
+          and resource.kind == "Deployment"
+          and exists(hpa, resource.name)
+        action: skip-self-heal
+        message: "Replica difference managed by HPA"
+
+      # Do NOT self-heal during canary deployments
+      - name: canary-in-progress
+        condition: >
+          label_exists(argocd-application, "canary.status") == true
+          and label_value(argocd-application, "canary.status") == "progressing"
+        action: skip-self-heal
+        message: "Canary deployment in progress — self-heal bypassed"
+
+      # Do NOT self-heal VPA recommendations automatically
+      - name: vpa-recommendation
+        condition: >
+          diff.field == "spec.containers[].resources"
+          and annotation_exists(resource, "vpa-recommendation") == true
+        action: require-approval
+        message: "VPA resource recommendation requires manual approval"
+
+  # ---------------------------------------------------------------------------
+  # Progressive delivery integration (canary/blue-green)
+  # ---------------------------------------------------------------------------
+  progressive-delivery: |
+    strategies:
+      # Canary strategy for application services
+      canary:
+        # Analysis run configuration
+        analysis:
+          # Check error rate during canary
+          - name: error-rate-check
+            metric:
+              name: error-rate
+              provider:
+                prometheus:
+                  query: >
+                    sum(rate(http_server_requests_seconds_count{
+                      service=~"{{ .ServiceName }}",status_code=~"5.."
+                    }[1m]))
+                    /
+                    sum(rate(http_server_requests_seconds_count{
+                      service=~"{{ .ServiceName }}"
+                    }[1m]))
+              successCondition: result[0] < 0.01   # < 1% error rate
+              failureLimit: 2
+              interval: 30s
+          # Check latency P99 during canary
+          - name: latency-p99-check
+            metric:
+              name: latency-p99
+              provider:
+                prometheus:
+                  query: >
+                    histogram_quantile(0.99,
+                    sum(rate(http_server_requests_seconds_bucket{
+                      service=~"{{ .ServiceName }}"
+                    }[1m])) by (le))
+              successCondition: result[0] < 2.0    # P99 < 2s
+              failureLimit: 2
+              interval: 30s
+        # Traffic shifting steps
+        steps:
+          - setWeight: 10
+          - pause: { duration: 2m }
+          - analysis: error-rate-check
+          - setWeight: 25
+          - pause: { duration: 3m }
+          - analysis: [error-rate-check, latency-p99-check]
+          - setWeight: 50
+          - pause: { duration: 5m }
+          - analysis: [error-rate-check, latency-p99-check]
+          - setWeight: 100
+        # Rollback triggers
+        rollback:
+          - analysis: error-rate-check
+            on: failure
+          - analysis: latency-p99-check
+            on: failure
+
+      # Blue-green strategy for platform components
+      blueGreen:
+        autoPromotionEnabled: false
+        scaleDownDelaySeconds: 600
+        prePromotionAnalysis:
+          - name: smoke-test
+            metric:
+              name: smoke-test
+              provider:
+                web:
+                  url: "http://{{ .ServiceName }}-preview.production.svc.cluster.local:9090/smoke"
+                  successCondition: result.status == 200
+
+  # ---------------------------------------------------------------------------
+  # Application-level health overrides
+  # ---------------------------------------------------------------------------
+  app-health-overrides: |
+    overrides:
+      # Payment service: stricter health checks, faster rollback
+      - app: payment
+        health:
+          degradedAfter: 2m
+          progressDeadlineSeconds: 180
+        sync:
+          retry:
+            limit: 3
+            backoff:
+              duration: 3s
+              factor: 2
+              maxDuration: 1m
+
+      # Order service: longer progress deadline for JVM warmup
+      - app: order
+        health:
+          degradedAfter: 5m
+          progressDeadlineSeconds: 360
+        sync:
+          retry:
+            limit: 5
+            backoff:
+              duration: 5s
+              factor: 2
+              maxDuration: 3m
+
+      # Gateway: fast rollback on any degradation
+      - app: gateway
+        health:
+          degradedAfter: 90s
+          progressDeadlineSeconds: 120
+        sync:
+          retry:
+            limit: 3
+            backoff:
+              duration: 2s
+              factor: 2
+              maxDuration: 30s
+
+      # Analytics: tolerant of longer startup
+      - app: analytics
+        health:
+          degradedAfter: 5m
+          progressDeadlineSeconds: 360
+
+      # CDC Relay: tolerant of connector initialization
+      - app: cdc-relay
+        health:
+          degradedAfter: 5m
+          progressDeadlineSeconds: 300
+
+---
+# =============================================================================
+# 4. REMEDIATION CONTROLLER RBAC
+# =============================================================================
+# ServiceAccount, ClusterRole, and ClusterRoleBinding for the auto-healing
+# remediation controller. Follows least-privilege principle:
+#   - Read pods, deployments, statefulsets (for health assessment)
+#   - Patch deployments (for restart, scale, annotate)
+#   - Read events (for trigger detection)
+#   - Read ConfigMaps (for policy configuration)
+#   - Create annotations (for remediation tracking)
+# =============================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: remediation-controller
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/component: auto-healing
+  annotations:
+    # SPIFFE identity for the controller
+    spiffe.io/spiffe-id: spiffe://polyglot.platform/auto-healing/controller
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: remediation-controller
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/component: auto-healing
+rules:
+  # --- Read access for health assessment and trigger detection ---
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/status
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups: [""]
+    resources:
+      - events
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups: [""]
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+    resourceNames:
+      - auto-healing-policies
+      - health-probe-configs
+      - argocd-healing-config
+  - apiGroups: [""]
+    resources:
+      - persistentvolumeclaims
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - nodes/status
+    verbs:
+      - get
+      - list
+      - watch
+
+  # --- Write access for remediation actions ---
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - deployments/status
+      - statefulsets
+      - statefulsets/status
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+      - update
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+    verbs:
+      - patch
+    # Scoped annotation patching for remediation tracking
+    # The controller annotates deployments with remediation metadata
+
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs:
+      - get
+      - list
+      - watch
+      - patch    # For adjusting minReplicas during healing
+
+  - apiGroups: ["policy"]
+    resources:
+      - poddisruptionbudgets
+    verbs:
+      - get
+      - list
+      - watch
+
+  - apiGroups: ["autoscaling.k8s.io"]
+    resources:
+      - verticalpodautoscalers
+    verbs:
+      - get
+      - list
+      - watch
+      - patch    # For applying VPA recommendations
+
+  # --- ArgoCD integration ---
+  - apiGroups: ["argoproj.io"]
+    resources:
+      - applications
+      - applications/status
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+      - update
+  - apiGroups: ["argoproj.io"]
+    resources:
+      - appprojects
+    verbs:
+      - get
+      - list
+      - watch
+
+  # --- Rollout integration (for canary rollback) ---
+  - apiGroups: ["argoproj.io"]
+    resources:
+      - rollouts
+      - rollouts/status
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+      - update
+
+  # --- SPIRE integration ---
+  - apiGroups: [""]
+    resources:
+      - services
+    verbs:
+      - get
+      - list
+    resourceNames:
+      - spire-server
+      - spire-agent
+
+  # --- Kafka consumer group lag monitoring ---
+  - apiGroups: [""]
+    resources:
+      - services
+    verbs:
+      - get
+      - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: remediation-controller
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/component: auto-healing
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: remediation-controller
+subjects:
+  - kind: ServiceAccount
+    name: remediation-controller
+    namespace: production
+---
+# Additional role for namespace-scoped secret access (OTel API keys, etc.)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: remediation-controller-secrets
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/component: auto-healing
+rules:
+  - apiGroups: [""]
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+    resourceNames:
+      - slack-webhook
+      - pagerduty-routing-key
+      - otel-api-key
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: remediation-controller-secrets
+  namespace: production
+  labels:
+    app.kubernetes.io/part-of: polyglot-microservices
+    app.kubernetes.io/component: auto-healing
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: remediation-controller-secrets
+subjects:
+  - kind: ServiceAccount
+    name: remediation-controller
+    namespace: production
