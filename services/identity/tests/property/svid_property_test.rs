@@ -8,7 +8,7 @@
 use proptest::prelude::*;
 use std::sync::Arc;
 use identity_service::domain::models::{
-    AttestationRequest, AttestationResult, RevocationReason, RotationReason,
+    AttestationRequest, AttestationResult, RevocationReason, RevokedSVID, RotationReason,
     Selector, SPIFFEID, SPIFFEIDError, TrustDomain, TTLPolicy,
     X509Bundle, X509SVID,
 };
