@@ -10,7 +10,7 @@ COPY src/ src/
 RUN pip install --no-cache-dir .
 
 # Runtime stage
-FROM python:3.12-slim
+FROM python:3.12-slim AS runtime
 
 RUN groupadd -r notification && useradd -r -g notification notification
 

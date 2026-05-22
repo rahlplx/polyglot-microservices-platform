@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package gateway.v1;
 
-option go_package = "github.com/comprehensive-architecture/services/gen/go/gateway/v1";
+option go_package = "github.com/rahlplx/polyglot-microservices-platform/gen/go/gateway/v1";
 
 // Rate limiting configuration, managed by Gateway and consumed by rate limiter adapter
 message RateLimitRule {

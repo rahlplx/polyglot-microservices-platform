@@ -1,27 +1,20 @@
-# Build stage
 FROM python:3.12-slim AS builder
 
 WORKDIR /app
-
 COPY pyproject.toml ./
 RUN pip install --no-cache-dir hatchling && pip install --no-cache-dir .
-
 COPY src/ src/
-RUN pip install --no-cache-dir .
 
-# Runtime stage
 FROM python:3.12-slim AS runtime
 
-RUN groupadd -r rlengine && useradd -r -g rlengine rlengine
+RUN groupadd -r cdc-relay && useradd -r -g cdc-relay cdc-relay
 
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
-COPY src/ /app/src/
+COPY --from=builder /app/src /app/src
 
 WORKDIR /app
+USER cdc-relay
 
-USER rlengine
+EXPOSE 50060 9090
 
-EXPOSE 50058 8088 9098
-
-CMD ["python", "-m", "rl_engine_service.src.main"]
+CMD ["python", "-m", "src.main"]

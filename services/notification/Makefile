@@ -1,5 +1,8 @@
 .PHONY: install test lint run docker clean
 
+build:
+	python -m build
+
 install:
 	pip install -e ".[dev]"
 

@@ -9,7 +9,8 @@
 use std::sync::Arc;
 use identity_service::domain::models::{
     AttestationFailureReason, AttestationRequest, AttestationResult,
-    Selector, SPIFFEID, TrustDomain, Workload,
+    RevocationReason, RevokedSVID, Selector, SPIFFEID, TrustDomain,
+    Workload, X509Bundle, X509SVID,
 };
 use identity_service::domain::ports::inbound::attestation::AttestationUseCase;
 use identity_service::domain::ports::outbound::store::{

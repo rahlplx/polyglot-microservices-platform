@@ -19,7 +19,7 @@ RUN gradle build --no-daemon -x test \
     find build/libs -name "*.jar" -exec cp {} app.jar \;
 
 # Runtime stage
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:21-jre-alpine AS runtime
 
 LABEL maintainer="architecture-team@company.com"
 LABEL service="order-service"

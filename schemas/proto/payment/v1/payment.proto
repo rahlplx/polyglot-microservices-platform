@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package payment.v1;
 
-option go_package = "github.com/comprehensive-architecture/services/gen/go/payment/v1";
+option go_package = "github.com/rahlplx/polyglot-microservices-platform/gen/go/payment/v1";
 
 import "common/v1/types.proto";
 import "google/protobuf/timestamp.proto";

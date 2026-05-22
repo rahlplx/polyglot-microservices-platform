@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package common.v1;
 
-option go_package = "github.com/comprehensive-architecture/services/gen/go/common/v1";
+option go_package = "github.com/rahlplx/polyglot-microservices-platform/gen/go/common/v1";
 
 // Monetary value with currency support, precision-safe representation
 message Money {

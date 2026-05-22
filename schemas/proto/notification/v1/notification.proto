@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package notification.v1;
 
-option go_package = "github.com/comprehensive-architecture/services/gen/go/notification/v1";
+option go_package = "github.com/rahlplx/polyglot-microservices-platform/gen/go/notification/v1";
 
 import "google/protobuf/timestamp.proto";
 

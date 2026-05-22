@@ -496,7 +496,7 @@ jobs:
           fi
 
           echo "Scanning ${SCANNABLE_FILES}"
-          if python3 .claude/engine/knowledge_matcher.py --scan-diff ${SCANNABLE_FILES}; then
+          if python3 .claude/engine/knowledge_matcher.py --scan-diff ${SCANNABLE_FILES} 2>/dev/null; then
             echo "RL pattern scan PASSED — no CRITICAL/HIGH patterns found"
           else
             echo "::error::RL pattern scan FAILED — CRITICAL or HIGH severity patterns detected in changed files"

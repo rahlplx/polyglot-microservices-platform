@@ -163,7 +163,7 @@ describe('Catalog Service Contract Tests', () => {
       }
     });
 
-    it('should include product_id in all response bodies', () => {
+    it('should include product_id in single-resource response bodies', () => {
       for (const endpoint of CATALOG_API_CONTRACT) {
         const body = endpoint.responseBody as Record<string, unknown>;
         const isList = 'results' in body || 'items' in body || 'schemas' in body;
