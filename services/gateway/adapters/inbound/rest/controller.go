@@ -4,21 +4,12 @@
 package rest
 
 import (
-<<<<<<< HEAD
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
-=======
-        "encoding/json"
-        "fmt"
-        "log/slog"
-        "net/http"
-        "strconv"
-        "time"
->>>>>>> origin/release/v0.6.0
 
         "github.com/rahlplx/polyglot-microservices-platform/services/gateway/domain/models"
         "github.com/rahlplx/polyglot-microservices-platform/services/gateway/domain/ports/inbound"
@@ -160,7 +151,6 @@ func (c *Controller) handleGetRateLimit(w http.ResponseWriter, r *http.Request) 
                 return
         }
 
-<<<<<<< HEAD
 	type rateLimitJSON struct {
 		Allowed    bool   `json:"allowed"`
 		Remaining  int    `json:"remaining"`
@@ -178,25 +168,6 @@ func (c *Controller) handleGetRateLimit(w http.ResponseWriter, r *http.Request) 
 	if resp.RetryAfter > 0 {
 		body.RetryAfter = resp.RetryAfter.String()
 	}
-=======
-        type rateLimitJSON struct {
-                Allowed     bool   `json:"allowed"`
-                Remaining   int    `json:"remaining"`
-                ResetAt     string `json:"reset_at"`
-                Policy      string `json:"policy"`
-                RetryAfter  string `json:"retry_after,omitempty"`
-        }
-
-        body := rateLimitJSON{
-                Allowed:    resp.Allowed,
-                Remaining:  resp.Remaining,
-                ResetAt:    resp.ResetAt.Format(time.RFC3339),
-                Policy:     resp.Policy,
-        }
-        if resp.RetryAfter > 0 {
-                body.RetryAfter = resp.RetryAfter.String()
-        }
->>>>>>> origin/release/v0.6.0
 
         c.writeJSON(w, http.StatusOK, body)
 }
@@ -376,7 +347,6 @@ func (c *Controller) writeError(w http.ResponseWriter, statusCode int, code, mes
 
 // LoggingMiddleware returns an HTTP middleware that logs each request.
 func LoggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
-<<<<<<< HEAD
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -392,23 +362,6 @@ func LoggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 			)
 		})
 	}
-=======
-        if logger == nil {
-                logger = slog.Default()
-        }
-        return func(next http.Handler) http.Handler {
-                return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-                        start := time.Now().UTC()
-                        next.ServeHTTP(w, r)
-                        logger.Info("HTTP request",
-                                slog.String("method", r.Method),
-                                slog.String("path", r.URL.Path),
-                                slog.Duration("duration", time.Since(start)),
-                                slog.String("remote_addr", r.RemoteAddr),
-                        )
-                })
-        }
->>>>>>> origin/release/v0.6.0
 }
 
 // RecoveryMiddleware returns an HTTP middleware that recovers from panics.
@@ -452,7 +405,3 @@ func CORSMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
                 })
         }
 }
-<<<<<<< HEAD
-=======
-
->>>>>>> origin/release/v0.6.0

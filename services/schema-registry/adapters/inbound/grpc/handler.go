@@ -6,13 +6,8 @@
 package grpc
 
 import (
-<<<<<<< HEAD
 	"context"
 	"log/slog"
-=======
-        "context"
-        "log/slog"
->>>>>>> origin/release/v0.6.0
 
         "google.golang.org/grpc"
         "google.golang.org/grpc/codes"
@@ -30,38 +25,21 @@ import (
 
 // RegisterSchemaRequest is the gRPC request message for schema registration.
 type RegisterSchemaRequest struct {
-<<<<<<< HEAD
 	Subject            string                `json:"subject,omitempty"`
 	SchemaType         string                `json:"schema_type,omitempty"`
 	SchemaDefinition   string                `json:"schema_definition,omitempty"`
 	References         []*SchemaReferenceMsg `json:"references,omitempty"`
 	CompatibilityLevel string                `json:"compatibility_level,omitempty"`
 	Description        string                `json:"description,omitempty"`
-=======
-        Subject           string               `json:"subject,omitempty"`
-        SchemaType        string               `json:"schema_type,omitempty"`
-        SchemaDefinition  string               `json:"schema_definition,omitempty"`
-        References        []*SchemaReferenceMsg `json:"references,omitempty"`
-        CompatibilityLevel string              `json:"compatibility_level,omitempty"`
-        Description       string               `json:"description,omitempty"`
->>>>>>> origin/release/v0.6.0
 }
 
 // RegisterSchemaResponse is the gRPC response message for schema registration.
 type RegisterSchemaResponse struct {
-<<<<<<< HEAD
 	SchemaID           int32                   `json:"schema_id,omitempty"`
 	Version            int32                   `json:"version,omitempty"`
 	Fingerprint        string                  `json:"fingerprint,omitempty"`
 	RegisteredAt       int64                   `json:"registered_at,omitempty"` // Unix timestamp
 	CompatibilityCheck *CompatibilityResultMsg `json:"compatibility_check,omitempty"`
-=======
-        SchemaID     int32                  `json:"schema_id,omitempty"`
-        Version      int32                  `json:"version,omitempty"`
-        Fingerprint  string                 `json:"fingerprint,omitempty"`
-        RegisteredAt int64                  `json:"registered_at,omitempty"` // Unix timestamp
-        CompatibilityCheck *CompatibilityResultMsg `json:"compatibility_check,omitempty"`
->>>>>>> origin/release/v0.6.0
 }
 
 // GetSchemaRequest is the gRPC request message for schema retrieval.
@@ -89,34 +67,19 @@ type GetSchemaResponse struct {
 
 // ValidateSchemaRequest is the gRPC request message for schema validation.
 type ValidateSchemaRequest struct {
-<<<<<<< HEAD
 	Subject          string `json:"subject,omitempty"`
 	SchemaDefinition string `json:"schema_definition,omitempty"`
 	SchemaType       string `json:"schema_type,omitempty"`
 	ValidationLevel  string `json:"validation_level,omitempty"`
 	TargetVersion    *int32 `json:"target_version,omitempty"`
-=======
-        Subject        string `json:"subject,omitempty"`
-        SchemaDefinition string `json:"schema_definition,omitempty"`
-        SchemaType     string `json:"schema_type,omitempty"`
-        ValidationLevel string `json:"validation_level,omitempty"`
-        TargetVersion  *int32 `json:"target_version,omitempty"`
->>>>>>> origin/release/v0.6.0
 }
 
 // ValidateSchemaResponse is the gRPC response message for schema validation.
 type ValidateSchemaResponse struct {
-<<<<<<< HEAD
 	Valid               bool                    `json:"valid,omitempty"`
 	Errors              []*ValidationErrorMsg   `json:"errors,omitempty"`
 	Warnings            []*ValidationWarningMsg `json:"warnings,omitempty"`
 	CompatibilityResult *CompatibilityResultMsg `json:"compatibility_result,omitempty"`
-=======
-        Valid              bool                    `json:"valid,omitempty"`
-        Errors             []*ValidationErrorMsg   `json:"errors,omitempty"`
-        Warnings           []*ValidationWarningMsg `json:"warnings,omitempty"`
-        CompatibilityResult *CompatibilityResultMsg `json:"compatibility_result,omitempty"`
->>>>>>> origin/release/v0.6.0
 }
 
 // CheckBreakingRequest is the gRPC request message for breaking change detection.
@@ -160,15 +123,9 @@ type SchemaReferenceMsg struct {
 
 // CompatibilityResultMsg represents a compatibility check result in gRPC messages.
 type CompatibilityResultMsg struct {
-<<<<<<< HEAD
 	Compatible         bool                         `json:"compatible,omitempty"`
 	Violations         []*CompatibilityViolationMsg `json:"violations,omitempty"`
 	CompatibilityLevel string                       `json:"compatibility_level,omitempty"`
-=======
-        Compatible       bool                        `json:"compatible,omitempty"`
-        Violations       []*CompatibilityViolationMsg `json:"violations,omitempty"`
-        CompatibilityLevel string                     `json:"compatibility_level,omitempty"`
->>>>>>> origin/release/v0.6.0
 }
 
 // CompatibilityViolationMsg represents a compatibility violation in gRPC messages.
@@ -211,7 +168,6 @@ type MitigationSuggestionMsg struct {
 
 // SubjectSummaryMsg represents a subject summary in gRPC messages.
 type SubjectSummaryMsg struct {
-<<<<<<< HEAD
 	Name               string `json:"name,omitempty"`
 	CompatibilityLevel string `json:"compatibility_level,omitempty"`
 	LatestVersion      int32  `json:"latest_version,omitempty"`
@@ -220,16 +176,6 @@ type SubjectSummaryMsg struct {
 	Deprecated         bool   `json:"deprecated,omitempty"`
 	RegisteredAt       int64  `json:"registered_at,omitempty"`
 	Description        string `json:"description,omitempty"`
-=======
-        Name              string `json:"name,omitempty"`
-        CompatibilityLevel string `json:"compatibility_level,omitempty"`
-        LatestVersion     int32  `json:"latest_version,omitempty"`
-        SchemaType        string `json:"schema_type,omitempty"`
-        TotalVersions     int32  `json:"total_versions,omitempty"`
-        Deprecated        bool   `json:"deprecated,omitempty"`
-        RegisteredAt      int64  `json:"registered_at,omitempty"`
-        Description       string `json:"description,omitempty"`
->>>>>>> origin/release/v0.6.0
 }
 
 // SchemaRegistryServiceServer is the gRPC service interface.
@@ -323,7 +269,6 @@ func (h *Handler) Register(ctx context.Context, req *RegisterSchemaRequest) (*Re
                 return nil, h.mapError(err)
         }
 
-<<<<<<< HEAD
 	return &RegisterSchemaResponse{
 		SchemaID:           resp.SchemaID,
 		Version:            resp.Version,
@@ -331,15 +276,6 @@ func (h *Handler) Register(ctx context.Context, req *RegisterSchemaRequest) (*Re
 		RegisteredAt:       resp.RegisteredAt.Unix(),
 		CompatibilityCheck: convertCompatibilityResult(resp.CompatibilityCheck),
 	}, nil
-=======
-        return &RegisterSchemaResponse{
-                SchemaID:     resp.SchemaID,
-                Version:      resp.Version,
-                Fingerprint:  resp.Fingerprint,
-                RegisteredAt: resp.RegisteredAt.Unix(),
-                CompatibilityCheck: convertCompatibilityResult(resp.CompatibilityCheck),
-        }, nil
->>>>>>> origin/release/v0.6.0
 }
 
 // Get handles incoming gRPC Get requests.
@@ -402,7 +338,6 @@ func (h *Handler) Validate(ctx context.Context, req *ValidateSchemaRequest) (*Va
                 return nil, h.mapError(err)
         }
 
-<<<<<<< HEAD
 	var compatResult *CompatibilityResultMsg
 	if resp.CompatibilityResult != nil {
 		compatResult = convertCompatibilityResult(*resp.CompatibilityResult)
@@ -414,19 +349,6 @@ func (h *Handler) Validate(ctx context.Context, req *ValidateSchemaRequest) (*Va
 		Warnings:            convertValidationWarnings(resp.Warnings),
 		CompatibilityResult: compatResult,
 	}, nil
-=======
-        var compatResult *CompatibilityResultMsg
-        if resp.CompatibilityResult != nil {
-                compatResult = convertCompatibilityResult(*resp.CompatibilityResult)
-        }
-
-        return &ValidateSchemaResponse{
-                Valid:              resp.Valid,
-                Errors:             convertValidationErrors(resp.Errors),
-                Warnings:           convertValidationWarnings(resp.Warnings),
-                CompatibilityResult: compatResult,
-        }, nil
->>>>>>> origin/release/v0.6.0
 }
 
 // CheckBreaking handles incoming gRPC CheckBreaking requests.
@@ -460,17 +382,10 @@ func (h *Handler) CheckBreaking(ctx context.Context, req *CheckBreakingRequest) 
 
 // List handles incoming gRPC List requests.
 func (h *Handler) List(ctx context.Context, req *ListSchemasRequest) (*ListSchemasResponse, error) {
-<<<<<<< HEAD
 	h.logger.Debug("gRPC List called",
 		slog.String("prefix", req.Prefix),
 		slog.Int("page_size", int(req.PageSize)),
 	)
-=======
-        h.logger.Debug("gRPC List called",
-                slog.String("prefix", req.Prefix),
-                slog.Int("page_size", int(req.PageSize)),
-        )
->>>>>>> origin/release/v0.6.0
 
         var schemaType *models.SchemaType
         if req.SchemaType != "" {
@@ -619,7 +534,3 @@ func (h *Handler) mapError(err error) error {
 
 // Ensure Handler implements SchemaRegistryServiceServer at compile time.
 var _ SchemaRegistryServiceServer = (*Handler)(nil)
-<<<<<<< HEAD
-=======
-
->>>>>>> origin/release/v0.6.0

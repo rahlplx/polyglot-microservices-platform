@@ -29,13 +29,8 @@ func main() {
                 "spiffe_enabled", cfg.SPIFFE.Enabled,
         )
 
-<<<<<<< HEAD
 	// Wire all dependencies via the DI container.
 	_ = di.NewContainer(cfg)
-=======
-        // Wire all dependencies via the DI container.
-        _ = di.NewContainer(cfg)
->>>>>>> origin/release/v0.6.0
 
         // Create and start the gRPC server.
         srv := server.NewServer(cfg.Server.GRPCPort, cfg.Server.MetricsPort, logger)

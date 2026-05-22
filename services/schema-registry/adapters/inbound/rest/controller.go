@@ -6,7 +6,6 @@
 package rest
 
 import (
-<<<<<<< HEAD
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,15 +13,6 @@ import (
 	"net/http"
 	"strconv"
 	"time"
-=======
-        "encoding/json"
-        "fmt"
-        "io"
-        "log/slog"
-        "net/http"
-        "strconv"
-        "time"
->>>>>>> origin/release/v0.6.0
 
         "github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/domain/models"
         "github.com/rahlplx/polyglot-microservices-platform/services/schema-registry/domain/ports/inbound"
@@ -114,7 +104,6 @@ func (c *Controller) handleRegister(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-<<<<<<< HEAD
 	var reqBody struct {
 		SchemaType         string                   `json:"schemaType"`
 		Schema             string                   `json:"schema"`
@@ -126,19 +115,6 @@ func (c *Controller) handleRegister(w http.ResponseWriter, r *http.Request) {
 		c.writeError(w, http.StatusBadRequest, "INVALID_JSON", "failed to parse request body as JSON")
 		return
 	}
-=======
-        var reqBody struct {
-                SchemaType        string                        `json:"schemaType"`
-                Schema            string                        `json:"schema"`
-                References        []models.SchemaReference      `json:"references,omitempty"`
-                CompatibilityLevel *string                      `json:"compatibility,omitempty"`
-                Description       string                        `json:"description,omitempty"`
-        }
-        if err := json.Unmarshal(body, &reqBody); err != nil {
-                c.writeError(w, http.StatusBadRequest, "INVALID_JSON", "failed to parse request body as JSON")
-                return
-        }
->>>>>>> origin/release/v0.6.0
 
         if reqBody.Schema == "" {
                 c.writeError(w, http.StatusBadRequest, "MISSING_SCHEMA", "schema definition is required")
@@ -185,7 +161,6 @@ func (c *Controller) handleRegister(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-<<<<<<< HEAD
 	type registerResp struct {
 		SchemaID     int32  `json:"id"`
 		Version      int32  `json:"version"`
@@ -193,15 +168,6 @@ func (c *Controller) handleRegister(w http.ResponseWriter, r *http.Request) {
 		RegisteredAt string `json:"registered_at"`
 		Compatible   bool   `json:"compatible"`
 	}
-=======
-        type registerResp struct {
-                SchemaID    int32  `json:"id"`
-                Version     int32  `json:"version"`
-                Fingerprint string `json:"fingerprint"`
-                RegisteredAt string `json:"registered_at"`
-                Compatible  bool   `json:"compatible"`
-        }
->>>>>>> origin/release/v0.6.0
 
         c.writeJSON(w, http.StatusOK, registerResp{
                 SchemaID:     resp.SchemaID,
@@ -548,7 +514,6 @@ func (c *Controller) writeError(w http.ResponseWriter, statusCode int, code, mes
 }
 
 func (c *Controller) writeSchemaResponse(w http.ResponseWriter, schema models.Schema) {
-<<<<<<< HEAD
 	type schemaResp struct {
 		SchemaID         int32                    `json:"id"`
 		Version          int32                    `json:"version"`
@@ -562,21 +527,6 @@ func (c *Controller) writeSchemaResponse(w http.ResponseWriter, schema models.Sc
 		Description      string                   `json:"description,omitempty"`
 		CompatibilityLvl string                   `json:"compatibilityLevel"`
 	}
-=======
-        type schemaResp struct {
-                SchemaID         int32                      `json:"id"`
-                Version          int32                      `json:"version"`
-                Subject          string                     `json:"subject"`
-                SchemaType       string                     `json:"schemaType"`
-                Schema           string                     `json:"schema"`
-                References       []models.SchemaReference   `json:"references,omitempty"`
-                Fingerprint      string                     `json:"fingerprint"`
-                RegisteredAt     string                     `json:"registered_at"`
-                Deprecated       bool                       `json:"deprecated"`
-                Description      string                     `json:"description,omitempty"`
-                CompatibilityLvl string                     `json:"compatibilityLevel"`
-        }
->>>>>>> origin/release/v0.6.0
 
         c.writeJSON(w, http.StatusOK, schemaResp{
                 SchemaID:         schema.ID,
@@ -618,7 +568,6 @@ func (c *Controller) handleDomainError(w http.ResponseWriter, err error) {
 
 // LoggingMiddleware returns an HTTP middleware that logs each request.
 func LoggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
-<<<<<<< HEAD
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -634,23 +583,6 @@ func LoggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 			)
 		})
 	}
-=======
-        if logger == nil {
-                logger = slog.Default()
-        }
-        return func(next http.Handler) http.Handler {
-                return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-                        start := time.Now().UTC()
-                        next.ServeHTTP(w, r)
-                        logger.Info("HTTP request",
-                                slog.String("method", r.Method),
-                                slog.String("path", r.URL.Path),
-                                slog.Duration("duration", time.Since(start)),
-                                slog.String("remote_addr", r.RemoteAddr),
-                        )
-                })
-        }
->>>>>>> origin/release/v0.6.0
 }
 
 // RecoveryMiddleware returns an HTTP middleware that recovers from panics.
@@ -694,7 +626,3 @@ func CORSMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
                 })
         }
 }
-<<<<<<< HEAD
-=======
-
->>>>>>> origin/release/v0.6.0

@@ -1,15 +1,9 @@
 package di
 
 import (
-<<<<<<< HEAD
 	"context"
 	"log/slog"
 	"os"
-=======
-        "context"
-        "log/slog"
-        "os"
->>>>>>> origin/release/v0.6.0
 
         "github.com/rahlplx/polyglot-microservices-platform/services/payment/adapters/inbound/grpc"
         "github.com/rahlplx/polyglot-microservices-platform/services/payment/adapters/outbound/gateway"
@@ -26,7 +20,6 @@ import (
 // This manual DI approach avoids reflection-based frameworks, keeping the
 // dependency graph explicit and compile-time verified.
 type Container struct {
-<<<<<<< HEAD
 	Config         *config.Config
 	PaymentService *services.PaymentService
 	CircuitBreaker *services.CircuitBreakerService
@@ -34,15 +27,6 @@ type Container struct {
 	PaymentRepo    *persistence.PostgresTransactionRepo
 	EventPublisher *messaging.KafkaEventPublisher
 	StripeAdapter  *gateway.StripeAdapter
-=======
-        Config          *config.Config
-        PaymentService  *services.PaymentService
-        CircuitBreaker  *services.CircuitBreakerService
-        GRPCHandler     *grpc.Handler
-        PaymentRepo     *persistence.PostgresTransactionRepo
-        EventPublisher  *messaging.KafkaEventPublisher
-        StripeAdapter   *gateway.StripeAdapter
->>>>>>> origin/release/v0.6.0
 }
 
 // NewContainer creates and wires all dependencies for the Payment service.
@@ -57,7 +41,6 @@ func NewContainer(cfg *config.Config) *Container {
         eventPublisher := messaging.NewKafkaEventPublisher(cfg.Kafka.Brokers, cfg.Kafka.Topic, logger)
         stripeAdapter := gateway.NewStripeAdapter(cfg.Gateway.APIKey, logger)
 
-<<<<<<< HEAD
 	// Circuit breaker service (domain service with infrastructure config).
 	circuitConfig := models.CircuitConfig{
 		Name:                "stripe-gateway",
@@ -75,25 +58,6 @@ func NewContainer(cfg *config.Config) *Container {
 		},
 	}
 	circuitBreaker := services.NewCircuitBreakerService(circuitConfig, logger)
-=======
-        // Circuit breaker service (domain service with infrastructure config).
-        circuitConfig := models.CircuitConfig{
-                Name:                "stripe-gateway",
-                FailureThreshold:    cfg.Circuit.FailureThreshold,
-                Timeout:             cfg.Circuit.Timeout,
-                MaxHalfOpenRequests: cfg.Circuit.MaxHalfOpenReqs,
-                OnStateChange: func(from, to models.CircuitState) {
-                        event := models.CircuitBreakerEvent{
-                                CircuitName: "stripe-gateway",
-                                FromState:   from,
-                                ToState:     to,
-                                Reason:      "threshold_exceeded",
-                        }
-                        _ = eventPublisher.PublishCircuitEvent(context.Background(), event)
-                },
-        }
-        circuitBreaker := services.NewCircuitBreakerService(circuitConfig, logger)
->>>>>>> origin/release/v0.6.0
 
         // Application service (domain layer).
         paymentService := services.NewPaymentService(

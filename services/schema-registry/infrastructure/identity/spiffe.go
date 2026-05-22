@@ -76,7 +76,6 @@ func (s *SPIFFEIdentity) Start(ctx context.Context) error {
 		slog.String("trust_domain", s.config.TrustDomain),
 	)
 
-<<<<<<< HEAD
 	source, err := workloadapi.NewX509Source(ctx,
 		workloadapi.WithClientOptions(
 			workloadapi.WithAddr(s.config.WorkloadAPIAddr),
@@ -85,16 +84,6 @@ func (s *SPIFFEIdentity) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create X509 source from workload API: %w", err)
 	}
-=======
-        source, err := workloadapi.NewX509Source(ctx,
-                workloadapi.WithClientOptions(
-                        workloadapi.WithAddr(s.config.WorkloadAPIAddr),
-                ),
-        )
-        if err != nil {
-                return fmt.Errorf("failed to create X509 source from workload API: %w", err)
-        }
->>>>>>> origin/release/v0.6.0
 
 	s.source = source
 

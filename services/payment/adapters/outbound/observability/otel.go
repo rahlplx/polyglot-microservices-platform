@@ -26,13 +26,8 @@ func NewOtelAdapter(logger *slog.Logger) *OtelAdapter {
 // The span name follows the pattern "payment.{operation}" and includes
 // the payment ID and order ID as attributes for trace correlation.
 func (o *OtelAdapter) StartSpan(ctx context.Context, operation string, attrs map[string]string) (context.Context, func()) {
-<<<<<<< HEAD
 	start := time.Now().UTC()
 	o.logger.InfoContext(ctx, "span started", "operation", operation, "attrs", attrs)
-=======
-        start := time.Now().UTC()
-        o.logger.InfoContext(ctx, "span started", "operation", operation, "attrs", attrs)
->>>>>>> origin/release/v0.6.0
 
         end := func() {
                 duration := time.Since(start)

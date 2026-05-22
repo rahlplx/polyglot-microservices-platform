@@ -20,13 +20,6 @@ spec:
       annotations:
         spiffe.io/inject: "true"
     spec:
-<<<<<<< HEAD
-=======
-      securityContext:
-        fsGroup: 10001
-        seccompProfile:
-          type: RuntimeDefault
->>>>>>> origin/release/v0.6.0
       serviceAccountName: identity
       containers:
         - name: identity
@@ -77,17 +70,8 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 10001
-<<<<<<< HEAD
-=======
-            runAsGroup: 10001
->>>>>>> origin/release/v0.6.0
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
-<<<<<<< HEAD
-=======
-            seccompProfile:
-              type: RuntimeDefault
->>>>>>> origin/release/v0.6.0

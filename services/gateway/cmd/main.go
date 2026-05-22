@@ -66,21 +66,12 @@ func run() error {
                 )
         }
 
-<<<<<<< HEAD
 	app.Logger.Info("gateway service starting",
 		slog.Int("http_port", cfg.Server.HTTPPort),
 		slog.Int("grpc_port", cfg.Server.GRPCPort),
 		slog.Bool("spiffe_enabled", cfg.SPIFFE.Enabled),
 		slog.Bool("otel_enabled", cfg.OTel.Enabled),
 	)
-=======
-        app.Logger.Info("gateway service starting",
-                slog.Int("http_port", cfg.Server.HTTPPort),
-                slog.Int("grpc_port", cfg.Server.GRPCPort),
-                slog.Bool("spiffe_enabled", cfg.SPIFFE.Enabled),
-                slog.Bool("otel_enabled", cfg.OTel.Enabled),
-        )
->>>>>>> origin/release/v0.6.0
 
         // Start the server (blocks until shutdown)
         if err := app.Server.Start(ctx); err != nil {

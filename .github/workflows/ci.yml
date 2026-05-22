@@ -2,11 +2,7 @@
 # Main CI Pipeline — Polyglot Microservices Platform
 # ---------------------------------------------------------------------------
 # Triggers: push to main/develop, PRs to main/develop
-<<<<<<< HEAD
 # Stages: Lint (per-language) → Test (per-service) → Build (Docker) → Security Scan + RL Scan
-=======
-# Stages: Lint (per-language) → Test (per-service) → Build (Docker) → Security Scan
->>>>>>> origin/release/v0.6.0
 #
 # Service-Language Mappings:
 #   identity        = Rust
@@ -470,7 +466,6 @@ jobs:
           fi
           echo "ACL enforcement check PASSED."
 
-<<<<<<< HEAD
       - name: Setup Python 3.12 for RL Scanner
         uses: actions/setup-python@v5
         with:
@@ -509,8 +504,6 @@ jobs:
           fi
           echo "::endgroup::"
 
-=======
->>>>>>> origin/release/v0.6.0
   # =========================================================================
   # CI Summary
   # =========================================================================

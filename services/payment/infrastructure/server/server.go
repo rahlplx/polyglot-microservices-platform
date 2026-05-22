@@ -1,7 +1,6 @@
 package server
 
 import (
-<<<<<<< HEAD
 	"context"
 	"fmt"
 	"log/slog"
@@ -10,19 +9,6 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-=======
-        "context"
-        "fmt"
-        "log/slog"
-        "net"
-        "os"
-        "os/signal"
-        "syscall"
-        "time"
-
-        _ "google.golang.org/grpc"
-        _ "google.golang.org/grpc/reflection"
->>>>>>> origin/release/v0.6.0
 )
 
 // Server manages the gRPC server lifecycle for the Payment service.

@@ -1,7 +1,6 @@
 package grpc
 
 import (
-<<<<<<< HEAD
 	"context"
 	"log/slog"
 
@@ -10,16 +9,6 @@ import (
 
 	"github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/models"
 	"github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/services"
-=======
-        "context"
-        "log/slog"
-
-        "google.golang.org/grpc/codes"
-        "google.golang.org/grpc/status"
-
-        "github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/models"
-        "github.com/rahlplx/polyglot-microservices-platform/services/payment/domain/services"
->>>>>>> origin/release/v0.6.0
 )
 
 // Handler implements the gRPC PaymentService defined in the Protobuf schema.
@@ -91,17 +80,10 @@ func (h *Handler) RefundPayment(ctx context.Context, req *RefundPaymentRequest) 
                 IdempotencyKey: req.IdempotencyKey,
         }
 
-<<<<<<< HEAD
 	refund, err := h.paymentService.RefundPaymentCmd(ctx, cmd)
 	if err != nil {
 		return nil, mapDomainError(err)
 	}
-=======
-        refund, err := h.paymentService.RefundPayment(ctx, cmd)
-        if err != nil {
-                return nil, mapDomainError(err)
-        }
->>>>>>> origin/release/v0.6.0
 
         return &RefundPaymentResponse{
                 RefundId:        refund.ID,
@@ -131,39 +113,12 @@ func (h *Handler) GetTransaction(ctx context.Context, req *GetTransactionRequest
 
 // ListTransactions handles the gRPC ListTransactions RPC.
 func (h *Handler) ListTransactions(ctx context.Context, req *ListTransactionsRequest) (*ListTransactionsResponse, error) {
-<<<<<<< HEAD
 	// ListTransactions is not yet implemented on the PaymentService
 	return nil, status.Errorf(codes.Unimplemented, "ListTransactions not yet implemented")
-=======
-        payments, nextCursor, err := h.paymentService.ListTransactions(
-                ctx, req.CustomerId, models.PaymentStatus(req.Status), req.Cursor, int(req.PageSize),
-        )
-        if err != nil {
-                return nil, mapDomainError(err)
-        }
-
-        items := make([]*TransactionItem, len(payments))
-        for i, p := range payments {
-                items[i] = &TransactionItem{
-                        PaymentId:   p.ID,
-                        OrderId:     p.OrderID,
-                        Status:      string(p.Status),
-                        AmountCents: p.Amount.Amount,
-                        Currency:    p.Amount.Currency,
-                        CreatedAt:   p.CreatedAt.Unix(),
-                }
-        }
-
-        return &ListTransactionsResponse{
-                Transactions: items,
-                NextCursor:   nextCursor,
-        }, nil
->>>>>>> origin/release/v0.6.0
 }
 
 // GetCircuitStatus handles the gRPC GetCircuitStatus RPC.
 func (h *Handler) GetCircuitStatus(ctx context.Context, req *GetCircuitStatusRequest) (*GetCircuitStatusResponse, error) {
-<<<<<<< HEAD
 	info, err := h.paymentService.GetCircuitStatus(ctx)
 	_ = info // suppress unused warning
 	if err != nil {
@@ -176,19 +131,6 @@ func (h *Handler) GetCircuitStatus(ctx context.Context, req *GetCircuitStatusReq
 		FailureCount: int32(info.FailureCount),
 		SuccessCount: int32(info.SuccessCount),
 	}, nil
-=======
-        info, err := h.paymentService.GetCircuitStatus(ctx)
-        if err != nil {
-                return nil, mapDomainError(err)
-        }
-
-        return &GetCircuitStatusResponse{
-                CircuitName:   info.Name,
-                State:         string(info.State),
-                FailureCount:  int32(info.FailureCount),
-                SuccessCount:  int32(info.SuccessCount),
-        }, nil
->>>>>>> origin/release/v0.6.0
 }
 
 // mapPaymentMethod converts a gRPC payment method enum to a domain PaymentMethod.
@@ -231,21 +173,12 @@ func mapRefundReason(reason string) models.RefundReason {
 // This ensures that clients receive meaningful error codes that map
 // correctly to HTTP status codes via grpc-gateway.
 func mapDomainError(err error) error {
-<<<<<<< HEAD
 	switch err.(type) {
 	case models.ErrInvalidTransition:
 		return status.Errorf(codes.FailedPrecondition, "%s", err.Error())
 	default:
 		return status.Errorf(codes.Internal, "%s", err.Error())
 	}
-=======
-        switch err.(type) {
-        case models.ErrInvalidTransition:
-                return status.Errorf(codes.FailedPrecondition, "%s", err.Error())
-        default:
-                return status.Errorf(codes.Internal, "%s", err.Error())
-        }
->>>>>>> origin/release/v0.6.0
 }
 
 // gRPC message types (would be generated from proto in production).
