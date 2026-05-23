@@ -6,6 +6,8 @@
 // TLS functionality. NO OpenSSL dependency.
 // ---------------------------------------------------------------------------
 
+use ring::rand::SecureRandom;
+
 use crate::domain::models::X509Bundle;
 use crate::domain::ports::outbound::ca::{
     CAError, CertificateAuthorityPort, GeneratedSVID, SignedSVID,
@@ -64,20 +66,14 @@ impl RingCryptoAdapter {
 
     /// Generates a random serial number for certificate issuance.
     ///
-    /// SECURITY (audit note): The current implementation uses a nanosecond
-    /// timestamp, which is NOT cryptographically random and is predictable.
-    /// This makes serial numbers guessable, violating RFC 5280 §4.1.2.2.
-    ///
-    /// TODO: Replace with `ring::rand::generate::<[u8; 20]>()` to produce
-    /// a 20-byte cryptographically random serial number.
+    /// Uses 20-bytes of cryptographically secure randomness from `ring::rand`,
+    /// as recommended by RFC 5280 for non-guessable serial numbers.
     fn generate_serial_number() -> String {
-        // FIXME: SECURITY — timestamp-based serials are predictable.
-        // Use ring::rand for cryptographic randomness.
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        format!("{:016x}", now)
+        let rng = ring::rand::SystemRandom::new();
+        let mut serial = [0u8; 20];
+        rng.fill(&mut serial)
+            .expect("failed to generate cryptographically secure random serial number");
+        hex::encode(serial)
     }
 
     /// Encrypts a private key using AES-256-GCM.
@@ -229,7 +225,12 @@ mod tests {
     fn generate_serial_number() {
         let serial = RingCryptoAdapter::generate_serial_number();
         assert!(!serial.is_empty());
-        assert!(serial.len() >= 16);
+        // 20 bytes hex-encoded should be 40 characters
+        assert_eq!(serial.len(), 40);
+
+        // Ensure multiple calls produce different results
+        let serial2 = RingCryptoAdapter::generate_serial_number();
+        assert_ne!(serial, serial2);
     }
 
     #[test]
