@@ -217,13 +217,13 @@ export class MeilisearchAdapter implements SearchIndex {
 
     if (filters.categories && filters.categories.length > 0) {
       const categoryFilters = filters.categories.map(
-        (c) => `category = "${c}"`
+        (c) => `category = "${this.escapeFilterValue(c)}"`
       );
       conditions.push(`(${categoryFilters.join(' OR ')})`);
     }
 
     if (filters.tags && filters.tags.length > 0) {
-      const tagFilters = filters.tags.map((t) => `tags = "${t}"`);
+      const tagFilters = filters.tags.map((t) => `tags = "${this.escapeFilterValue(t)}"`);
       conditions.push(`(${tagFilters.join(' OR ')})`);
     }
 
@@ -286,7 +286,10 @@ export class MeilisearchAdapter implements SearchIndex {
    * Meilisearch hit, reassembling the Money value object from the
    * denormalized fields. (V-13: SearchDocument moved to adapter-local type.)
    */
-  private toSearchDocument(hit: MeilisearchDocument): AdapterSearchDocument {
+  /**
+   * @deprecated
+   */
+  public _toSearchDocument(hit: MeilisearchDocument): AdapterSearchDocument {
     return {
       productId: hit.productId,
       name: hit.name,
@@ -341,6 +344,15 @@ export class MeilisearchAdapter implements SearchIndex {
       facets,
       suggestions: [],
     };
+  }
+
+  /**
+   * Escape double quotes and backslashes in filter values to prevent injection.
+   * Meilisearch filters use double quotes for string literals and backslashes for escaping.
+   * We must escape backslashes first, then quotes.
+   */
+  private escapeFilterValue(value: string): string {
+    return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   }
 
   private encodePageToken(page: number): string {
