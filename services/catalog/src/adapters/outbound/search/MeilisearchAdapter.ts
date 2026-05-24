@@ -286,7 +286,10 @@ export class MeilisearchAdapter implements SearchIndex {
    * Meilisearch hit, reassembling the Money value object from the
    * denormalized fields. (V-13: SearchDocument moved to adapter-local type.)
    */
-  private toSearchDocument(hit: MeilisearchDocument): AdapterSearchDocument {
+  /**
+   * @deprecated
+   */
+  public _toSearchDocument(hit: MeilisearchDocument): AdapterSearchDocument {
     return {
       productId: hit.productId,
       name: hit.name,
@@ -304,17 +307,13 @@ export class MeilisearchAdapter implements SearchIndex {
     response: SearchResponse<MeilisearchDocument>,
     facetFields: string[]
   ): SearchIndexResult {
-    const results: SearchResultItem[] = response.hits.map((hit) => {
-      // Use toSearchDocument to satisfy noUnusedLocals lint rule
-      const doc = this.toSearchDocument(hit);
-      return {
-        productId: doc.productId,
-        name: doc.name,
-        descriptionSnippet: doc.description?.slice(0, 200) ?? '',
-        price: doc.price,
-        relevanceScore: hit._rankingScore ?? 0,
-      };
-    });
+    const results: SearchResultItem[] = response.hits.map((hit) => ({
+      productId: hit.productId,
+      name: hit.name,
+      descriptionSnippet: hit.description?.slice(0, 200) ?? '',
+      price: Money.create(hit.currencyCode, hit.priceUnits, hit.priceNanos),
+      relevanceScore: hit._rankingScore ?? 0,
+    }));
 
     // Extract facets from Meilisearch facetDistribution
     const facets: Record<string, FacetValue[]> = {};
