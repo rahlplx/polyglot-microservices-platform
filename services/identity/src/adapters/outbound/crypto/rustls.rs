@@ -58,9 +58,7 @@ impl RingCryptoAdapter {
             ca_cert_pem: String::new(),
             ca_rotation_in_progress: std::sync::atomic::AtomicBool::new(false),
             bundle_sequence: std::sync::atomic::AtomicU64::new(1),
-            bundle_expires_at: std::sync::atomic::AtomicU64::new(
-                now + Self::CA_ROTATION_INTERVAL_SECONDS,
-            ),
+            bundle_expires_at: std::sync::atomic::AtomicU64::new(now + Self::CA_ROTATION_INTERVAL_SECONDS),
         }
     }
 
@@ -111,9 +109,9 @@ impl RingCryptoAdapter {
 impl CertificateAuthorityPort for RingCryptoAdapter {
     fn sign_svid(
         &self,
-        _csr_der: &[u8],
-        _spiffe_id: &str,
-        _dns_names: &[String],
+        csr_der: &[u8],
+        spiffe_id: &str,
+        dns_names: &[String],
         ttl_seconds: u64,
     ) -> Result<SignedSVID, CAError> {
         let now = std::time::SystemTime::now()
@@ -133,10 +131,7 @@ impl CertificateAuthorityPort for RingCryptoAdapter {
 
         Ok(SignedSVID {
             cert_chain_der: vec![self.ca_cert_der.clone()],
-            cert_chain_pem: format!(
-                "{}\n{}",
-                "-----BEGIN CERTIFICATE-----\nLEAF\n-----END CERTIFICATE-----", self.ca_cert_pem
-            ),
+            cert_chain_pem: format!("{}\n{}", "-----BEGIN CERTIFICATE-----\nLEAF\n-----END CERTIFICATE-----", self.ca_cert_pem),
             serial_number: serial,
             not_before: now,
             not_after: now + ttl_seconds,
@@ -149,7 +144,7 @@ impl CertificateAuthorityPort for RingCryptoAdapter {
         dns_names: &[String],
         ttl_seconds: u64,
     ) -> Result<GeneratedSVID, CAError> {
-        let _now = std::time::SystemTime::now()
+        let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
@@ -175,12 +170,8 @@ impl CertificateAuthorityPort for RingCryptoAdapter {
             return Err(CAError::TrustDomainNotFound(trust_domain.to_string()));
         }
 
-        let sequence = self
-            .bundle_sequence
-            .load(std::sync::atomic::Ordering::SeqCst);
-        let expires_at = self
-            .bundle_expires_at
-            .load(std::sync::atomic::Ordering::SeqCst);
+        let sequence = self.bundle_sequence.load(std::sync::atomic::Ordering::SeqCst);
+        let expires_at = self.bundle_expires_at.load(std::sync::atomic::Ordering::SeqCst);
 
         Ok(X509Bundle::new(
             trust_domain.to_string(),
@@ -206,8 +197,7 @@ impl CertificateAuthorityPort for RingCryptoAdapter {
         // 4. Increment the bundle sequence number
         // 5. Publish the new trust bundle (old + new CA certs)
 
-        self.bundle_sequence
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.bundle_sequence.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         self.ca_rotation_in_progress
             .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -229,16 +219,12 @@ mod tests {
     fn constant_time_comparison() {
         assert!(RingCryptoAdapter::constant_time_eq(b"hello", b"hello"));
         assert!(!RingCryptoAdapter::constant_time_eq(b"hello", b"world"));
-        assert!(!RingCryptoAdapter::constant_time_eq(
-            b"hello",
-            b"helloworld"
-        ));
+        assert!(!RingCryptoAdapter::constant_time_eq(b"hello", b"helloworld"));
     }
 
     #[test]
     fn generate_serial_number() {
-        let serial =
-            RingCryptoAdapter::generate_serial_number().expect("failed to generate serial");
+        let serial = RingCryptoAdapter::generate_serial_number().expect("failed to generate serial");
         assert!(!serial.is_empty());
         assert_eq!(serial.len(), 40);
     }

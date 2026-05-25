@@ -304,11 +304,11 @@ pub struct TTLPolicy {
 impl Default for TTLPolicy {
     fn default() -> Self {
         Self {
-            max_ttl_seconds: 259200,                // 72 hours
-            default_production_ttl_seconds: 3600,   // 1 hour
-            default_staging_ttl_seconds: 14400,     // 4 hours
+            max_ttl_seconds: 259200,      // 72 hours
+            default_production_ttl_seconds: 3600, // 1 hour
+            default_staging_ttl_seconds: 14400,   // 4 hours
             default_development_ttl_seconds: 86400, // 24 hours
-            grace_period_seconds: 300,              // 5 minutes
+            grace_period_seconds: 300,             // 5 minutes
         }
     }
 }
@@ -354,11 +354,7 @@ impl std::fmt::Display for TTLPolicyError {
         match self {
             Self::ZeroTTL => write!(f, "requested TTL cannot be zero"),
             Self::TTLExceededPolicy { requested, maximum } => {
-                write!(
-                    f,
-                    "requested TTL {}s exceeds maximum policy TTL {}s",
-                    requested, maximum
-                )
+                write!(f, "requested TTL {}s exceeds maximum policy TTL {}s", requested, maximum)
             }
         }
     }
@@ -431,10 +427,7 @@ mod tests {
         assert_eq!(RevocationReason::KeyCompromise.code(), 1);
         assert_eq!(RevocationReason::CACompromise.code(), 2);
         assert_eq!(RevocationReason::Unspecified.code(), 0);
-        assert_eq!(
-            RevocationReason::from_code(1),
-            RevocationReason::KeyCompromise
-        );
+        assert_eq!(RevocationReason::from_code(1), RevocationReason::KeyCompromise);
     }
 
     #[test]

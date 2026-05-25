@@ -6,7 +6,9 @@
 // dependencies — only std and domain models are used.
 // ---------------------------------------------------------------------------
 
-use crate::domain::models::{AttestationRequest, AttestationResult};
+use crate::domain::models::{
+    AttestationRequest, AttestationResult,
+};
 
 /// The attestation use case trait.
 ///

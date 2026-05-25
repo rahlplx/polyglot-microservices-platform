@@ -7,3 +7,6 @@
 
 pub mod ca;
 pub mod store;
+
+pub use ca::{CAError, CertificateAuthorityPort, GeneratedSVID, SignedSVID};
+pub use store::{StoreError, StoredSVID, WorkloadList, WorkloadStorePort};

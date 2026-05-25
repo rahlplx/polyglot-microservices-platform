@@ -6,14 +6,13 @@
 // behavior from a consumer's perspective.
 // ---------------------------------------------------------------------------
 
-use identity_service::adapters::inbound::grpc::handler::IdentityGrpcHandler;
 use identity_service::domain::models::{
-    AttestationRequest, AttestationResult, RevocationReason, RevokedSVID, RotationReason, Selector,
-    TTLPolicy, TrustDomain, Workload, X509Bundle, SPIFFEID, X509SVID,
+    AttestationRequest, AttestationResult, RevocationReason, RevokedSVID, RotationReason,
+    Selector, SPIFFEID, TrustDomain, TTLPolicy, Workload, X509Bundle, X509SVID,
 };
 use identity_service::domain::ports::inbound::{
-    AttestationUseCase, GetTrustBundleUseCase, IssueSVIDUseCase, RevokeSVIDUseCase,
-    RotateCertificateUseCase,
+    AttestationUseCase, GetTrustBundleUseCase, IssueSVIDUseCase,
+    RevokeSVIDUseCase, RotateCertificateUseCase,
 };
 use identity_service::domain::ports::outbound::ca::{
     CAError, CertificateAuthorityPort, GeneratedSVID, SignedSVID,
@@ -21,9 +20,8 @@ use identity_service::domain::ports::outbound::ca::{
 use identity_service::domain::ports::outbound::store::{
     StoreError, StoredSVID, WorkloadList, WorkloadStorePort,
 };
-use identity_service::domain::services::{
-    AttestationService, CertificateRotationService, SVIDService,
-};
+use identity_service::domain::services::{AttestationService, CertificateRotationService, SVIDService};
+use identity_service::adapters::inbound::grpc::handler::IdentityGrpcHandler;
 
 use std::sync::Arc;
 
@@ -32,37 +30,21 @@ use std::sync::Arc;
 struct ContractTestCA;
 
 impl CertificateAuthorityPort for ContractTestCA {
-    fn sign_svid(
-        &self,
-        _csr_der: &[u8],
-        spiffe_id: &str,
-        _dns_names: &[String],
-        ttl_seconds: u64,
-    ) -> Result<SignedSVID, CAError> {
+    fn sign_svid(&self, _csr_der: &[u8], spiffe_id: &str, _dns_names: &[String], ttl_seconds: u64) -> Result<SignedSVID, CAError> {
         Ok(SignedSVID {
             cert_chain_der: vec![vec![0x30, 0x82, 0x01]], // Fake DER
-            cert_chain_pem: format!(
-                "-----BEGIN CERTIFICATE-----\n{}\n-----END CERTIFICATE-----",
-                spiffe_id.len()
-            ),
+            cert_chain_pem: format!("-----BEGIN CERTIFICATE-----\n{}\n-----END CERTIFICATE-----", spiffe_id.len()),
             serial_number: format!("{:016x}", ttl_seconds),
             not_before: 1000,
             not_after: 1000 + ttl_seconds,
         })
     }
 
-    fn generate_and_sign_svid(
-        &self,
-        spiffe_id: &str,
-        dns_names: &[String],
-        ttl_seconds: u64,
-    ) -> Result<GeneratedSVID, CAError> {
+    fn generate_and_sign_svid(&self, spiffe_id: &str, dns_names: &[String], ttl_seconds: u64) -> Result<GeneratedSVID, CAError> {
         Ok(GeneratedSVID {
             svid: self.sign_svid(&[], spiffe_id, dns_names, ttl_seconds)?,
             private_key_der: vec![0x04, 0x82], // Fake encrypted key
-            private_key_pem:
-                "-----BEGIN ENCRYPTED PRIVATE KEY-----\nMOCK\n-----END ENCRYPTED PRIVATE KEY-----"
-                    .to_string(),
+            private_key_pem: "-----BEGIN ENCRYPTED PRIVATE KEY-----\nMOCK\n-----END ENCRYPTED PRIVATE KEY-----".to_string(),
         })
     }
 
@@ -76,12 +58,8 @@ impl CertificateAuthorityPort for ContractTestCA {
         ))
     }
 
-    fn rotate_ca_key(&self, _trust_domain: &str) -> Result<(), CAError> {
-        Ok(())
-    }
-    fn is_ca_rotation_in_progress(&self) -> bool {
-        false
-    }
+    fn rotate_ca_key(&self, _trust_domain: &str) -> Result<(), CAError> { Ok(()) }
+    fn is_ca_rotation_in_progress(&self) -> bool { false }
 }
 
 struct ContractTestStore {
@@ -104,10 +82,7 @@ impl ContractTestStore {
         let parent_id = SPIFFEID::parse("spiffe://trust.example.org/spire/agent").unwrap();
         let mut w = Workload::new(
             format!("w-{}", spiffe_id.len()),
-            id,
-            parent_id,
-            selectors,
-            3600,
+            id, parent_id, selectors, 3600,
             vec!["svc.trust.example.org".to_string()],
         );
         w.mark_attested();
@@ -116,63 +91,21 @@ impl ContractTestStore {
 }
 
 impl WorkloadStorePort for ContractTestStore {
-    fn register_workload(&self, _workload: &Workload) -> Result<(), StoreError> {
-        Ok(())
-    }
-    fn get_workload(&self, _workload_id: &str) -> Result<Option<Workload>, StoreError> {
-        Ok(None)
-    }
-    fn get_workloads_by_selector(
-        &self,
-        _selectors: &[Selector],
-        _trust_domain: &str,
-    ) -> Result<Vec<Workload>, StoreError> {
-        Ok(vec![])
-    }
+    fn register_workload(&self, _workload: &Workload) -> Result<(), StoreError> { Ok(()) }
+    fn get_workload(&self, _workload_id: &str) -> Result<Option<Workload>, StoreError> { Ok(None) }
+    fn get_workloads_by_selector(&self, _selectors: &[Selector], _trust_domain: &str) -> Result<Vec<Workload>, StoreError> { Ok(vec![]) }
     fn get_workload_by_spiffe_id(&self, spiffe_id: &str) -> Result<Option<Workload>, StoreError> {
         Ok(self.workloads.get(spiffe_id).cloned())
     }
-    fn update_workload(&self, _workload: &Workload) -> Result<(), StoreError> {
-        Ok(())
+    fn update_workload(&self, _workload: &Workload) -> Result<(), StoreError> { Ok(()) }
+    fn delete_workload(&self, _workload_id: &str) -> Result<(), StoreError> { Ok(()) }
+    fn list_workloads(&self, _trust_domain: &str, _cursor: Option<&str>, _page_size: i32) -> Result<WorkloadList, StoreError> {
+        Ok(WorkloadList { workloads: vec![], next_cursor: None })
     }
-    fn delete_workload(&self, _workload_id: &str) -> Result<(), StoreError> {
-        Ok(())
-    }
-    fn list_workloads(
-        &self,
-        _trust_domain: &str,
-        _cursor: Option<&str>,
-        _page_size: i32,
-    ) -> Result<WorkloadList, StoreError> {
-        Ok(WorkloadList {
-            workloads: vec![],
-            next_cursor: None,
-        })
-    }
-    fn store_svid(
-        &self,
-        _svid: &X509SVID,
-        _workload_id: &str,
-        _encrypted_private_key: &[u8],
-    ) -> Result<(), StoreError> {
-        Ok(())
-    }
-    fn get_svid(&self, _serial_number: &str) -> Result<Option<StoredSVID>, StoreError> {
-        Ok(None)
-    }
-    fn get_active_svid_for_workload(
-        &self,
-        _workload_id: &str,
-    ) -> Result<Option<StoredSVID>, StoreError> {
-        Ok(None)
-    }
-    fn revoke_svid(
-        &self,
-        serial_number: &str,
-        reason: RevocationReason,
-        _revoked_by: &str,
-        _comment: Option<&str>,
-    ) -> Result<RevokedSVID, StoreError> {
+    fn store_svid(&self, _svid: &X509SVID, _workload_id: &str, _encrypted_private_key: &[u8]) -> Result<(), StoreError> { Ok(()) }
+    fn get_svid(&self, _serial_number: &str) -> Result<Option<StoredSVID>, StoreError> { Ok(None) }
+    fn get_active_svid_for_workload(&self, _workload_id: &str) -> Result<Option<StoredSVID>, StoreError> { Ok(None) }
+    fn revoke_svid(&self, serial_number: &str, reason: RevocationReason, _revoked_by: &str, _comment: Option<&str>) -> Result<RevokedSVID, StoreError> {
         if self.revoked_serials.contains(serial_number) {
             return Err(StoreError::AlreadyRevoked(serial_number.to_string()));
         }
@@ -186,27 +119,12 @@ impl WorkloadStorePort for ContractTestStore {
             trust_domain: "trust.example.org".to_string(),
         })
     }
-    fn list_revoked(
-        &self,
-        _trust_domain: &str,
-        _sequence_gt: u64,
-    ) -> Result<Vec<RevokedSVID>, StoreError> {
-        Ok(vec![])
-    }
-    fn is_revoked(&self, serial_number: &str) -> Result<bool, StoreError> {
-        Ok(self.revoked_serials.contains(serial_number))
-    }
-    fn store_bundle(&self, _bundle: &X509Bundle) -> Result<(), StoreError> {
-        Ok(())
-    }
-    fn get_bundle(&self, _trust_domain: &str) -> Result<Option<X509Bundle>, StoreError> {
-        Ok(None)
-    }
+    fn list_revoked(&self, _trust_domain: &str, _sequence_gt: u64) -> Result<Vec<RevokedSVID>, StoreError> { Ok(vec![]) }
+    fn is_revoked(&self, serial_number: &str) -> Result<bool, StoreError> { Ok(self.revoked_serials.contains(serial_number)) }
+    fn store_bundle(&self, _bundle: &X509Bundle) -> Result<(), StoreError> { Ok(()) }
+    fn get_bundle(&self, _trust_domain: &str) -> Result<Option<X509Bundle>, StoreError> { Ok(None) }
     fn increment_bundle_sequence(&self, _trust_domain: &str) -> Result<u64, StoreError> {
-        Ok(self
-            .bundle_sequence
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-            + 1)
+        Ok(self.bundle_sequence.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1)
     }
 }
 
@@ -217,19 +135,13 @@ fn contract_attest_workload_returns_attested_flag() {
     let mut store = ContractTestStore::new();
     store.add_attested_workload(
         "spiffe://trust.example.org/services/gateway",
-        vec![
-            Selector::k8s_namespace("production"),
-            Selector::k8s_label("app", "gateway"),
-        ],
+        vec![Selector::k8s_namespace("production"), Selector::k8s_label("app", "gateway")],
     );
 
     let service = AttestationService::new(Arc::new(store), 300);
     let request = AttestationRequest::new(
         SPIFFEID::parse("spiffe://trust.example.org/services/gateway").unwrap(),
-        vec![
-            Selector::k8s_namespace("production"),
-            Selector::k8s_label("app", "gateway"),
-        ],
+        vec![Selector::k8s_namespace("production"), Selector::k8s_label("app", "gateway")],
         TrustDomain::production(),
     );
 
@@ -237,10 +149,7 @@ fn contract_attest_workload_returns_attested_flag() {
     // Contract: attestation result must include attested boolean
     assert!(result.attested);
     // Contract: attestation result must include spiffe_id
-    assert_eq!(
-        result.spiffe_id.as_str(),
-        "spiffe://trust.example.org/services/gateway"
-    );
+    assert_eq!(result.spiffe_id.as_str(), "spiffe://trust.example.org/services/gateway");
     // Contract: attestation result must include expires_at
     assert!(result.expires_at > 0);
 }

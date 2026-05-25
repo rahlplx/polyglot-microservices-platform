@@ -117,9 +117,7 @@ impl Config {
         }
 
         if self.database_url.is_empty() && self.feature_postgres_store {
-            errors.push(
-                "IDENTITY_DATABASE_URL cannot be empty when postgres store is enabled".to_string(),
-            );
+            errors.push("IDENTITY_DATABASE_URL cannot be empty when postgres store is enabled".to_string());
         }
 
         if self.trust_domain.is_empty() {
@@ -131,13 +129,11 @@ impl Config {
         }
 
         if self.grace_period_seconds >= self.default_production_ttl {
-            errors
-                .push("IDENTITY_GRACE_PERIOD_SECONDS must be less than production TTL".to_string());
+            errors.push("IDENTITY_GRACE_PERIOD_SECONDS must be less than production TTL".to_string());
         }
 
         if self.verification_sample_rate < 0.0 || self.verification_sample_rate > 1.0 {
-            errors
-                .push("IDENTITY_VERIFICATION_SAMPLE_RATE must be between 0.0 and 1.0".to_string());
+            errors.push("IDENTITY_VERIFICATION_SAMPLE_RATE must be between 0.0 and 1.0".to_string());
         }
 
         if errors.is_empty() {

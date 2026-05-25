@@ -5,7 +5,7 @@
 // ZERO external dependencies — only std is used.
 // ---------------------------------------------------------------------------
 
-use super::workload::{Selector, TrustDomain, SPIFFEID};
+use super::workload::{Selector, SPIFFEID, TrustDomain};
 
 /// An attestation request from a workload.
 ///
@@ -92,16 +92,9 @@ pub enum AttestationFailureReason {
 impl std::fmt::Display for AttestationFailureReason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NoMatchingWorkload => {
-                write!(f, "no registered workload matches the presented selectors")
-            }
-            Self::SelectorMismatch => write!(
-                f,
-                "presented selectors do not match the registered workload"
-            ),
-            Self::TrustDomainMismatch => {
-                write!(f, "SPIFFE ID does not belong to the specified trust domain")
-            }
+            Self::NoMatchingWorkload => write!(f, "no registered workload matches the presented selectors"),
+            Self::SelectorMismatch => write!(f, "presented selectors do not match the registered workload"),
+            Self::TrustDomainMismatch => write!(f, "SPIFFE ID does not belong to the specified trust domain"),
             Self::WorkloadDeregistered => write!(f, "workload has been deregistered"),
             Self::InvalidSelectors(detail) => write!(f, "invalid selectors: {}", detail),
             Self::InternalError(detail) => write!(f, "internal error: {}", detail),
@@ -127,8 +120,10 @@ mod tests {
     #[test]
     fn attestation_result_failure() {
         let spiffe_id = SPIFFEID::parse("spiffe://trust.example.org/services/gateway").unwrap();
-        let result =
-            AttestationResult::failure(spiffe_id, AttestationFailureReason::NoMatchingWorkload);
+        let result = AttestationResult::failure(
+            spiffe_id,
+            AttestationFailureReason::NoMatchingWorkload,
+        );
         assert!(!result.attested);
         assert!(result.failure_reason.is_some());
     }

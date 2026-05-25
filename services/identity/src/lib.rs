@@ -5,5 +5,5 @@
 // live PostgreSQL, SPIRE, and tonic, which are unavailable in unit tests.
 // ---------------------------------------------------------------------------
 
-pub mod adapters;
 pub mod domain;
+pub mod adapters;
