@@ -64,20 +64,17 @@ impl RingCryptoAdapter {
 
     /// Generates a random serial number for certificate issuance.
     ///
-    /// SECURITY (audit note): The current implementation uses a nanosecond
-    /// timestamp, which is NOT cryptographically random and is predictable.
-    /// This makes serial numbers guessable, violating RFC 5280 §4.1.2.2.
-    ///
-    /// TODO: Replace with `ring::rand::generate::<[u8; 20]>()` to produce
-    /// a 20-byte cryptographically random serial number.
-    fn generate_serial_number() -> String {
-        // FIXME: SECURITY — timestamp-based serials are predictable.
-        // Use ring::rand for cryptographic randomness.
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        format!("{:016x}", now)
+    /// SECURITY (audit note): RFC 5280 §4.1.2.2 requires serial numbers to be
+    /// unique and non-sequential. This implementation uses 20 bytes of
+    /// cryptographically secure randomness from ring::rand::SystemRandom.
+    fn generate_serial_number() -> Result<String, CAError> {
+        use ring::rand::SecureRandom;
+        let rng = ring::rand::SystemRandom::new();
+        let mut serial = [0u8; 20];
+        rng.fill(&mut serial).map_err(|_| {
+            CAError::CryptoError("failed to generate random serial number".to_string())
+        })?;
+        Ok(hex::encode(serial))
     }
 
     /// Encrypts a private key using AES-256-GCM.
@@ -112,9 +109,9 @@ impl RingCryptoAdapter {
 impl CertificateAuthorityPort for RingCryptoAdapter {
     fn sign_svid(
         &self,
-        csr_der: &[u8],
-        spiffe_id: &str,
-        dns_names: &[String],
+        _csr_der: &[u8],
+        _spiffe_id: &str,
+        _dns_names: &[String],
         ttl_seconds: u64,
     ) -> Result<SignedSVID, CAError> {
         let now = std::time::SystemTime::now()
@@ -130,7 +127,7 @@ impl CertificateAuthorityPort for RingCryptoAdapter {
         // 5. Build the certificate chain (leaf + CA)
         // 6. Return DER and PEM encoded certificate chain
 
-        let serial = Self::generate_serial_number();
+        let serial = Self::generate_serial_number()?;
 
         Ok(SignedSVID {
             cert_chain_der: vec![self.ca_cert_der.clone()],
@@ -147,7 +144,7 @@ impl CertificateAuthorityPort for RingCryptoAdapter {
         dns_names: &[String],
         ttl_seconds: u64,
     ) -> Result<GeneratedSVID, CAError> {
-        let now = std::time::SystemTime::now()
+        let _now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
@@ -227,9 +224,24 @@ mod tests {
 
     #[test]
     fn generate_serial_number() {
-        let serial = RingCryptoAdapter::generate_serial_number();
+        let serial = RingCryptoAdapter::generate_serial_number().expect("failed to generate serial");
         assert!(!serial.is_empty());
-        assert!(serial.len() >= 16);
+        assert_eq!(serial.len(), 40);
+    }
+
+    #[test]
+    fn serial_numbers_are_unique_and_unpredictable() {
+        let mut serials = std::collections::HashSet::new();
+        for _ in 0..100 {
+            let serial =
+                RingCryptoAdapter::generate_serial_number().expect("failed to generate serial");
+            assert_eq!(
+                serial.len(),
+                40,
+                "Serial number should be 40 hex chars (20 bytes)"
+            );
+            assert!(serials.insert(serial), "Duplicate serial number generated!");
+        }
     }
 
     #[test]
