@@ -8,10 +8,10 @@
 use std::sync::Arc;
 
 use crate::domain::models::{
-    RevocationReason, RotationReason, RotationResult, TTLPolicy, X509Bundle, X509SVID,
+    RevocationReason, RotationReason, RotationResult, TTLPolicy, X509SVID,
 };
-use crate::domain::ports::inbound::RotationError;
 use crate::domain::ports::inbound::RotateCertificateUseCase;
+use crate::domain::ports::inbound::RotationError;
 use crate::domain::ports::outbound::ca::{CAError, CertificateAuthorityPort};
 use crate::domain::ports::outbound::store::{StoreError, WorkloadStorePort};
 
@@ -75,7 +75,9 @@ impl CertificateRotationService {
     fn generate_rotation_id(spiffe_id: &str, timestamp: u64) -> String {
         // Simple rotation ID: spiffe-id-hash + timestamp
         // In production, use UUID v4
-        let hash = spiffe_id.bytes().fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
+        let hash = spiffe_id
+            .bytes()
+            .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
         format!("rot-{:016x}-{}", hash, timestamp)
     }
 
@@ -104,7 +106,9 @@ impl CertificateRotationService {
             // Proactive and key compromise rotations are always allowed
             RotationReason::Proactive | RotationReason::KeyCompromise => true,
             // Expiry-driven rotation checks if we're in the grace period
-            RotationReason::Expiry => svid.needs_rotation(now, self.ttl_policy.grace_period_seconds),
+            RotationReason::Expiry => {
+                svid.needs_rotation(now, self.ttl_policy.grace_period_seconds)
+            }
             // CA rotation is always needed when triggered
             RotationReason::CARotation => true,
         }
@@ -131,7 +135,9 @@ impl CertificateRotationService {
     fn store_to_rotation_error(error: StoreError) -> RotationError {
         match error {
             StoreError::CertificateNotFound(serial) => RotationError::CertificateNotFound(serial),
-            StoreError::Unavailable(detail) => RotationError::Internal(format!("store unavailable: {}", detail)),
+            StoreError::Unavailable(detail) => {
+                RotationError::Internal(format!("store unavailable: {}", detail))
+            }
             other => RotationError::Internal(other.to_string()),
         }
     }
@@ -219,7 +225,12 @@ impl RotateCertificateUseCase for CertificateRotationService {
         // Step 8: Store the new SVID
         let new_svid = X509SVID::new(
             spiffe_id.to_string(),
-            generated.svid.cert_chain_der.iter().flat_map(|v| v.iter().copied()).collect(),
+            generated
+                .svid
+                .cert_chain_der
+                .iter()
+                .flat_map(|v| v.iter().copied())
+                .collect(),
             generated.svid.cert_chain_pem.clone(),
             generated.svid.serial_number.clone(),
             generated.svid.not_after,
@@ -236,7 +247,8 @@ impl RotateCertificateUseCase for CertificateRotationService {
             // Failed to store new SVID — critical error
             self.release_rotation_lock(spiffe_id);
             return Err(RotationError::Internal(format!(
-                "failed to store new SVID: {}", e
+                "failed to store new SVID: {}",
+                e
             )));
         }
 
@@ -306,9 +318,9 @@ mod scopeguard {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::models::RevokedSVID;
     use crate::domain::models::workload::Selector;
-    use crate::domain::models::workload::{SPIFFEID, Workload};
+    use crate::domain::models::workload::{Workload, SPIFFEID};
+    use crate::domain::models::RevokedSVID;
     use crate::domain::ports::outbound::ca::{GeneratedSVID, SignedSVID};
     use crate::domain::ports::outbound::store::StoredSVID;
 
@@ -406,21 +418,66 @@ mod tests {
     }
 
     impl WorkloadStorePort for MockRotationStore {
-        fn register_workload(&self, _workload: &Workload) -> Result<(), StoreError> { Ok(()) }
-        fn get_workload(&self, _workload_id: &str) -> Result<Option<Workload>, StoreError> { Ok(None) }
-        fn get_workloads_by_selector(&self, _selectors: &[Selector], _trust_domain: &str) -> Result<Vec<Workload>, StoreError> { Ok(vec![]) }
-        fn get_workload_by_spiffe_id(&self, _spiffe_id: &str) -> Result<Option<Workload>, StoreError> { Ok(None) }
-        fn update_workload(&self, _workload: &Workload) -> Result<(), StoreError> { Ok(()) }
-        fn delete_workload(&self, _workload_id: &str) -> Result<(), StoreError> { Ok(()) }
-        fn list_workloads(&self, _trust_domain: &str, _cursor: Option<&str>, _page_size: i32) -> Result<crate::domain::ports::outbound::store::WorkloadList, StoreError> {
-            Ok(crate::domain::ports::outbound::store::WorkloadList { workloads: vec![], next_cursor: None })
+        fn register_workload(&self, _workload: &Workload) -> Result<(), StoreError> {
+            Ok(())
         }
-        fn store_svid(&self, _svid: &X509SVID, _workload_id: &str, _encrypted_private_key: &[u8]) -> Result<(), StoreError> { Ok(()) }
+        fn get_workload(&self, _workload_id: &str) -> Result<Option<Workload>, StoreError> {
+            Ok(None)
+        }
+        fn get_workloads_by_selector(
+            &self,
+            _selectors: &[Selector],
+            _trust_domain: &str,
+        ) -> Result<Vec<Workload>, StoreError> {
+            Ok(vec![])
+        }
+        fn get_workload_by_spiffe_id(
+            &self,
+            _spiffe_id: &str,
+        ) -> Result<Option<Workload>, StoreError> {
+            Ok(None)
+        }
+        fn update_workload(&self, _workload: &Workload) -> Result<(), StoreError> {
+            Ok(())
+        }
+        fn delete_workload(&self, _workload_id: &str) -> Result<(), StoreError> {
+            Ok(())
+        }
+        fn list_workloads(
+            &self,
+            _trust_domain: &str,
+            _cursor: Option<&str>,
+            _page_size: i32,
+        ) -> Result<crate::domain::ports::outbound::store::WorkloadList, StoreError> {
+            Ok(crate::domain::ports::outbound::store::WorkloadList {
+                workloads: vec![],
+                next_cursor: None,
+            })
+        }
+        fn store_svid(
+            &self,
+            _svid: &X509SVID,
+            _workload_id: &str,
+            _encrypted_private_key: &[u8],
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
         fn get_svid(&self, serial_number: &str) -> Result<Option<StoredSVID>, StoreError> {
             Ok(self.svids.get(serial_number).cloned())
         }
-        fn get_active_svid_for_workload(&self, _workload_id: &str) -> Result<Option<StoredSVID>, StoreError> { Ok(None) }
-        fn revoke_svid(&self, serial_number: &str, _reason: RevocationReason, _revoked_by: &str, _comment: Option<&str>) -> Result<RevokedSVID, StoreError> {
+        fn get_active_svid_for_workload(
+            &self,
+            _workload_id: &str,
+        ) -> Result<Option<StoredSVID>, StoreError> {
+            Ok(None)
+        }
+        fn revoke_svid(
+            &self,
+            serial_number: &str,
+            _reason: RevocationReason,
+            _revoked_by: &str,
+            _comment: Option<&str>,
+        ) -> Result<RevokedSVID, StoreError> {
             Ok(RevokedSVID {
                 serial_number: serial_number.to_string(),
                 spiffe_id: "spiffe://trust.example.org/test".to_string(),
@@ -431,11 +488,25 @@ mod tests {
                 trust_domain: "trust.example.org".to_string(),
             })
         }
-        fn list_revoked(&self, _trust_domain: &str, _sequence_gt: u64) -> Result<Vec<RevokedSVID>, StoreError> { Ok(vec![]) }
-        fn is_revoked(&self, _serial_number: &str) -> Result<bool, StoreError> { Ok(false) }
-        fn store_bundle(&self, _bundle: &X509Bundle) -> Result<(), StoreError> { Ok(()) }
-        fn get_bundle(&self, _trust_domain: &str) -> Result<Option<X509Bundle>, StoreError> { Ok(None) }
-        fn increment_bundle_sequence(&self, _trust_domain: &str) -> Result<u64, StoreError> { Ok(2) }
+        fn list_revoked(
+            &self,
+            _trust_domain: &str,
+            _sequence_gt: u64,
+        ) -> Result<Vec<RevokedSVID>, StoreError> {
+            Ok(vec![])
+        }
+        fn is_revoked(&self, _serial_number: &str) -> Result<bool, StoreError> {
+            Ok(false)
+        }
+        fn store_bundle(&self, _bundle: &X509Bundle) -> Result<(), StoreError> {
+            Ok(())
+        }
+        fn get_bundle(&self, _trust_domain: &str) -> Result<Option<X509Bundle>, StoreError> {
+            Ok(None)
+        }
+        fn increment_bundle_sequence(&self, _trust_domain: &str) -> Result<u64, StoreError> {
+            Ok(2)
+        }
     }
 
     #[test]

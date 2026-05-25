@@ -7,15 +7,13 @@
 // ---------------------------------------------------------------------------
 
 use std::sync::Arc;
-use tonic::{Request, Response, Status};
+use tonic::{Response, Status};
 
-use crate::domain::models::{
-    AttestationRequest, RevocationReason, RotationReason, TrustDomain,
-};
 use crate::domain::models::workload::{Selector, SPIFFEID};
+use crate::domain::models::{AttestationRequest, RevocationReason, RotationReason, TrustDomain};
 use crate::domain::ports::inbound::{
-    AttestationUseCase, GetTrustBundleUseCase, IssueSVIDUseCase,
-    RevokeSVIDUseCase, RotateCertificateUseCase,
+    AttestationUseCase, GetTrustBundleUseCase, IssueSVIDUseCase, RevokeSVIDUseCase,
+    RotateCertificateUseCase,
 };
 
 /// The gRPC handler for the Identity service.
@@ -107,7 +105,7 @@ impl IdentityGrpcHandler {
     ) -> Result<Response<IssueSVIDResponse>, Status> {
         let dns_names: Vec<String> = vec![]; // Proto doesn't have dns_names, use default
 
-        let (svid, bundle) = self
+        let (svid, _bundle) = self
             .svid_issuer
             .issue_svid(
                 &request.spiffe_id,

@@ -37,10 +37,7 @@ impl SPIFFEID {
         if !path.starts_with('/') {
             return Err(SPIFFEIDError::InvalidPath(path));
         }
-        Ok(Self {
-            trust_domain,
-            path,
-        })
+        Ok(Self { trust_domain, path })
     }
 
     /// Parses a SPIFFE ID from its string representation.
@@ -70,7 +67,11 @@ impl SPIFFEID {
 
     /// Returns the string representation of this SPIFFE ID.
     pub fn as_str(&self) -> String {
-        format!("spiffe://{}/{}", self.trust_domain.name, self.path.trim_start_matches('/'))
+        format!(
+            "spiffe://{}/{}",
+            self.trust_domain.name,
+            self.path.trim_start_matches('/')
+        )
     }
 
     /// Returns true if this SPIFFE ID belongs to the given trust domain.
@@ -81,7 +82,12 @@ impl SPIFFEID {
 
 impl std::fmt::Display for SPIFFEID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "spiffe://{}/{}", self.trust_domain.name, self.path.trim_start_matches('/'))
+        write!(
+            f,
+            "spiffe://{}/{}",
+            self.trust_domain.name,
+            self.path.trim_start_matches('/')
+        )
     }
 }
 
@@ -376,7 +382,10 @@ mod tests {
     #[test]
     fn spiffe_id_display() {
         let id = SPIFFEID::parse("spiffe://trust.example.org/services/gateway").unwrap();
-        assert_eq!(id.to_string(), "spiffe://trust.example.org/services/gateway");
+        assert_eq!(
+            id.to_string(),
+            "spiffe://trust.example.org/services/gateway"
+        );
     }
 
     #[test]
@@ -402,13 +411,9 @@ mod tests {
         );
 
         // Matching selectors
-        assert!(workload.matches_selectors(&[
-            Selector::k8s_namespace("production"),
-        ]));
+        assert!(workload.matches_selectors(&[Selector::k8s_namespace("production"),]));
 
         // Non-matching selectors
-        assert!(!workload.matches_selectors(&[
-            Selector::k8s_namespace("staging"),
-        ]));
+        assert!(!workload.matches_selectors(&[Selector::k8s_namespace("staging"),]));
     }
 }

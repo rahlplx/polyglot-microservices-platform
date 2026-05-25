@@ -4,4 +4,4 @@
 
 pub mod otel;
 
-pub use otel::{OTelObservabilityAdapter, OTelError, SamplingConfig};
+pub use otel::OTelObservabilityAdapter;

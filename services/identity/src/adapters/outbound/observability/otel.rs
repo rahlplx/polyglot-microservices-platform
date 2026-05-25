@@ -5,7 +5,6 @@
 // Provides tracing, metrics, and structured logging.
 // ---------------------------------------------------------------------------
 
-use std::sync::Arc;
 use std::time::Duration;
 
 /// The OpenTelemetry observability adapter.
@@ -51,10 +50,7 @@ impl OTelObservabilityAdapter {
     /// - Tracing subscriber with OTel layer
     /// - Custom sampling strategy
     pub async fn init(&self) -> Result<(), OTelError> {
-        if self
-            .initialized
-            .load(std::sync::atomic::Ordering::SeqCst)
-        {
+        if self.initialized.load(std::sync::atomic::Ordering::SeqCst) {
             return Ok(());
         }
 

@@ -14,8 +14,8 @@ use crate::adapters::outbound::persistence::PostgresWorkloadStore;
 use crate::adapters::outbound::spire::SPIREAgentClient;
 use crate::domain::models::TTLPolicy;
 use crate::domain::ports::inbound::{
-    AttestationUseCase, GetTrustBundleUseCase, IssueSVIDUseCase,
-    RevokeSVIDUseCase, RotateCertificateUseCase,
+    AttestationUseCase, GetTrustBundleUseCase, IssueSVIDUseCase, RevokeSVIDUseCase,
+    RotateCertificateUseCase,
 };
 use crate::domain::ports::outbound::ca::CertificateAuthorityPort;
 use crate::domain::services::{AttestationService, CertificateRotationService, SVIDService};

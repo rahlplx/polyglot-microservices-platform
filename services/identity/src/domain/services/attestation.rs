@@ -9,8 +9,7 @@
 use std::sync::Arc;
 
 use crate::domain::models::{
-    AttestationFailureReason, AttestationRequest, AttestationResult,
-    Selector, TrustDomain,
+    AttestationFailureReason, AttestationRequest, AttestationResult, Selector, TrustDomain,
 };
 use crate::domain::ports::inbound::attestation::{AttestationError, AttestationUseCase};
 use crate::domain::ports::outbound::store::{StoreError, WorkloadStorePort};
@@ -96,8 +95,7 @@ impl AttestationService {
 impl AttestationUseCase for AttestationService {
     fn attest(&self, request: AttestationRequest) -> Result<AttestationResult, AttestationError> {
         // Step 1: Validate trust domain
-        if let Err(reason) =
-            Self::validate_trust_domain(&request.spiffe_id, &request.trust_domain)
+        if let Err(reason) = Self::validate_trust_domain(&request.spiffe_id, &request.trust_domain)
         {
             return Ok(AttestationResult::failure(request.spiffe_id, reason));
         }
@@ -152,7 +150,7 @@ impl AttestationUseCase for AttestationService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::models::workload::{SPIFFEID, Workload};
+    use crate::domain::models::workload::{Workload, SPIFFEID};
 
     /// A simple in-memory workload store for testing.
     struct InMemoryWorkloadStore {
@@ -167,8 +165,7 @@ mod tests {
         }
 
         fn add_workload(&mut self, workload: Workload) {
-            self.workloads
-                .insert(workload.spiffe_id.as_str(), workload);
+            self.workloads.insert(workload.spiffe_id.as_str(), workload);
         }
     }
 
@@ -376,7 +373,10 @@ mod tests {
             Selector::k8s_label("app", "gateway"),
             Selector::unix_uid(1000),
         ];
-        assert!(AttestationService::verify_selectors(&registered, &presented));
+        assert!(AttestationService::verify_selectors(
+            &registered,
+            &presented
+        ));
     }
 
     #[test]
@@ -389,6 +389,9 @@ mod tests {
             Selector::k8s_namespace("production"),
             // Missing k8s_label selector
         ];
-        assert!(!AttestationService::verify_selectors(&registered, &presented));
+        assert!(!AttestationService::verify_selectors(
+            &registered,
+            &presented
+        ));
     }
 }

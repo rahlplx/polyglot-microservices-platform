@@ -8,13 +8,11 @@
 
 use std::sync::Arc;
 
-use crate::domain::models::{
-    RevocationReason, RevokedSVID, TTLPolicy, X509Bundle, X509SVID,
-};
-use crate::domain::models::workload::{SPIFFEID, TrustDomain};
+use crate::domain::models::workload::{TrustDomain, SPIFFEID};
+use crate::domain::models::{RevocationReason, RevokedSVID, TTLPolicy, X509Bundle, X509SVID};
 use crate::domain::ports::inbound::{
-    IssueSVIDError, IssueSVIDUseCase, RevokeSVIDError, RevokeSVIDUseCase,
-    TrustBundleError, GetTrustBundleUseCase,
+    GetTrustBundleUseCase, IssueSVIDError, IssueSVIDUseCase, RevokeSVIDError, RevokeSVIDUseCase,
+    TrustBundleError,
 };
 use crate::domain::ports::outbound::ca::{CAError, CertificateAuthorityPort};
 use crate::domain::ports::outbound::store::{StoreError, WorkloadStorePort};
@@ -64,7 +62,9 @@ impl SVIDService {
     fn store_to_issue_error(error: StoreError) -> IssueSVIDError {
         match error {
             StoreError::WorkloadNotFound(id) => IssueSVIDError::WorkloadNotFound(id),
-            StoreError::Unavailable(detail) => IssueSVIDError::Internal(format!("store unavailable: {}", detail)),
+            StoreError::Unavailable(detail) => {
+                IssueSVIDError::Internal(format!("store unavailable: {}", detail))
+            }
             other => IssueSVIDError::Internal(other.to_string()),
         }
     }
@@ -216,9 +216,9 @@ impl RevokeSVIDUseCase for SVIDService {
         // that verifiers should refresh their cached CRL
         self.store
             .increment_bundle_sequence(trust_domain)
-            .map_err(|e| RevokeSVIDError::Internal(format!(
-                "failed to increment bundle sequence: {}", e
-            )))?;
+            .map_err(|e| {
+                RevokeSVIDError::Internal(format!("failed to increment bundle sequence: {}", e))
+            })?;
 
         Ok(revoked)
     }
@@ -272,7 +272,8 @@ mod tests {
         ) -> Result<SignedSVID, CAError> {
             Ok(SignedSVID {
                 cert_chain_der: vec![vec![1, 2, 3]],
-                cert_chain_pem: "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----".to_string(),
+                cert_chain_pem: "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----"
+                    .to_string(),
                 serial_number: "deadbeef".to_string(),
                 not_before: Self::current_timestamp(),
                 not_after: Self::current_timestamp() + ttl_seconds,
@@ -288,13 +289,15 @@ mod tests {
             Ok(GeneratedSVID {
                 svid: SignedSVID {
                     cert_chain_der: vec![vec![1, 2, 3]],
-                    cert_chain_pem: "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----".to_string(),
+                    cert_chain_pem: "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----"
+                        .to_string(),
                     serial_number: "deadbeef".to_string(),
                     not_before: Self::current_timestamp(),
                     not_after: Self::current_timestamp() + ttl_seconds,
                 },
                 private_key_der: vec![4, 5, 6],
-                private_key_pem: "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----".to_string(),
+                private_key_pem: "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----"
+                    .to_string(),
             })
         }
 
@@ -484,7 +487,10 @@ mod tests {
 
         assert!(result.is_ok());
         let (svid, bundle) = result.unwrap();
-        assert_eq!(svid.spiffe_id, "spiffe://trust.example.org/services/gateway");
+        assert_eq!(
+            svid.spiffe_id,
+            "spiffe://trust.example.org/services/gateway"
+        );
         assert_eq!(bundle.trust_domain, "trust.example.org");
     }
 
