@@ -1,11 +1,25 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { MeilisearchAdapter } from '../../src/adapters/outbound/search/MeilisearchAdapter';
+import type { SearchQuery } from '../../src/domain/ports/outbound/SearchIndex';
+import { SortBy } from '../../src/domain/ports/inbound/SearchCatalog';
 
 // Mock the meilisearch client
+const mockSearch = jest.fn() as any;
+const mockIndex = {
+  search: mockSearch,
+  addDocuments: jest.fn(),
+  deleteDocument: jest.fn(),
+  updateFilterableAttributes: jest.fn(),
+  updateSortableAttributes: jest.fn(),
+  updateSearchableAttributes: jest.fn(),
+};
+
 jest.mock('meilisearch', () => {
   return {
     MeiliSearch: jest.fn().mockImplementation(() => ({
-      index: jest.fn(),
+      index: jest.fn().mockReturnValue(mockIndex),
+      createIndex: jest.fn().mockReturnValue({ then: (cb: any) => cb({ taskUid: 1 }) }),
+      waitForTask: jest.fn().mockReturnValue({ then: (cb: any) => cb({ status: 'succeeded' }) }),
     })),
   };
 });
@@ -14,49 +28,74 @@ describe('MeilisearchAdapter', () => {
   let adapter: MeilisearchAdapter;
 
   beforeEach(() => {
+    jest.clearAllMocks();
     adapter = new MeilisearchAdapter({
       host: 'http://localhost:7700',
       apiKey: 'masterKey',
       indexName: 'products',
     });
+    // Mark as initialized to avoid calling createIndex/waitForTask in every test
+    (adapter as any).indexInitialized = true;
   });
 
-  describe('buildFilters', () => {
-    it('should escape double quotes in category filters', () => {
-      const filters = {
-        categories: ['electronics"', 'books'],
+  describe('search', () => {
+    it('should properly escape special characters in filters through the public API', async () => {
+      const query: SearchQuery = {
+        query: 'test',
+        filters: {
+          categories: ['electronics"', 'back\\slash'],
+          tags: ['tag"injection'],
+        },
+        pageSize: 10,
+        pageToken: '',
+        sortBy: SortBy.RELEVANCE,
+        facetFields: [],
       };
 
-      // Access private method for testing
-      const result = (adapter as any).buildFilters(filters);
+      mockSearch.mockResolvedValue({
+        hits: [],
+        totalHits: 0,
+        processingTimeMs: 1,
+        query: 'test',
+      });
 
-      // Expected: category = "electronics\"" OR category = "books"
-      // Current implementation will likely produce: category = "electronics"" OR category = "books"
-      // which is invalid Meilisearch filter syntax and can lead to injection.
-      expect(result).toContain('(category = "electronics\\"" OR category = "books")');
+      await adapter.search(query);
+
+      expect(mockSearch).toHaveBeenCalledWith(
+        'test',
+        expect.objectContaining({
+          filter: [
+            'status = "PRODUCT_STATUS_ACTIVE"',
+            '(category = "electronics\\"" OR category = "back\\\\slash")',
+            '(tags = "tag\\"injection")',
+          ],
+        })
+      );
     });
 
-    it('should escape backslashes in tag filters', () => {
-      const filters = {
-        tags: ['tag\\with\\backslashes', 'simple'],
+    it('should handle multiple categories and tags with escaping', async () => {
+      const query: SearchQuery = {
+        query: 'test',
+        filters: {
+          categories: ['cat1', 'cat"2'],
+          tags: ['tag1', 'tag\\2'],
+        },
+        pageSize: 10,
+        pageToken: '',
+        sortBy: SortBy.RELEVANCE,
+        facetFields: [],
       };
 
-      const result = (adapter as any).buildFilters(filters);
+      mockSearch.mockResolvedValue({
+        hits: [],
+        totalHits: 0,
+      });
 
-      // Meilisearch requires escaping backslashes in filters
-      expect(result).toContain('(tags = "tag\\\\with\\\\backslashes" OR tags = "simple")');
-    });
+      await adapter.search(query);
 
-    it('should handle complex injection attempts', () => {
-      const filters = {
-        categories: ['active" OR status = "deleted'],
-      };
-
-      const result = (adapter as any).buildFilters(filters);
-
-      // Should be escaped so it stays within the category attribute
-      expect(result).toContain('(category = "active\\" OR status = \\"deleted")');
-      expect(result).not.toContain('OR status = "deleted"');
+      const searchParams = mockSearch.mock.calls[0][1] as any;
+      expect(searchParams.filter).toContain('(category = "cat1" OR category = "cat\\"2")');
+      expect(searchParams.filter).toContain('(tags = "tag1" OR tags = "tag\\\\2")');
     });
   });
 });
