@@ -64,20 +64,22 @@ impl RingCryptoAdapter {
 
     /// Generates a random serial number for certificate issuance.
     ///
-    /// SECURITY (audit note): The current implementation uses a nanosecond
-    /// timestamp, which is NOT cryptographically random and is predictable.
-    /// This makes serial numbers guessable, violating RFC 5280 §4.1.2.2.
-    ///
-    /// TODO: Replace with `ring::rand::generate::<[u8; 20]>()` to produce
-    /// a 20-byte cryptographically random serial number.
+    /// This implementation generates a 20-byte cryptographically random
+    /// serial number using ring's system random number generator,
+    /// adhering to the recommendations in RFC 5280 §4.1.2.2.
     fn generate_serial_number() -> String {
-        // FIXME: SECURITY — timestamp-based serials are predictable.
-        // Use ring::rand for cryptographic randomness.
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        format!("{:016x}", now)
+        use ring::rand::SecureRandom;
+        let rng = ring::rand::SystemRandom::new();
+        let mut serial = [0u8; 20];
+
+        // Use ring's cryptographically secure random number generator
+        if let Err(e) = rng.fill(&mut serial) {
+            // In the extremely unlikely event of RNG failure, we panic to
+            // fail securely rather than issuing a predictable serial.
+            panic!("Failed to generate secure random serial: {:?}", e);
+        }
+
+        hex::encode(serial)
     }
 
     /// Encrypts a private key using AES-256-GCM.
@@ -229,7 +231,15 @@ mod tests {
     fn generate_serial_number() {
         let serial = RingCryptoAdapter::generate_serial_number();
         assert!(!serial.is_empty());
-        assert!(serial.len() >= 16);
+        // 20 bytes hex-encoded should be exactly 40 characters
+        assert_eq!(serial.len(), 40);
+
+        // Ensure it's valid hex
+        assert!(hex::decode(&serial).is_ok());
+
+        // Ensure subsequent calls produce different serials
+        let serial2 = RingCryptoAdapter::generate_serial_number();
+        assert_ne!(serial, serial2);
     }
 
     #[test]
