@@ -147,7 +147,7 @@ func (c *Controller) handleGetRateLimit(w http.ResponseWriter, r *http.Request) 
                         slog.String("client_id", clientID),
                         slog.String("error", err.Error()),
                 )
-                c.writeError(w, http.StatusInternalServerError, "RATE_LIMIT_ERROR", err.Error())
+                c.writeError(w, http.StatusInternalServerError, "RATE_LIMIT_ERROR", "failed to retrieve rate limit information")
                 return
         }
 
@@ -192,7 +192,7 @@ func (c *Controller) handleGetRouteConfig(w http.ResponseWriter, r *http.Request
                         slog.String("service", service),
                         slog.String("error", err.Error()),
                 )
-                c.writeError(w, http.StatusNotFound, "SERVICE_NOT_FOUND", err.Error())
+                c.writeError(w, http.StatusNotFound, "SERVICE_NOT_FOUND", "failed to retrieve route configuration")
                 return
         }
 
@@ -301,7 +301,7 @@ func (c *Controller) handleRouteError(w http.ResponseWriter, err error) {
                 c.writeError(w, http.StatusTooManyRequests, "RATE_LIMIT_EXCEEDED",
                         fmt.Sprintf("rate limit exceeded, retry after %s", e.RetryAfter))
         case *services.UpstreamUnavailableError:
-                c.writeError(w, http.StatusBadGateway, "UPSTREAM_UNAVAILABLE", e.Error())
+                c.writeError(w, http.StatusBadGateway, "UPSTREAM_UNAVAILABLE", "the requested upstream service is currently unavailable")
         default:
                 c.logger.Error("unhandled routing error",
                         slog.String("error", err.Error()),
