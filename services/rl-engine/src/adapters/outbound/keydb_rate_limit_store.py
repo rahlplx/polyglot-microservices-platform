@@ -12,8 +12,7 @@ from __future__ import annotations
 
 import json
 import socket
-import struct
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from ...domain.models.rate_limit import TokenBucketState

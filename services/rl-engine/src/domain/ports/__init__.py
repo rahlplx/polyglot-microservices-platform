@@ -24,3 +24,9 @@ __all__ = [
 ]
 
 from .rl_ports import EnvironmentPort, ModelRepositoryPort, TrainingEnginePort
+
+__all__ += [
+    "EnvironmentPort",
+    "ModelRepositoryPort",
+    "TrainingEnginePort",
+]

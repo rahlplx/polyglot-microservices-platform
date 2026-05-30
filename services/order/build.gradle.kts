@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import com.google.protobuf.gradle.*
 
 plugins {
     kotlin("jvm") version "1.9.22"
@@ -72,7 +73,7 @@ dependencies {
     implementation("io.opentelemetry:opentelemetry-sdk-metrics:$openTelemetrySdkVersion")
     implementation("io.opentelemetry:opentelemetry-exporter-otlp:$openTelemetrySdkVersion")
     implementation("io.opentelemetry:opentelemetry-exporter-logging:$openTelemetrySdkVersion")
-    implementation("io.opentelemetry:opentelemetry-semconv:$openTelemetryInstrumentationVersion-alpha")
+    implementation("io.opentelemetry.semconv:opentelemetry-semconv:1.23.1-alpha")
 
     // SPIFFE
     implementation("io.spiffe:java-spiffe-core:$spiffeSdkVersion")

@@ -29,6 +29,23 @@ __all__ = [
 ]
 
 from .policy import (
-    Action, Episode, EnvironmentType, Policy, Reward, State,
-    TrainingJob, Transition,
+    Action,
+    Episode,
+    EnvironmentType,
+    Policy,
+    Reward,
+    State,
+    TrainingJob,
+    Transition,
 )
+
+__all__ += [
+    "Action",
+    "Episode",
+    "EnvironmentType",
+    "Policy",
+    "Reward",
+    "State",
+    "TrainingJob",
+    "Transition",
+]
