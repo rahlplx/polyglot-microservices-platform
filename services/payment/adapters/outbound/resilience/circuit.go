@@ -77,7 +77,7 @@ func (a *CircuitBreakerAdapter) Execute(ctx context.Context, fn func(ctx context
 		if err == gobreaker.ErrTooManyRequests {
 			return fmt.Errorf("circuit breaker %s is half-open with too many requests: %w", a.cb.Name(), err)
 		}
-		return nil, err
+		return err
 	}
 
 	return nil
@@ -119,12 +119,7 @@ func (a *CircuitBreakerAdapter) Reset(ctx context.Context) error {
 	}
 	a.cb = gobreaker.NewCircuitBreaker(cbSettings)
 
-	return &models.CircuitBreakerInfo{
-		Name:         a.cb.Name(),
-		State:        state,
-		FailureCount: int(counts.ConsecutiveFailures),
-		SuccessCount: int(counts.ConsecutiveSuccesses),
-	}, nil
+	return nil
 }
 
 // stateString converts a gobreaker.State to a human-readable string.

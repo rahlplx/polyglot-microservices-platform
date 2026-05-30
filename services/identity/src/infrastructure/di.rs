@@ -65,7 +65,14 @@ impl AppContainer {
         ));
 
         // Crypto adapter (ring-based in-memory CA)
-        let crypto_adapter = Arc::new(RingCryptoAdapter::new(config.trust_domain.clone()));
+        let mut master_key = [0u8; 32];
+        hex::decode_to_slice(&config.master_key, &mut master_key)
+            .map_err(|e| DIError::MissingConfig(format!("invalid master key: {}", e)))?;
+
+        let crypto_adapter = Arc::new(RingCryptoAdapter::new(
+            config.trust_domain.clone(),
+            &master_key,
+        ));
 
         // Persistence adapter (PostgreSQL)
         let persistence_adapter = if config.feature_postgres_store {

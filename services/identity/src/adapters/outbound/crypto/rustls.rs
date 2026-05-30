@@ -6,6 +6,8 @@
 // TLS functionality. NO OpenSSL dependency.
 // ---------------------------------------------------------------------------
 
+use ring::aead::{self, BoundKey, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
+
 use crate::domain::models::X509Bundle;
 use crate::domain::ports::outbound::ca::{
     CAError, CertificateAuthorityPort, GeneratedSVID, SignedSVID,
@@ -37,6 +39,8 @@ pub struct RingCryptoAdapter {
     bundle_sequence: std::sync::atomic::AtomicU64,
     /// The bundle expiry timestamp.
     bundle_expires_at: std::sync::atomic::AtomicU64,
+    /// The key used to encrypt private keys before storage.
+    encryption_key: LessSafeKey,
 }
 
 impl RingCryptoAdapter {
@@ -44,11 +48,15 @@ impl RingCryptoAdapter {
     pub const CA_ROTATION_INTERVAL_SECONDS: u64 = 7 * 24 * 3600;
 
     /// Creates a new Ring crypto adapter with a self-signed CA.
-    pub fn new(trust_domain: String) -> Self {
+    pub fn new(trust_domain: String, master_key: &[u8; 32]) -> Self {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
+
+        let unbound_key = UnboundKey::new(&AES_256_GCM, master_key)
+            .expect("failed to create unbound encryption key");
+        let encryption_key = LessSafeKey::new(unbound_key);
 
         Self {
             trust_domain,
@@ -59,6 +67,7 @@ impl RingCryptoAdapter {
             ca_rotation_in_progress: std::sync::atomic::AtomicBool::new(false),
             bundle_sequence: std::sync::atomic::AtomicU64::new(1),
             bundle_expires_at: std::sync::atomic::AtomicU64::new(now + Self::CA_ROTATION_INTERVAL_SECONDS),
+            encryption_key,
         }
     }
 
@@ -87,14 +96,51 @@ impl RingCryptoAdapter {
     /// The encryption key is derived from a master secret managed
     /// by the platform's secret store (Vault or Kubernetes Secrets).
     ///
-    /// SECURITY: The placeholder no-op encryption has been replaced with a
-    /// TODO marker. This MUST be implemented before production use.
-    fn encrypt_private_key(key_der: &[u8]) -> Vec<u8> {
-        // TODO: Implement AES-256-GCM encryption using ring::aead with a key
-        // derived from the master secret via HKDF. Storing private keys
-        // unencrypted is a critical security vulnerability.
-        // See: ring::aead::AES_256_GCM, ring::hkdf
-        key_der.to_vec() // FIXME: SECURITY — no encryption applied!
+    /// The returned bytes contain the 12-byte random nonce followed by
+    /// the ciphertext and the 16-byte authentication tag.
+    fn encrypt_private_key(&self, key_der: &[u8]) -> Result<Vec<u8>, CAError> {
+        use ring::rand::SecureRandom;
+        let rng = ring::rand::SystemRandom::new();
+        let mut nonce_bytes = [0u8; 12];
+        rng.fill(&mut nonce_bytes)
+            .map_err(|_| CAError::CryptoError("failed to generate random nonce".to_string()))?;
+
+        let nonce = Nonce::assume_unique_for_key(nonce_bytes);
+        let mut data = key_der.to_vec();
+
+        // AES-256-GCM encryption in-place, appending the 16-byte tag
+        self.encryption_key
+            .seal_in_place_append_tag(nonce, aead::Aad::empty(), &mut data)
+            .map_err(|_| CAError::CryptoError("failed to encrypt private key".to_string()))?;
+
+        // Combine nonce + ciphertext + tag
+        let mut result = Vec::with_capacity(12 + data.len());
+        result.extend_from_slice(&nonce_bytes);
+        result.extend_from_slice(&data);
+        Ok(result)
+    }
+
+    /// Decrypts a private key using AES-256-GCM.
+    ///
+    /// Internal helper method used for verifying encryption in tests.
+    #[cfg(test)]
+    fn decrypt_private_key(&self, encrypted_key: &[u8]) -> Result<Vec<u8>, CAError> {
+        if encrypted_key.len() < 12 + 16 {
+            return Err(CAError::CryptoError("invalid encrypted key length".to_string()));
+        }
+
+        let (nonce_bytes, ciphertext_with_tag) = encrypted_key.split_at(12);
+        let nonce = Nonce::assume_unique_for_key(nonce_bytes.try_into().unwrap());
+
+        let mut data = ciphertext_with_tag.to_vec();
+
+        // AES-256-GCM decryption in-place
+        let plaintext = self
+            .encryption_key
+            .open_in_place(nonce, aead::Aad::empty(), &mut data)
+            .map_err(|_| CAError::CryptoError("failed to decrypt private key".to_string()))?;
+
+        Ok(plaintext.to_vec())
     }
 
     /// Performs a constant-time comparison of two byte slices.
@@ -165,7 +211,7 @@ impl CertificateAuthorityPort for RingCryptoAdapter {
 
         Ok(GeneratedSVID {
             svid: signed,
-            private_key_der: Self::encrypt_private_key(&[]),
+            private_key_der: self.encrypt_private_key(&[])?,
             private_key_pem: "-----BEGIN ENCRYPTED PRIVATE KEY-----\nPLACEHOLDER\n-----END ENCRYPTED PRIVATE KEY-----".to_string(),
         })
     }
@@ -244,17 +290,35 @@ mod tests {
 
     #[test]
     fn get_trust_bundle_wrong_domain() {
-        let adapter = RingCryptoAdapter::new("trust.example.org".to_string());
+        let adapter = RingCryptoAdapter::new("trust.example.org".to_string(), &[0u8; 32]);
         let result = adapter.get_trust_bundle("trust.wrong.org");
         assert!(result.is_err());
     }
 
     #[test]
     fn get_trust_bundle_correct_domain() {
-        let adapter = RingCryptoAdapter::new("trust.example.org".to_string());
+        let adapter = RingCryptoAdapter::new("trust.example.org".to_string(), &[0u8; 32]);
         let result = adapter.get_trust_bundle("trust.example.org");
         assert!(result.is_ok());
         let bundle = result.unwrap();
         assert_eq!(bundle.trust_domain, "trust.example.org");
+    }
+
+    #[test]
+    fn private_key_encryption_roundtrip() {
+        let adapter = RingCryptoAdapter::new("trust.example.org".to_string(), &[0u8; 32]);
+        let plaintext = b"super-secret-private-key-material";
+
+        // Encrypt the plaintext
+        let encrypted = adapter.encrypt_private_key(plaintext).expect("encryption failed");
+
+        // Ensure encrypted data is different from plaintext
+        assert_ne!(plaintext.to_vec(), encrypted);
+        // Should at least be NONCE_LEN + plaintext.len() + tag (16 bytes)
+        assert!(encrypted.len() >= 12 + plaintext.len() + 16);
+
+        // Decrypt back to plaintext
+        let decrypted = adapter.decrypt_private_key(&encrypted).expect("decryption failed");
+        assert_eq!(plaintext.to_vec(), decrypted);
     }
 }

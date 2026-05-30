@@ -65,6 +65,10 @@ pub struct Config {
     pub feature_mtls: bool,
     /// Enable audit logging for all SVID operations.
     pub feature_audit_log: bool,
+
+    // --- Security ---
+    /// The master key for AES-256-GCM encryption of private keys (hex encoded).
+    pub master_key: String,
 }
 
 impl Config {
@@ -105,6 +109,11 @@ impl Config {
             feature_postgres_store: env_or_parse("IDENTITY_FEATURE_POSTGRES_STORE", true),
             feature_mtls: env_or_parse("IDENTITY_FEATURE_MTLS", false),
             feature_audit_log: env_or_parse("IDENTITY_FEATURE_AUDIT_LOG", true),
+
+            master_key: env_or(
+                "IDENTITY_MASTER_KEY",
+                "0000000000000000000000000000000000000000000000000000000000000000",
+            ),
         }
     }
 

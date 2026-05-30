@@ -15,3 +15,10 @@ __all__ = [
 ]
 
 from .rl_services import InferenceService, MetaLearningService, PolicyService, TrainingService
+
+__all__ += [
+    "InferenceService",
+    "MetaLearningService",
+    "PolicyService",
+    "TrainingService",
+]
