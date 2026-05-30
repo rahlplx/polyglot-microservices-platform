@@ -8,6 +8,9 @@ schemas/generated/
 target/
 node_modules/
 dist/
+build/
+.gradle/
+bin/
 
 # IDE
 .idea/
