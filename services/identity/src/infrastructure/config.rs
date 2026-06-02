@@ -65,6 +65,8 @@ pub struct Config {
     pub feature_mtls: bool,
     /// Enable audit logging for all SVID operations.
     pub feature_audit_log: bool,
+    /// The master encryption key for private keys (32-byte hex).
+    pub master_key: String,
 }
 
 impl Config {
@@ -105,6 +107,7 @@ impl Config {
             feature_postgres_store: env_or_parse("IDENTITY_FEATURE_POSTGRES_STORE", true),
             feature_mtls: env_or_parse("IDENTITY_FEATURE_MTLS", false),
             feature_audit_log: env_or_parse("IDENTITY_FEATURE_AUDIT_LOG", true),
+            master_key: env_or("IDENTITY_MASTER_KEY", ""),
         }
     }
 
@@ -134,6 +137,12 @@ impl Config {
 
         if self.verification_sample_rate < 0.0 || self.verification_sample_rate > 1.0 {
             errors.push("IDENTITY_VERIFICATION_SAMPLE_RATE must be between 0.0 and 1.0".to_string());
+        }
+
+        if self.master_key.is_empty() {
+            errors.push("IDENTITY_MASTER_KEY must be set".to_string());
+        } else if self.master_key.len() != 64 || hex::decode(&self.master_key).is_err() {
+            errors.push("IDENTITY_MASTER_KEY must be a 64-character hex string (32 bytes)".to_string());
         }
 
         if errors.is_empty() {
@@ -183,8 +192,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_config_is_valid() {
-        let config = Config::from_env();
+    fn default_config_is_invalid_without_key() {
+        let mut config = Config::from_env();
+        config.master_key = String::new();
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn config_valid_with_proper_key() {
+        let mut config = Config::from_env();
+        config.master_key = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f".to_string();
         assert!(config.validate().is_ok());
     }
 
