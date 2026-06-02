@@ -120,7 +120,9 @@ impl Config {
         }
 
         if self.database_url.is_empty() && self.feature_postgres_store {
-            errors.push("IDENTITY_DATABASE_URL cannot be empty when postgres store is enabled".to_string());
+            errors.push(
+                "IDENTITY_DATABASE_URL cannot be empty when postgres store is enabled".to_string(),
+            );
         }
 
         if self.trust_domain.is_empty() {
@@ -132,17 +134,21 @@ impl Config {
         }
 
         if self.grace_period_seconds >= self.default_production_ttl {
-            errors.push("IDENTITY_GRACE_PERIOD_SECONDS must be less than production TTL".to_string());
+            errors
+                .push("IDENTITY_GRACE_PERIOD_SECONDS must be less than production TTL".to_string());
         }
 
         if self.verification_sample_rate < 0.0 || self.verification_sample_rate > 1.0 {
-            errors.push("IDENTITY_VERIFICATION_SAMPLE_RATE must be between 0.0 and 1.0".to_string());
+            errors
+                .push("IDENTITY_VERIFICATION_SAMPLE_RATE must be between 0.0 and 1.0".to_string());
         }
 
         if self.master_key.is_empty() {
             errors.push("IDENTITY_MASTER_KEY must be set".to_string());
         } else if self.master_key.len() != 64 || hex::decode(&self.master_key).is_err() {
-            errors.push("IDENTITY_MASTER_KEY must be a 64-character hex string (32 bytes)".to_string());
+            errors.push(
+                "IDENTITY_MASTER_KEY must be a 64-character hex string (32 bytes)".to_string(),
+            );
         }
 
         if errors.is_empty() {
@@ -201,7 +207,8 @@ mod tests {
     #[test]
     fn config_valid_with_proper_key() {
         let mut config = Config::from_env();
-        config.master_key = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f".to_string();
+        config.master_key =
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f".to_string();
         assert!(config.validate().is_ok());
     }
 

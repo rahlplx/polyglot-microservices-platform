@@ -5,19 +5,18 @@
 // invariants hold for all valid inputs.
 // ---------------------------------------------------------------------------
 
-use proptest::prelude::*;
-use std::sync::Arc;
+use identity_service::domain::models::workload::Workload;
 use identity_service::domain::models::{
     AttestationRequest, AttestationResult, RevocationReason, RevokedSVID, RotationReason,
-    Selector, SPIFFEID, SPIFFEIDError, TrustDomain, TTLPolicy,
-    X509Bundle, X509SVID,
+    SPIFFEIDError, Selector, TTLPolicy, TrustDomain, X509Bundle, SPIFFEID, X509SVID,
 };
 use identity_service::domain::ports::inbound::attestation::AttestationUseCase;
 use identity_service::domain::ports::outbound::store::{
     StoreError, StoredSVID, WorkloadList, WorkloadStorePort,
 };
 use identity_service::domain::services::AttestationService;
-use identity_service::domain::models::workload::Workload;
+use proptest::prelude::*;
+use std::sync::Arc;
 
 // ---- Custom Strategies ----
 
@@ -257,21 +256,63 @@ impl PropertyTestStore {
 }
 
 impl WorkloadStorePort for PropertyTestStore {
-    fn register_workload(&self, _workload: &Workload) -> Result<(), StoreError> { Ok(()) }
-    fn get_workload(&self, _workload_id: &str) -> Result<Option<Workload>, StoreError> { Ok(None) }
-    fn get_workloads_by_selector(&self, _selectors: &[Selector], _trust_domain: &str) -> Result<Vec<Workload>, StoreError> { Ok(vec![]) }
+    fn register_workload(&self, _workload: &Workload) -> Result<(), StoreError> {
+        Ok(())
+    }
+    fn get_workload(&self, _workload_id: &str) -> Result<Option<Workload>, StoreError> {
+        Ok(None)
+    }
+    fn get_workloads_by_selector(
+        &self,
+        _selectors: &[Selector],
+        _trust_domain: &str,
+    ) -> Result<Vec<Workload>, StoreError> {
+        Ok(vec![])
+    }
     fn get_workload_by_spiffe_id(&self, spiffe_id: &str) -> Result<Option<Workload>, StoreError> {
         Ok(self.workloads.get(spiffe_id).cloned())
     }
-    fn update_workload(&self, _workload: &Workload) -> Result<(), StoreError> { Ok(()) }
-    fn delete_workload(&self, _workload_id: &str) -> Result<(), StoreError> { Ok(()) }
-    fn list_workloads(&self, _trust_domain: &str, _cursor: Option<&str>, _page_size: i32) -> Result<WorkloadList, StoreError> {
-        Ok(WorkloadList { workloads: vec![], next_cursor: None })
+    fn update_workload(&self, _workload: &Workload) -> Result<(), StoreError> {
+        Ok(())
     }
-    fn store_svid(&self, _svid: &X509SVID, _workload_id: &str, _encrypted_private_key: &[u8]) -> Result<(), StoreError> { Ok(()) }
-    fn get_svid(&self, _serial_number: &str) -> Result<Option<StoredSVID>, StoreError> { Ok(None) }
-    fn get_active_svid_for_workload(&self, _workload_id: &str) -> Result<Option<StoredSVID>, StoreError> { Ok(None) }
-    fn revoke_svid(&self, serial_number: &str, _reason: RevocationReason, _revoked_by: &str, _comment: Option<&str>) -> Result<RevokedSVID, StoreError> {
+    fn delete_workload(&self, _workload_id: &str) -> Result<(), StoreError> {
+        Ok(())
+    }
+    fn list_workloads(
+        &self,
+        _trust_domain: &str,
+        _cursor: Option<&str>,
+        _page_size: i32,
+    ) -> Result<WorkloadList, StoreError> {
+        Ok(WorkloadList {
+            workloads: vec![],
+            next_cursor: None,
+        })
+    }
+    fn store_svid(
+        &self,
+        _svid: &X509SVID,
+        _workload_id: &str,
+        _encrypted_private_key: &[u8],
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+    fn get_svid(&self, _serial_number: &str) -> Result<Option<StoredSVID>, StoreError> {
+        Ok(None)
+    }
+    fn get_active_svid_for_workload(
+        &self,
+        _workload_id: &str,
+    ) -> Result<Option<StoredSVID>, StoreError> {
+        Ok(None)
+    }
+    fn revoke_svid(
+        &self,
+        serial_number: &str,
+        _reason: RevocationReason,
+        _revoked_by: &str,
+        _comment: Option<&str>,
+    ) -> Result<RevokedSVID, StoreError> {
         Ok(RevokedSVID {
             serial_number: serial_number.to_string(),
             spiffe_id: "spiffe://trust.example.org/test".to_string(),
@@ -282,11 +323,25 @@ impl WorkloadStorePort for PropertyTestStore {
             trust_domain: "trust.example.org".to_string(),
         })
     }
-    fn list_revoked(&self, _trust_domain: &str, _sequence_gt: u64) -> Result<Vec<RevokedSVID>, StoreError> { Ok(vec![]) }
-    fn is_revoked(&self, _serial_number: &str) -> Result<bool, StoreError> { Ok(false) }
-    fn store_bundle(&self, _bundle: &X509Bundle) -> Result<(), StoreError> { Ok(()) }
-    fn get_bundle(&self, _trust_domain: &str) -> Result<Option<X509Bundle>, StoreError> { Ok(None) }
-    fn increment_bundle_sequence(&self, _trust_domain: &str) -> Result<u64, StoreError> { Ok(1) }
+    fn list_revoked(
+        &self,
+        _trust_domain: &str,
+        _sequence_gt: u64,
+    ) -> Result<Vec<RevokedSVID>, StoreError> {
+        Ok(vec![])
+    }
+    fn is_revoked(&self, _serial_number: &str) -> Result<bool, StoreError> {
+        Ok(false)
+    }
+    fn store_bundle(&self, _bundle: &X509Bundle) -> Result<(), StoreError> {
+        Ok(())
+    }
+    fn get_bundle(&self, _trust_domain: &str) -> Result<Option<X509Bundle>, StoreError> {
+        Ok(None)
+    }
+    fn increment_bundle_sequence(&self, _trust_domain: &str) -> Result<u64, StoreError> {
+        Ok(1)
+    }
 }
 
 proptest! {

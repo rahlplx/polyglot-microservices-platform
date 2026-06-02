@@ -11,5 +11,5 @@ pub mod di;
 pub mod server;
 
 pub use config::Config;
-pub use di::{AppContainer, DIError};
-pub use server::{IdentityServer, ServerError};
+pub use di::AppContainer;
+pub use server::IdentityServer;

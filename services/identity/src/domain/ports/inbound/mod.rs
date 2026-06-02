@@ -9,11 +9,10 @@
 pub mod attestation;
 
 use crate::domain::models::{
-    AttestationRequest, AttestationResult, RevocationReason, RevokedSVID,
-    RotationReason, RotationResult, X509Bundle, X509SVID,
+    RevocationReason, RevokedSVID, RotationReason, RotationResult, X509Bundle, X509SVID,
 };
 
-pub use attestation::{AttestationError, AttestationUseCase};
+pub use attestation::AttestationUseCase;
 
 /// The issue SVID use case trait.
 ///
@@ -70,7 +69,11 @@ impl std::fmt::Display for IssueSVIDError {
             Self::WorkloadNotFound(id) => write!(f, "workload not found: {}", id),
             Self::WorkloadNotAttested(id) => write!(f, "workload not attested: {}", id),
             Self::TTLExceededPolicy { requested, maximum } => {
-                write!(f, "requested TTL {}s exceeds maximum {}s", requested, maximum)
+                write!(
+                    f,
+                    "requested TTL {}s exceeds maximum {}s",
+                    requested, maximum
+                )
             }
             Self::SigningKeyUnavailable(detail) => write!(f, "signing key unavailable: {}", detail),
             Self::InvalidSPIFFEID(detail) => write!(f, "invalid SPIFFE ID: {}", detail),

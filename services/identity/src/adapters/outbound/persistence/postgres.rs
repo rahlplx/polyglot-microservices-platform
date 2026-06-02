@@ -5,10 +5,8 @@
 // Uses compile-time checked queries and serializable isolation level.
 // ---------------------------------------------------------------------------
 
-use crate::domain::models::{
-    RevocationReason, RevokedSVID, X509Bundle, X509SVID,
-};
-use crate::domain::models::workload::{Selector, SPIFFEID, TrustDomain, Workload};
+use crate::domain::models::workload::{Selector, Workload, SPIFFEID};
+use crate::domain::models::{RevocationReason, RevokedSVID, X509Bundle, X509SVID};
 use crate::domain::ports::outbound::store::{
     StoreError, StoredSVID, WorkloadList, WorkloadStorePort,
 };
@@ -113,7 +111,7 @@ impl WorkloadStorePort for PostgresWorkloadStore {
         Ok(())
     }
 
-    fn get_workload(&self, workload_id: &str) -> Result<Option<Workload>, StoreError> {
+    fn get_workload(&self, _workload_id: &str) -> Result<Option<Workload>, StoreError> {
         let _pool = self.pool()?;
         // In production:
         // SELECT id, spiffe_id, parent_id, selectors, ttl_seconds, dns_names, attested, registered_at
@@ -123,8 +121,8 @@ impl WorkloadStorePort for PostgresWorkloadStore {
 
     fn get_workloads_by_selector(
         &self,
-        selectors: &[Selector],
-        trust_domain: &str,
+        _selectors: &[Selector],
+        _trust_domain: &str,
     ) -> Result<Vec<Workload>, StoreError> {
         let _pool = self.pool()?;
         // In production:
@@ -134,24 +132,21 @@ impl WorkloadStorePort for PostgresWorkloadStore {
         Ok(vec![])
     }
 
-    fn get_workload_by_spiffe_id(
-        &self,
-        spiffe_id: &str,
-    ) -> Result<Option<Workload>, StoreError> {
+    fn get_workload_by_spiffe_id(&self, _spiffe_id: &str) -> Result<Option<Workload>, StoreError> {
         let _pool = self.pool()?;
         // In production:
         // SELECT ... FROM identity_workloads.workloads WHERE spiffe_id = $1
         Ok(None)
     }
 
-    fn update_workload(&self, workload: &Workload) -> Result<(), StoreError> {
+    fn update_workload(&self, _workload: &Workload) -> Result<(), StoreError> {
         let _pool = self.pool()?;
         // In production:
         // UPDATE identity_workloads.workloads SET selectors = $1, attested = $2, ... WHERE id = $3
         Ok(())
     }
 
-    fn delete_workload(&self, workload_id: &str) -> Result<(), StoreError> {
+    fn delete_workload(&self, _workload_id: &str) -> Result<(), StoreError> {
         let _pool = self.pool()?;
         // In production:
         // DELETE FROM identity_workloads.workloads WHERE id = $1
@@ -161,9 +156,9 @@ impl WorkloadStorePort for PostgresWorkloadStore {
 
     fn list_workloads(
         &self,
-        trust_domain: &str,
-        cursor: Option<&str>,
-        page_size: i32,
+        _trust_domain: &str,
+        _cursor: Option<&str>,
+        _page_size: i32,
     ) -> Result<WorkloadList, StoreError> {
         let _pool = self.pool()?;
         // In production:
@@ -178,9 +173,9 @@ impl WorkloadStorePort for PostgresWorkloadStore {
 
     fn store_svid(
         &self,
-        svid: &X509SVID,
-        workload_id: &str,
-        encrypted_private_key: &[u8],
+        _svid: &X509SVID,
+        _workload_id: &str,
+        _encrypted_private_key: &[u8],
     ) -> Result<(), StoreError> {
         let _pool = self.pool()?;
         // In production:
@@ -191,7 +186,7 @@ impl WorkloadStorePort for PostgresWorkloadStore {
         Ok(())
     }
 
-    fn get_svid(&self, serial_number: &str) -> Result<Option<StoredSVID>, StoreError> {
+    fn get_svid(&self, _serial_number: &str) -> Result<Option<StoredSVID>, StoreError> {
         let _pool = self.pool()?;
         // In production:
         // SELECT ... FROM identity_certs.certificates
@@ -202,7 +197,7 @@ impl WorkloadStorePort for PostgresWorkloadStore {
 
     fn get_active_svid_for_workload(
         &self,
-        workload_id: &str,
+        _workload_id: &str,
     ) -> Result<Option<StoredSVID>, StoreError> {
         let _pool = self.pool()?;
         // In production:
@@ -215,9 +210,9 @@ impl WorkloadStorePort for PostgresWorkloadStore {
     fn revoke_svid(
         &self,
         serial_number: &str,
-        reason: RevocationReason,
-        revoked_by: &str,
-        comment: Option<&str>,
+        _reason: RevocationReason,
+        _revoked_by: &str,
+        _comment: Option<&str>,
     ) -> Result<RevokedSVID, StoreError> {
         let _pool = self.pool()?;
         // In production:
@@ -231,8 +226,8 @@ impl WorkloadStorePort for PostgresWorkloadStore {
 
     fn list_revoked(
         &self,
-        trust_domain: &str,
-        sequence_gt: u64,
+        _trust_domain: &str,
+        _sequence_gt: u64,
     ) -> Result<Vec<RevokedSVID>, StoreError> {
         let _pool = self.pool()?;
         // In production:
@@ -243,14 +238,14 @@ impl WorkloadStorePort for PostgresWorkloadStore {
         Ok(vec![])
     }
 
-    fn is_revoked(&self, serial_number: &str) -> Result<bool, StoreError> {
+    fn is_revoked(&self, _serial_number: &str) -> Result<bool, StoreError> {
         let _pool = self.pool()?;
         // In production:
         // SELECT EXISTS(SELECT 1 FROM identity_certs.revocations WHERE serial_number = $1)
         Ok(false)
     }
 
-    fn store_bundle(&self, bundle: &X509Bundle) -> Result<(), StoreError> {
+    fn store_bundle(&self, _bundle: &X509Bundle) -> Result<(), StoreError> {
         let _pool = self.pool()?;
         // In production:
         // INSERT INTO identity_certs.trust_bundles (trust_domain, root_certs_der, root_certs_pem, sequence_number, expires_at)
@@ -263,14 +258,14 @@ impl WorkloadStorePort for PostgresWorkloadStore {
         Ok(())
     }
 
-    fn get_bundle(&self, trust_domain: &str) -> Result<Option<X509Bundle>, StoreError> {
+    fn get_bundle(&self, _trust_domain: &str) -> Result<Option<X509Bundle>, StoreError> {
         let _pool = self.pool()?;
         // In production:
         // SELECT ... FROM identity_certs.trust_bundles WHERE trust_domain = $1
         Ok(None)
     }
 
-    fn increment_bundle_sequence(&self, trust_domain: &str) -> Result<u64, StoreError> {
+    fn increment_bundle_sequence(&self, _trust_domain: &str) -> Result<u64, StoreError> {
         let _pool = self.pool()?;
         // In production:
         // UPDATE identity_certs.trust_bundles SET sequence_number = sequence_number + 1
