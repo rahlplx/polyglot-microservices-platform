@@ -56,10 +56,10 @@ impl SPIREAgentClient {
 impl CertificateAuthorityPort for SPIREAgentClient {
     fn sign_svid(
         &self,
-        csr_der: &[u8],
-        spiffe_id: &str,
-        dns_names: &[String],
-        ttl_seconds: u64,
+        _csr_der: &[u8],
+        _spiffe_id: &str,
+        _dns_names: &[String],
+        _ttl_seconds: u64,
     ) -> Result<SignedSVID, CAError> {
         // In production, this would make a gRPC call to the SPIRE Agent's
         // Workload API to sign the CSR. For now, we return an error
@@ -76,9 +76,9 @@ impl CertificateAuthorityPort for SPIREAgentClient {
 
     fn generate_and_sign_svid(
         &self,
-        spiffe_id: &str,
-        dns_names: &[String],
-        ttl_seconds: u64,
+        _spiffe_id: &str,
+        _dns_names: &[String],
+        _ttl_seconds: u64,
     ) -> Result<GeneratedSVID, CAError> {
         // In production, this would:
         // 1. Generate a key pair locally using ring
@@ -96,7 +96,7 @@ impl CertificateAuthorityPort for SPIREAgentClient {
         Err(CAError::TrustDomainNotFound(trust_domain.to_string()))
     }
 
-    fn rotate_ca_key(&self, trust_domain: &str) -> Result<(), CAError> {
+    fn rotate_ca_key(&self, _trust_domain: &str) -> Result<(), CAError> {
         self.ca_rotation_in_progress
             .store(true, std::sync::atomic::Ordering::SeqCst);
 

@@ -10,8 +10,3 @@ pub mod crypto;
 pub mod observability;
 pub mod persistence;
 pub mod spire;
-
-pub use crypto::RingCryptoAdapter;
-pub use observability::OTelObservabilityAdapter;
-pub use persistence::PostgresWorkloadStore;
-pub use spire::SPIREAgentClient;

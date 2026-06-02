@@ -7,10 +7,8 @@
 // HEXAGONAL: Port interface — infrastructure types are contract definitions, not imports
 // ---------------------------------------------------------------------------
 
-use crate::domain::models::{
-    RevocationReason, RevokedSVID, X509Bundle, X509SVID,
-};
 use crate::domain::models::workload::{Selector, Workload};
+use crate::domain::models::{RevocationReason, RevokedSVID, X509Bundle, X509SVID};
 
 /// The workload store outbound port.
 ///
@@ -36,10 +34,7 @@ pub trait WorkloadStorePort: Send + Sync {
     ) -> Result<Vec<Workload>, StoreError>;
 
     /// Get a workload by its SPIFFE ID.
-    fn get_workload_by_spiffe_id(
-        &self,
-        spiffe_id: &str,
-    ) -> Result<Option<Workload>, StoreError>;
+    fn get_workload_by_spiffe_id(&self, spiffe_id: &str) -> Result<Option<Workload>, StoreError>;
 
     /// Update a workload's registration.
     fn update_workload(&self, workload: &Workload) -> Result<(), StoreError>;

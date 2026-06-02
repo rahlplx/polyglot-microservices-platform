@@ -4,7 +4,6 @@
 // Configures and starts the tonic gRPC server with mTLS support,
 /// health checks, and graceful shutdown.
 // ---------------------------------------------------------------------------
-
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -83,10 +82,10 @@ impl IdentityServer {
         //    Note: requires adding `tonic-reflection` dependency to Cargo.toml
 
         // For now, we set up a basic server structure
-        let handler = self.handler.clone();
+        let _handler = self.handler.clone();
 
         // Health check HTTP server
-        let health_config = self.config.clone();
+        let _health_config = self.config.clone();
         let health_server = tokio::spawn(async move {
             if let Err(e) = Self::run_health_server(http_addr).await {
                 tracing::error!("Health server error: {}", e);
@@ -125,7 +124,8 @@ impl IdentityServer {
 
             tokio::spawn(async move {
                 // Simple HTTP health response
-                let response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nOK";
+                let response =
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nOK";
                 use tokio::io::AsyncWriteExt;
                 let mut stream = stream;
                 let _ = stream.write_all(response.as_bytes()).await;
