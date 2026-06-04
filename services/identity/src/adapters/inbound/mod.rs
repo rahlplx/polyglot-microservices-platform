@@ -7,4 +7,3 @@
 
 pub mod grpc;
 
-pub use grpc::IdentityGrpcHandler;

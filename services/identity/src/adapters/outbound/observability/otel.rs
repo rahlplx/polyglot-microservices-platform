@@ -5,7 +5,6 @@
 // Provides tracing, metrics, and structured logging.
 // ---------------------------------------------------------------------------
 
-use std::sync::Arc;
 use std::time::Duration;
 
 /// The OpenTelemetry observability adapter.
@@ -25,6 +24,7 @@ pub struct OTelObservabilityAdapter {
     /// The service name for OTel resource attributes.
     service_name: String,
     /// The service version for OTel resource attributes.
+    #[allow(dead_code)]
     service_version: String,
     /// The OTLP endpoint for trace and metric export.
     otlp_endpoint: String,

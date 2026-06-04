@@ -41,6 +41,14 @@ pub struct RingCryptoAdapter {
     master_key: Vec<u8>,
 }
 
+struct OneTimeNonce(Option<ring::aead::Nonce>);
+
+impl ring::aead::NonceSequence for OneTimeNonce {
+    fn advance(&mut self) -> Result<ring::aead::Nonce, ring::error::Unspecified> {
+        self.0.take().ok_or(ring::error::Unspecified)
+    }
+}
+
 impl RingCryptoAdapter {
     /// The default CA key rotation interval in seconds (7 days).
     pub const CA_ROTATION_INTERVAL_SECONDS: u64 = 7 * 24 * 3600;
@@ -96,14 +104,6 @@ impl RingCryptoAdapter {
         use ring::hkdf;
         use ring::rand::{SecureRandom, SystemRandom};
 
-        struct OneTimeNonce(Option<aead::Nonce>);
-
-        impl aead::NonceSequence for OneTimeNonce {
-            fn advance(&mut self) -> Result<aead::Nonce, ring::error::Unspecified> {
-                self.0.take().ok_or(ring::error::Unspecified)
-            }
-        }
-
         if key_der.is_empty() {
             return Ok(vec![]);
         }
@@ -154,14 +154,6 @@ impl RingCryptoAdapter {
         use ring::aead::{self, BoundKey, OpeningKey};
         use ring::hkdf;
 
-        struct OneTimeNonce(Option<aead::Nonce>);
-
-        impl aead::NonceSequence for OneTimeNonce {
-            fn advance(&mut self) -> Result<aead::Nonce, ring::error::Unspecified> {
-                self.0.take().ok_or(ring::error::Unspecified)
-            }
-        }
-
         if encrypted_key.is_empty() {
             return Ok(vec![]);
         }
@@ -204,14 +196,13 @@ impl RingCryptoAdapter {
     /// This is critical for security: non-constant-time comparisons
     /// can leak information about the compared values through timing
     /// side channels.
+    #[allow(dead_code)]
     fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
         if a.len() != b.len() {
             return false;
         }
         // Use ring's constant-time comparison
-        // Note: verify_slices_are_equal is deprecated in favor of just constant_time
-        // but we use it here as per current ring 0.17 API availability for this purpose.
-        #[allow(deprecated)]
+        #[expect(deprecated)]
         ring::constant_time::verify_slices_are_equal(a, b).is_ok()
     }
 }
@@ -219,9 +210,9 @@ impl RingCryptoAdapter {
 impl CertificateAuthorityPort for RingCryptoAdapter {
     fn sign_svid(
         &self,
-        csr_der: &[u8],
-        spiffe_id: &str,
-        dns_names: &[String],
+        _csr_der: &[u8],
+        _spiffe_id: &str,
+        _dns_names: &[String],
         ttl_seconds: u64,
     ) -> Result<SignedSVID, CAError> {
         let now = std::time::SystemTime::now()
@@ -254,7 +245,7 @@ impl CertificateAuthorityPort for RingCryptoAdapter {
         dns_names: &[String],
         ttl_seconds: u64,
     ) -> Result<GeneratedSVID, CAError> {
-        let now = std::time::SystemTime::now()
+        let _now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
