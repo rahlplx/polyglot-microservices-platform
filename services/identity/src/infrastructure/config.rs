@@ -65,6 +65,10 @@ pub struct Config {
     pub feature_mtls: bool,
     /// Enable audit logging for all SVID operations.
     pub feature_audit_log: bool,
+
+    // --- Security ---
+    /// The master key for private key encryption (32-byte hex string).
+    pub master_key: Vec<u8>,
 }
 
 impl Config {
@@ -105,6 +109,12 @@ impl Config {
             feature_postgres_store: env_or_parse("IDENTITY_FEATURE_POSTGRES_STORE", true),
             feature_mtls: env_or_parse("IDENTITY_FEATURE_MTLS", false),
             feature_audit_log: env_or_parse("IDENTITY_FEATURE_AUDIT_LOG", true),
+
+            master_key: hex::decode(env_or(
+                "IDENTITY_MASTER_KEY",
+                "0000000000000000000000000000000000000000000000000000000000000000",
+            ))
+            .unwrap_or_else(|_| vec![0u8; 32]),
         }
     }
 
@@ -136,6 +146,10 @@ impl Config {
             errors.push("IDENTITY_VERIFICATION_SAMPLE_RATE must be between 0.0 and 1.0".to_string());
         }
 
+        if self.master_key.len() != 32 {
+            errors.push("IDENTITY_MASTER_KEY must be a 32-byte hex encoded string".to_string());
+        }
+
         if errors.is_empty() {
             Ok(())
         } else {
@@ -148,7 +162,7 @@ impl Config {
         format!(
             "Config {{ grpc={}, http={}, trust_domain={}, max_ttl={}s, \
              prod_ttl={}s, staging_ttl={}s, dev_ttl={}s, grace={}s, \
-             spire_socket={}, otlp={}, mtls={}, audit={} }}",
+             spire_socket={}, otlp={}, mtls={}, audit={}, master_key={} }}",
             self.grpc_bind_addr,
             self.http_bind_addr,
             self.trust_domain,
@@ -161,6 +175,7 @@ impl Config {
             self.otlp_endpoint,
             self.feature_mtls,
             self.feature_audit_log,
+            if self.master_key.len() == 32 { "present" } else { "invalid" },
         )
     }
 }
