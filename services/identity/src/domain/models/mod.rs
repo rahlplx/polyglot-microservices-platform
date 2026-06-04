@@ -14,9 +14,8 @@ pub use attestation::{
     AttestationFailureReason, AttestationRequest, AttestationResult,
 };
 pub use svid::{
-    RevocationReason, RevocationStatus, RevokedSVID, RotationReason, RotationResult, TTLPolicy,
-    TTLPolicyError, X509Bundle, X509SVID,
+    RevocationReason, RevokedSVID, RotationReason, RotationResult, TTLPolicy, X509Bundle, X509SVID,
 };
 pub use workload::{
-    Selector, SelectorError, SPIFFEID, SPIFFEIDError, TrustDomain, Workload,
+    Selector, SPIFFEID, TrustDomain,
 };

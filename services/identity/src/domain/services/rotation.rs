@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use crate::domain::models::{
-    RevocationReason, RotationReason, RotationResult, TTLPolicy, X509Bundle, X509SVID,
+    RevocationReason, RotationReason, RotationResult, TTLPolicy, X509SVID,
 };
 use crate::domain::ports::inbound::RotationError;
 use crate::domain::ports::inbound::RotateCertificateUseCase;
@@ -308,7 +308,8 @@ mod tests {
     use super::*;
     use crate::domain::models::RevokedSVID;
     use crate::domain::models::workload::Selector;
-    use crate::domain::models::workload::{SPIFFEID, Workload};
+    use crate::domain::models::{X509Bundle, X509SVID};
+    use crate::domain::models::workload::Workload;
     use crate::domain::ports::outbound::ca::{GeneratedSVID, SignedSVID};
     use crate::domain::ports::outbound::store::StoredSVID;
 
@@ -319,7 +320,7 @@ mod tests {
         fn sign_svid(
             &self,
             _csr_der: &[u8],
-            spiffe_id: &str,
+            _spiffe_id: &str,
             _dns_names: &[String],
             ttl_seconds: u64,
         ) -> Result<SignedSVID, CAError> {
@@ -334,7 +335,7 @@ mod tests {
 
         fn generate_and_sign_svid(
             &self,
-            spiffe_id: &str,
+            _spiffe_id: &str,
             _dns_names: &[String],
             ttl_seconds: u64,
         ) -> Result<GeneratedSVID, CAError> {
@@ -382,6 +383,7 @@ mod tests {
             }
         }
 
+        #[allow(dead_code)]
         fn add_svid(&mut self, serial: &str, spiffe_id: &str, expires_at: u64) {
             let svid = X509SVID::new(
                 spiffe_id.to_string(),

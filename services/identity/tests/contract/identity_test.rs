@@ -7,12 +7,13 @@
 // ---------------------------------------------------------------------------
 
 use identity_service::domain::models::{
-    AttestationRequest, AttestationResult, RevocationReason, RevokedSVID, RotationReason,
-    Selector, SPIFFEID, TrustDomain, TTLPolicy, Workload, X509Bundle, X509SVID,
+    AttestationRequest, RevocationReason, RevokedSVID,
+    Selector, SPIFFEID, TrustDomain, TTLPolicy, X509Bundle, X509SVID,
 };
+use identity_service::domain::models::workload::Workload;
 use identity_service::domain::ports::inbound::{
     AttestationUseCase, GetTrustBundleUseCase, IssueSVIDUseCase,
-    RevokeSVIDUseCase, RotateCertificateUseCase,
+    RevokeSVIDUseCase,
 };
 use identity_service::domain::ports::outbound::ca::{
     CAError, CertificateAuthorityPort, GeneratedSVID, SignedSVID,
@@ -20,8 +21,7 @@ use identity_service::domain::ports::outbound::ca::{
 use identity_service::domain::ports::outbound::store::{
     StoreError, StoredSVID, WorkloadList, WorkloadStorePort,
 };
-use identity_service::domain::services::{AttestationService, CertificateRotationService, SVIDService};
-use identity_service::adapters::inbound::grpc::handler::IdentityGrpcHandler;
+use identity_service::domain::services::{AttestationService, SVIDService};
 
 use std::sync::Arc;
 

@@ -9,11 +9,11 @@
 pub mod attestation;
 
 use crate::domain::models::{
-    AttestationRequest, AttestationResult, RevocationReason, RevokedSVID,
+    RevocationReason, RevokedSVID,
     RotationReason, RotationResult, X509Bundle, X509SVID,
 };
 
-pub use attestation::{AttestationError, AttestationUseCase};
+pub use attestation::AttestationUseCase;
 
 /// The issue SVID use case trait.
 ///

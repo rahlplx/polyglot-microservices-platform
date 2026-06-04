@@ -10,7 +10,3 @@
 pub mod inbound;
 pub mod outbound;
 
-pub use inbound::IdentityGrpcHandler;
-pub use outbound::{
-    OTelObservabilityAdapter, PostgresWorkloadStore, RingCryptoAdapter, SPIREAgentClient,
-};

@@ -60,7 +60,7 @@ async fn main() -> anyhow::Result<()> {
 
 /// Initializes the tracing subscriber with OTel and stdout output.
 fn init_tracing(log_level: &str, otlp_endpoint: &str) {
-    use tracing_subscriber::{fmt, EnvFilter};
+    use tracing_subscriber::EnvFilter;
 
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(log_level));

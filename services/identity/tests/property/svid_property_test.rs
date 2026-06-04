@@ -8,8 +8,8 @@
 use proptest::prelude::*;
 use std::sync::Arc;
 use identity_service::domain::models::{
-    AttestationRequest, AttestationResult, RevocationReason, RevokedSVID, RotationReason,
-    Selector, SPIFFEID, SPIFFEIDError, TrustDomain, TTLPolicy,
+    AttestationRequest, RevocationReason, RevokedSVID,
+    Selector, SPIFFEID, TrustDomain, TTLPolicy,
     X509Bundle, X509SVID,
 };
 use identity_service::domain::ports::inbound::attestation::AttestationUseCase;
@@ -75,6 +75,7 @@ fn ttl_strategy() -> impl Strategy<Value = u64> {
 }
 
 /// Generates a serial number string.
+#[allow(dead_code)]
 fn serial_number_strategy() -> impl Strategy<Value = String> {
     "[0-9a-f]{16}".prop_map(|s| format!("serial-{}", s))
 }
@@ -129,7 +130,7 @@ proptest! {
             "trust.example.org".to_string(),
         );
 
-        if svid.is_expired_at(now) && now + 1 <= u64::MAX {
+        if svid.is_expired_at(now) && now < u64::MAX {
             prop_assert!(svid.is_expired_at(now + 1));
         }
     }

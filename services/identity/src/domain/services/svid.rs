@@ -53,6 +53,7 @@ impl SVIDService {
     }
 
     /// Returns the current Unix timestamp in seconds.
+    #[allow(dead_code)]
     fn current_timestamp() -> u64 {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -266,7 +267,7 @@ mod tests {
         fn sign_svid(
             &self,
             _csr_der: &[u8],
-            spiffe_id: &str,
+            _spiffe_id: &str,
             _dns_names: &[String],
             ttl_seconds: u64,
         ) -> Result<SignedSVID, CAError> {
@@ -281,8 +282,8 @@ mod tests {
 
         fn generate_and_sign_svid(
             &self,
-            spiffe_id: &str,
-            dns_names: &[String],
+            _spiffe_id: &str,
+            _dns_names: &[String],
             ttl_seconds: u64,
         ) -> Result<GeneratedSVID, CAError> {
             Ok(GeneratedSVID {

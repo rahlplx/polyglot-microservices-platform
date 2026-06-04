@@ -38,6 +38,7 @@ pub struct X509SVID {
 
 impl X509SVID {
     /// Creates a new X.509 SVID.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         spiffe_id: String,
         cert_chain_der: Vec<u8>,
