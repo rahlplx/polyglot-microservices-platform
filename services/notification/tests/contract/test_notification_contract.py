@@ -107,4 +107,5 @@ class TestNotificationProtoContract:
         """get_notification_status return type annotation should be dict."""
         import inspect
         sig = inspect.signature(grpc_handler.get_notification_status)
-        assert sig.return_annotation is dict
+        # Handle stringified annotations from __future__ import annotations
+        assert sig.return_annotation in (dict, "dict")
