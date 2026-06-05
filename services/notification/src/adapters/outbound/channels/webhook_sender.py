@@ -17,10 +17,13 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
+import socket
 import time
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 from ....domain.models.notification import NotificationChannel
 from ....domain.ports.outbound.channel_sender import (
@@ -92,9 +95,19 @@ class WebhookSenderAdapter:
         """
         start_time = time.monotonic()
 
+        url = request.recipient_address
+
+        # SECURITY: Prevent SSRF by validating the webhook URL
+        if not await self._is_safe_url(url):
+            logger.error("Blocked unsafe webhook URL: %s", url)
+            return DeliveryResponse(
+                success=False,
+                provider="webhook",
+                error_message="SSRF Protection: Unsafe webhook URL blocked",
+            )
+
         payload = self._build_payload(request)
         headers = self._build_headers(request, payload)
-        url = request.recipient_address
 
         last_error: Optional[str] = None
 
@@ -272,3 +285,52 @@ class WebhookSenderAdapter:
             headers["X-Webhook-Signature"] = f"sha256={signature}"
 
         return headers
+
+    async def _is_safe_url(self, url: str) -> bool:
+        """Validate that a URL is safe for outbound requests (SSRF protection).
+
+        Checks that the URL scheme is http/https and that the hostname
+        does not resolve to private, loopback, or reserved IP addresses.
+
+        Args:
+            url: The URL to validate.
+
+        Returns:
+            True if the URL is considered safe, False otherwise.
+        """
+        try:
+            parsed = urlparse(url)
+            if parsed.scheme not in ("http", "https"):
+                return False
+
+            hostname = parsed.hostname
+            if not hostname:
+                return False
+
+            # Resolve hostname to all associated IP addresses
+            loop = asyncio.get_event_loop()
+            addr_infos = await loop.run_in_executor(
+                None,
+                lambda: socket.getaddrinfo(hostname, None)
+            )
+
+            for info in addr_infos:
+                ip_str = info[4][0]
+                ip = ipaddress.ip_address(ip_str)
+
+                # Check for private, loopback, link-local, or reserved addresses
+                if (
+                    ip.is_private or
+                    ip.is_loopback or
+                    ip.is_link_local or
+                    ip.is_multicast or
+                    ip.is_reserved or
+                    ip.is_unspecified
+                ):
+                    return False
+
+            return True
+
+        except Exception as e:
+            logger.warning("SSRF validation failed for URL %s: %s", url, e)
+            return False
