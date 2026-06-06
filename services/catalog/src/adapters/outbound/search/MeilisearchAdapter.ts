@@ -217,13 +217,15 @@ export class MeilisearchAdapter implements SearchIndex {
 
     if (filters.categories && filters.categories.length > 0) {
       const categoryFilters = filters.categories.map(
-        (c) => `category = "${c}"`
+        (c) => `category = "${this.escapeFilterValue(c)}"`
       );
       conditions.push(`(${categoryFilters.join(' OR ')})`);
     }
 
     if (filters.tags && filters.tags.length > 0) {
-      const tagFilters = filters.tags.map((t) => `tags = "${t}"`);
+      const tagFilters = filters.tags.map(
+        (t) => `tags = "${this.escapeFilterValue(t)}"`
+      );
       conditions.push(`(${tagFilters.join(' OR ')})`);
     }
 
@@ -354,5 +356,14 @@ export class MeilisearchAdapter implements SearchIndex {
     } catch {
       return 1;
     }
+  }
+
+  /**
+   * Escape special characters in filter values to prevent injection.
+   * Meilisearch filter strings use double quotes for values, so we must
+   * escape backslashes and double quotes.
+   */
+  private escapeFilterValue(value: string): string {
+    return value.replace(/[\\"]/g, '\\$&');
   }
 }
