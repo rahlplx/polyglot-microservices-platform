@@ -364,6 +364,6 @@ export class MeilisearchAdapter implements SearchIndex {
    * escape backslashes and double quotes.
    */
   private escapeFilterValue(value: string): string {
-    return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return value.replace(/[\\"]/g, '\\$&');
   }
 }
