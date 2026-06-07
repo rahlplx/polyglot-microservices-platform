@@ -65,6 +65,10 @@ pub struct Config {
     pub feature_mtls: bool,
     /// Enable audit logging for all SVID operations.
     pub feature_audit_log: bool,
+
+    // --- Security ---
+    /// The master key for private key encryption (32 bytes, hex-encoded).
+    pub master_key: Vec<u8>,
 }
 
 impl Config {
@@ -105,6 +109,11 @@ impl Config {
             feature_postgres_store: env_or_parse("IDENTITY_FEATURE_POSTGRES_STORE", true),
             feature_mtls: env_or_parse("IDENTITY_FEATURE_MTLS", false),
             feature_audit_log: env_or_parse("IDENTITY_FEATURE_AUDIT_LOG", true),
+
+            master_key: env::var("IDENTITY_MASTER_KEY")
+                .ok()
+                .and_then(|v| hex::decode(v).ok())
+                .unwrap_or_default(),
         }
     }
 
@@ -134,6 +143,10 @@ impl Config {
 
         if self.verification_sample_rate < 0.0 || self.verification_sample_rate > 1.0 {
             errors.push("IDENTITY_VERIFICATION_SAMPLE_RATE must be between 0.0 and 1.0".to_string());
+        }
+
+        if self.master_key.len() != 32 {
+            errors.push("IDENTITY_MASTER_KEY must be a 32-byte (64 hex chars) key".to_string());
         }
 
         if errors.is_empty() {
