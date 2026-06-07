@@ -107,7 +107,7 @@ impl IdentityGrpcHandler {
     ) -> Result<Response<IssueSVIDResponse>, Status> {
         let dns_names: Vec<String> = vec![]; // Proto doesn't have dns_names, use default
 
-        let (svid, bundle) = self
+        let (svid, _bundle) = self
             .svid_issuer
             .issue_svid(
                 &request.spiffe_id,

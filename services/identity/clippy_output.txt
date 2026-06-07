@@ -1,0 +1,361 @@
+   Compiling identity-service v0.1.0 (/app/services/identity)
+error: unused imports: `AttestationRequest` and `AttestationResult`
+  --> src/domain/ports/inbound/mod.rs:12:5
+   |
+12 |     AttestationRequest, AttestationResult, RevocationReason, RevokedSVID,
+   |     ^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^
+   |
+   = note: `-D unused-imports` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(unused_imports)]`
+
+error: unused import: `X509Bundle`
+  --> src/domain/services/rotation.rs:11:66
+   |
+11 | ..., RotationResult, TTLPolicy, X509Bundle, X509SVID,
+   |                                 ^^^^^^^^^^
+
+error: unused import: `Request`
+  --> src/adapters/inbound/grpc/handler.rs:10:13
+   |
+10 | use tonic::{Request, Response, Status};
+   |             ^^^^^^^
+
+error: unused import: `std::sync::Arc`
+ --> src/adapters/outbound/observability/otel.rs:8:5
+  |
+8 | use std::sync::Arc;
+  |     ^^^^^^^^^^^^^^
+
+error: unused import: `TrustDomain`
+  --> src/adapters/outbound/persistence/postgres.rs:11:59
+   |
+11 | use crate::domain::models::workload::{Selector, SPIFFEID, TrustDomain, W...
+   |                                                           ^^^^^^^^^^^
+
+error: unused import: `SPIFFEID`
+   --> src/domain/services/rotation.rs:311:43
+    |
+311 |     use crate::domain::models::workload::{SPIFFEID, Workload};
+    |                                           ^^^^^^^^
+
+error: use of deprecated function `ring::deprecated_constant_time::verify_slices_are_equal`: To be removed. Internal function not intended for external use with no promises regarding side channels.
+   --> src/adapters/outbound/crypto/rustls.rs:161:30
+    |
+161 |         ring::constant_time::verify_slices_are_equal(a, b).is_ok()
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `-D deprecated` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(deprecated)]`
+
+error: unused variable: `workload_id`
+   --> src/adapters/outbound/persistence/postgres.rs:116:28
+    |
+116 | ...fn get_workload(&self, workload_id: &str) -> Result<Option<Workload>...
+    |                           ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_workload_id`
+    |
+    = note: `-D unused-variables` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(unused_variables)]`
+
+error: unused variable: `selectors`
+   --> src/adapters/outbound/persistence/postgres.rs:126:9
+    |
+126 |         selectors: &[Selector],
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_selectors`
+
+error: unused variable: `trust_domain`
+   --> src/adapters/outbound/persistence/postgres.rs:127:9
+    |
+127 |         trust_domain: &str,
+    |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_trust_domain`
+
+error: unused variable: `spiffe_id`
+   --> src/adapters/outbound/persistence/postgres.rs:139:9
+    |
+139 |         spiffe_id: &str,
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_spiffe_id`
+
+error: unused variable: `workload`
+   --> src/adapters/outbound/persistence/postgres.rs:147:31
+    |
+147 | ...update_workload(&self, workload: &Workload) -> Result<(), StoreError> {
+    |                           ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_workload`
+
+error: unused variable: `workload_id`
+   --> src/adapters/outbound/persistence/postgres.rs:154:31
+    |
+154 | ...delete_workload(&self, workload_id: &str) -> Result<(), StoreError> {
+    |                           ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_workload_id`
+
+error: unused variable: `trust_domain`
+   --> src/adapters/outbound/persistence/postgres.rs:164:9
+    |
+164 |         trust_domain: &str,
+    |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_trust_domain`
+
+error: unused variable: `cursor`
+   --> src/adapters/outbound/persistence/postgres.rs:165:9
+    |
+165 |         cursor: Option<&str>,
+    |         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_cursor`
+
+error: unused variable: `page_size`
+   --> src/adapters/outbound/persistence/postgres.rs:166:9
+    |
+166 |         page_size: i32,
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_page_size`
+
+error: unused variable: `svid`
+   --> src/adapters/outbound/persistence/postgres.rs:181:9
+    |
+181 |         svid: &X509SVID,
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_svid`
+
+error: unused variable: `workload_id`
+   --> src/adapters/outbound/persistence/postgres.rs:182:9
+    |
+182 |         workload_id: &str,
+    |         ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_workload_id`
+
+error: unused variable: `encrypted_private_key`
+   --> src/adapters/outbound/persistence/postgres.rs:183:9
+    |
+183 |         encrypted_private_key: &[u8],
+    |         ^^^^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_encrypted_private_key`
+
+error: unused variable: `serial_number`
+   --> src/adapters/outbound/persistence/postgres.rs:194:24
+    |
+194 |     fn get_svid(&self, serial_number: &str) -> Result<Option<StoredSVID...
+    |                        ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_serial_number`
+
+error: unused variable: `workload_id`
+   --> src/adapters/outbound/persistence/postgres.rs:205:9
+    |
+205 |         workload_id: &str,
+    |         ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_workload_id`
+
+error: unused variable: `reason`
+   --> src/adapters/outbound/persistence/postgres.rs:218:9
+    |
+218 |         reason: RevocationReason,
+    |         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_reason`
+
+error: unused variable: `revoked_by`
+   --> src/adapters/outbound/persistence/postgres.rs:219:9
+    |
+219 |         revoked_by: &str,
+    |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_revoked_by`
+
+error: unused variable: `comment`
+   --> src/adapters/outbound/persistence/postgres.rs:220:9
+    |
+220 |         comment: Option<&str>,
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_comment`
+
+error: unused variable: `trust_domain`
+   --> src/adapters/outbound/persistence/postgres.rs:234:9
+    |
+234 |         trust_domain: &str,
+    |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_trust_domain`
+
+error: unused variable: `sequence_gt`
+   --> src/adapters/outbound/persistence/postgres.rs:235:9
+    |
+235 |         sequence_gt: u64,
+    |         ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_sequence_gt`
+
+error: unused variable: `serial_number`
+   --> src/adapters/outbound/persistence/postgres.rs:246:26
+    |
+246 | ...fn is_revoked(&self, serial_number: &str) -> Result<bool, StoreError> {
+    |                         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_serial_number`
+
+error: unused variable: `bundle`
+   --> src/adapters/outbound/persistence/postgres.rs:253:28
+    |
+253 |     fn store_bundle(&self, bundle: &X509Bundle) -> Result<(), StoreErro...
+    |                            ^^^^^^ help: if this is intentional, prefix it with an underscore: `_bundle`
+
+error: unused variable: `trust_domain`
+   --> src/adapters/outbound/persistence/postgres.rs:266:26
+    |
+266 |     fn get_bundle(&self, trust_domain: &str) -> Result<Option<X509Bundl...
+    |                          ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_trust_domain`
+
+error: unused variable: `trust_domain`
+   --> src/adapters/outbound/persistence/postgres.rs:273:41
+    |
+273 | ...bundle_sequence(&self, trust_domain: &str) -> Result<u64, StoreError> {
+    |                           ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_trust_domain`
+
+error: unused variable: `csr_der`
+  --> src/adapters/outbound/spire/client.rs:59:9
+   |
+59 |         csr_der: &[u8],
+   |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_csr_der`
+
+error: unused variable: `spiffe_id`
+  --> src/adapters/outbound/spire/client.rs:60:9
+   |
+60 |         spiffe_id: &str,
+   |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_spiffe_id`
+
+error: unused variable: `dns_names`
+  --> src/adapters/outbound/spire/client.rs:61:9
+   |
+61 |         dns_names: &[String],
+   |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_dns_names`
+
+error: unused variable: `ttl_seconds`
+  --> src/adapters/outbound/spire/client.rs:62:9
+   |
+62 |         ttl_seconds: u64,
+   |         ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_ttl_seconds`
+
+error: unused variable: `spiffe_id`
+  --> src/adapters/outbound/spire/client.rs:79:9
+   |
+79 |         spiffe_id: &str,
+   |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_spiffe_id`
+
+error: unused variable: `dns_names`
+  --> src/adapters/outbound/spire/client.rs:80:9
+   |
+80 |         dns_names: &[String],
+   |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_dns_names`
+
+error: unused variable: `ttl_seconds`
+  --> src/adapters/outbound/spire/client.rs:81:9
+   |
+81 |         ttl_seconds: u64,
+   |         ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_ttl_seconds`
+
+error: unused variable: `trust_domain`
+  --> src/adapters/outbound/spire/client.rs:99:29
+   |
+99 |     fn rotate_ca_key(&self, trust_domain: &str) -> Result<(), CAError> {
+   |                             ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_trust_domain`
+
+error: associated function `current_timestamp` is never used
+  --> src/domain/services/svid.rs:56:8
+   |
+41 | impl SVIDService {
+   | ---------------- associated function in this implementation
+...
+56 |     fn current_timestamp() -> u64 {
+   |        ^^^^^^^^^^^^^^^^^
+   |
+   = note: `-D dead-code` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[expect(dead_code)]` or `#[allow(dead_code)]`
+
+error: field `service_version` is never read
+  --> src/adapters/outbound/observability/otel.rs:28:5
+   |
+24 | pub struct OTelObservabilityAdapter {
+   |            ------------------------ field in this struct
+...
+28 |     service_version: String,
+   |     ^^^^^^^^^^^^^^^
+
+error: associated function `row_to_workload` is never used
+  --> src/adapters/outbound/persistence/postgres.rs:68:8
+   |
+37 | impl PostgresWorkloadStore {
+   | -------------------------- associated function in this implementation
+...
+68 |     fn row_to_workload(
+   |        ^^^^^^^^^^^^^^^
+
+error: this function has too many arguments (8/7)
+  --> src/domain/models/svid.rs:41:5
+   |
+41 | /     pub fn new(
+42 | |         spiffe_id: String,
+43 | |         cert_chain_der: Vec<u8>,
+44 | |         cert_chain_pem: String,
+...  |
+49 | |         trust_domain: String,
+50 | |     ) -> Self {
+   | |_____________^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#too_many_arguments
+   = note: `-D clippy::too-many-arguments` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::too_many_arguments)]`
+
+error: unused variable: `spiffe_id`
+   --> src/domain/services/rotation.rs:322:13
+    |
+322 |             spiffe_id: &str,
+    |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_spiffe_id`
+    |
+    = note: `-D unused-variables` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(unused_variables)]`
+
+error: unused variable: `spiffe_id`
+   --> src/domain/services/rotation.rs:337:13
+    |
+337 |             spiffe_id: &str,
+    |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_spiffe_id`
+
+error: unused variable: `spiffe_id`
+   --> src/domain/services/svid.rs:269:13
+    |
+269 |             spiffe_id: &str,
+    |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_spiffe_id`
+
+error: unused variable: `spiffe_id`
+   --> src/domain/services/svid.rs:284:13
+    |
+284 |             spiffe_id: &str,
+    |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_spiffe_id`
+
+error: unused variable: `dns_names`
+   --> src/domain/services/svid.rs:285:13
+    |
+285 |             dns_names: &[String],
+    |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_dns_names`
+
+error: unused variable: `workload_id`
+   --> src/adapters/outbound/persistence/postgres.rs:116:28
+    |
+116 | ...fn get_workload(&self, workload_id: &str) -> Result<Option<Workload>...
+    |                           ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_workload_id`
+
+error: method `add_svid` is never used
+   --> src/domain/services/rotation.rs:385:12
+    |
+378 |     impl MockRotationStore {
+    |     ---------------------- method in this implementation
+...
+385 |         fn add_svid(&mut self, serial: &str, spiffe_id: &str, expires_a...
+    |            ^^^^^^^^
+    |
+    = note: `-D dead-code` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[expect(dead_code)]` or `#[allow(dead_code)]`
+
+error: associated function `current_timestamp` is never used
+  --> src/domain/services/svid.rs:56:8
+   |
+41 | impl SVIDService {
+   | ---------------- associated function in this implementation
+...
+56 |     fn current_timestamp() -> u64 {
+   |        ^^^^^^^^^^^^^^^^^
+
+error: this function has too many arguments (8/7)
+  --> src/adapters/outbound/persistence/postgres.rs:68:5
+   |
+68 | /     fn row_to_workload(
+69 | |         id: &str,
+70 | |         spiffe_id: &str,
+71 | |         parent_id: &str,
+...  |
+76 | |         registered_at: chrono::DateTime<chrono::Utc>,
+77 | |     ) -> Result<Workload, StoreError> {
+   | |_____________________________________^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#too_many_arguments
+
+error: could not compile `identity-service` (lib) due to 42 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `identity-service` (lib test) due to 48 previous errors

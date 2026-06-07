@@ -126,6 +126,7 @@ impl RingCryptoAdapter {
     }
 
     /// Decrypts a private key using AES-256-GCM.
+    #[allow(dead_code)]
     fn decrypt_private_key(&self, encrypted_key: &[u8]) -> Result<Vec<u8>, CAError> {
         use ring::aead::{Nonce, Aad};
 
@@ -151,11 +152,13 @@ impl RingCryptoAdapter {
     /// This is critical for security: non-constant-time comparisons
     /// can leak information about the compared values through timing
     /// side channels.
+    #[allow(dead_code)]
     fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
         if a.len() != b.len() {
             return false;
         }
         // Use ring's constant-time comparison
+        #[allow(deprecated)]
         ring::constant_time::verify_slices_are_equal(a, b).is_ok()
     }
 }
@@ -163,9 +166,9 @@ impl RingCryptoAdapter {
 impl CertificateAuthorityPort for RingCryptoAdapter {
     fn sign_svid(
         &self,
-        csr_der: &[u8],
-        spiffe_id: &str,
-        dns_names: &[String],
+        _csr_der: &[u8],
+        _spiffe_id: &str,
+        _dns_names: &[String],
         ttl_seconds: u64,
     ) -> Result<SignedSVID, CAError> {
         let now = std::time::SystemTime::now()
