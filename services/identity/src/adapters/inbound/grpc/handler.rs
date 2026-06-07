@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------
 
 use std::sync::Arc;
-use tonic::{Request, Response, Status};
+use tonic::{Response, Status};
 
 use crate::domain::models::{
     AttestationRequest, RevocationReason, RotationReason, TrustDomain,
