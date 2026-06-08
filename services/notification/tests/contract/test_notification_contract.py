@@ -12,7 +12,7 @@ defined in notification.v1.NotificationService proto specification:
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 from src.adapters.inbound.grpc_handler import GrpcNotificationHandler
 from src.domain.ports.inbound.send_notification import (
@@ -107,4 +107,4 @@ class TestNotificationProtoContract:
         """get_notification_status return type annotation should be dict."""
         import inspect
         sig = inspect.signature(grpc_handler.get_notification_status)
-        assert sig.return_annotation == dict or sig.return_annotation is dict
+        assert sig.return_annotation is dict

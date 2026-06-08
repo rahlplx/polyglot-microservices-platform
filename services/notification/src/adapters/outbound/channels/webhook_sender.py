@@ -17,13 +17,10 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
-import ipaddress
 import json
 import logging
-import socket
 import time
 from typing import Any, Optional
-from urllib.parse import urlparse
 
 from ....domain.models.notification import NotificationChannel
 from ....domain.ports.outbound.channel_sender import (
@@ -95,17 +92,9 @@ class WebhookSenderAdapter:
         """
         start_time = time.monotonic()
 
-        url = request.recipient_address
-        if not await self._is_safe_url(url):
-            return DeliveryResponse(
-                success=False,
-                provider="webhook",
-                error_message=f"SSRF Protection: URL is not allowed: {url}",
-                response_time_ms=int((time.monotonic() - start_time) * 1000),
-            )
-
         payload = self._build_payload(request)
         headers = self._build_headers(request, payload)
+        url = request.recipient_address
 
         last_error: Optional[str] = None
 
@@ -161,46 +150,6 @@ class WebhookSenderAdapter:
         Each delivery creates a new HTTP request.
         """
         return True
-
-    async def _is_safe_url(self, url: str) -> bool:
-        """Verify that the URL is safe and not pointing to internal resources (SSRF protection)."""
-        try:
-            parsed = urlparse(url)
-            if not parsed.scheme or parsed.scheme not in ("http", "https"):
-                return False
-
-            hostname = parsed.hostname
-            if not hostname:
-                return False
-
-            # Resolve hostname to IP addresses
-            loop = asyncio.get_running_loop()
-            addr_info = await loop.getaddrinfo(
-                hostname, parsed.port or (80 if parsed.scheme == "http" else 443)
-            )
-
-            for _, _, _, _, sockaddr in addr_info:
-                ip_str = sockaddr[0]
-                ip = ipaddress.ip_address(ip_str)
-
-                if (
-                    ip.is_loopback
-                    or ip.is_private
-                    or ip.is_link_local
-                    or ip.is_multicast
-                    or ip.is_reserved
-                ):
-                    logger.warning(
-                        "SSRF protection: blocked access to internal/reserved IP %s for URL %s",
-                        ip_str,
-                        url,
-                    )
-                    return False
-
-            return True
-        except Exception as e:
-            logger.error("SSRF protection: error validating URL %s: %s", url, e)
-            return False
 
     async def _make_request(
         self,

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 from src.domain.models.notification import (
     Notification,
@@ -19,15 +19,13 @@ from src.domain.models.notification import (
     NotificationType,
     Recipient,
 )
-from src.domain.models.delivery import DeliveryAttempt, DeliveryReceipt, DeliveryStatus
 from src.domain.models.template import RenderedTemplate
 from src.domain.models.preference import NotificationPreference
-from src.domain.ports.outbound.channel_sender import DeliveryRequest, DeliveryResponse
+from src.domain.ports.outbound.channel_sender import DeliveryResponse
 from src.domain.services.notification_service import (
     ChannelUnavailableError,
     NotificationService,
     RecipientNotFoundError,
-    RecipientOptedOutError,
 )
 
 
@@ -161,7 +159,6 @@ def _make_send_request(**overrides):
     """Create a SendNotificationRequest for testing."""
     from src.domain.ports.inbound.send_notification import (
         SendNotificationRequest,
-        SendNotificationResponse,
     )
     defaults = {
         "recipient": Recipient(
