@@ -1,6 +1,5 @@
 import pytest
-import asyncio
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import patch, AsyncMock
 from src.adapters.outbound.channels.webhook_sender import WebhookSenderAdapter
 from src.domain.ports.outbound.channel_sender import DeliveryRequest
 from src.domain.models.notification import NotificationChannel

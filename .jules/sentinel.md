@@ -6,9 +6,4 @@
 ## 2024-06-12 - [SSRF Protection in Webhook Delivery]
 **Vulnerability:** Unvalidated webhook URLs allowing Server-Side Request Forgery (SSRF) and DNS rebinding attacks.
 **Learning:** Simply checking the hostname is insufficient; attackers can use DNS rebinding or point hostnames to internal IP ranges. Robust protection requires resolving hostnames to IP addresses and validating them against private/loopback/reserved ranges.
-**Prevention:** In Python, use  to resolve hostnames and  to check if the resulting IPs are safe (, , etc.) before initiating any outbound HTTP requests.
-
-## 2024-06-12 - [SSRF Protection in Webhook Delivery]
-**Vulnerability:** Unvalidated webhook URLs allowing Server-Side Request Forgery (SSRF) and DNS rebinding attacks.
-**Learning:** Simply checking the hostname is insufficient; attackers can use DNS rebinding or point hostnames to internal IP ranges. Robust protection requires resolving hostnames to IP addresses and validating them against private/loopback/reserved ranges.
 **Prevention:** In Python, use `asyncio.get_event_loop().getaddrinfo()` to resolve hostnames and `ipaddress.ip_address()` to check if the resulting IPs are safe (`is_private`, `is_loopback`, etc.) before initiating any outbound HTTP requests.

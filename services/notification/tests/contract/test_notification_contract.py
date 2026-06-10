@@ -12,7 +12,7 @@ defined in notification.v1.NotificationService proto specification:
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 from src.adapters.inbound.grpc_handler import GrpcNotificationHandler
 from src.domain.ports.inbound.send_notification import (
