@@ -17,10 +17,12 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import time
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 from ....domain.models.notification import NotificationChannel
 from ....domain.ports.outbound.channel_sender import (
@@ -96,6 +98,15 @@ class WebhookSenderAdapter:
         headers = self._build_headers(request, payload)
         url = request.recipient_address
 
+        # SECURITY: Validate URL to prevent SSRF and DNS rebinding attacks
+        if not await self._is_safe_url(url):
+            return DeliveryResponse(
+                success=False,
+                provider="webhook",
+                error_message=f"SSRF protection: blocked request to unsafe URL: {url}",
+                response_time_ms=0,
+            )
+
         last_error: Optional[str] = None
 
         for attempt in range(self._max_retries + 1):
@@ -150,6 +161,52 @@ class WebhookSenderAdapter:
         Each delivery creates a new HTTP request.
         """
         return True
+
+    async def _is_safe_url(self, url: str) -> bool:
+        """Verify if a URL is safe for outbound requests (SSRF protection).
+
+        This method parses the URL, resolves the hostname to IP addresses,
+        and checks if any of those IPs fall into private, loopback, or
+        reserved ranges. DNS rebinding is mitigated by checking all
+        resolved IP addresses.
+        """
+        try:
+            parsed = urlparse(url)
+            if not parsed.scheme or parsed.scheme not in ("http", "https"):
+                return False
+
+            hostname = parsed.hostname
+            if not hostname:
+                return False
+
+            # Resolve hostname to all associated IP addresses
+            # Use getaddrinfo to handle both IPv4 and IPv6 and multiple A/AAAA records
+            loop = asyncio.get_event_loop()
+            addr_info = await loop.getaddrinfo(
+                hostname, parsed.port or (443 if parsed.scheme == "https" else 80)
+            )
+
+            for family, _, _, _, sockaddr in addr_info:
+                ip_str = sockaddr[0]
+                ip = ipaddress.ip_address(ip_str)
+
+                # Check for unsafe ranges
+                if (
+                    ip.is_loopback or
+                    ip.is_private or
+                    ip.is_link_local or
+                    ip.is_multicast or
+                    ip.is_unspecified or
+                    ip.is_reserved
+                ):
+                    logger.warning("SSRF check failed: URL %s resolves to unsafe IP %s", url, ip_str)
+                    return False
+
+            return True
+
+        except Exception as e:
+            logger.error("Error during SSRF check for URL %s: %s", url, e)
+            return False
 
     async def _make_request(
         self,
