@@ -19,14 +19,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@grpc/grpc-js": "^1.12.5",
+    "@grpc/grpc-js": "^1.14.4",
     "@grpc/proto-loader": "^0.7.13",
     "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/auto-instrumentations-node": "^0.52.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.77.0",
     "@opentelemetry/exporter-metrics-otlp-grpc": "^0.54.0",
     "@opentelemetry/exporter-trace-otlp-grpc": "^0.54.0",
     "@opentelemetry/sdk-metrics": "^1.27.0",
-    "@opentelemetry/sdk-node": "^0.54.0",
+    "@opentelemetry/sdk-node": "^0.217.0",
     "@opentelemetry/sdk-trace-node": "^1.27.0",
     "fastify": "^5.1.0",
     "@fastify/cors": "^10.0.1",
@@ -37,7 +37,7 @@
     "pino": "^9.5.0",
     "pino-pretty": "^12.1.0",
     "protobufjs": "^7.4.0",
-    "uuid": "^10.0.0",
+    "uuid": "^14.0.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
