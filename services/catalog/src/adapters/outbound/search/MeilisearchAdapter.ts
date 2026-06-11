@@ -217,13 +217,15 @@ export class MeilisearchAdapter implements SearchIndex {
 
     if (filters.categories && filters.categories.length > 0) {
       const categoryFilters = filters.categories.map(
-        (c) => `category = "${c}"`
+        (c) => `category = "${this.escapeFilterValue(c)}"`
       );
       conditions.push(`(${categoryFilters.join(' OR ')})`);
     }
 
     if (filters.tags && filters.tags.length > 0) {
-      const tagFilters = filters.tags.map((t) => `tags = "${t}"`);
+      const tagFilters = filters.tags.map(
+        (t) => `tags = "${this.escapeFilterValue(t)}"`
+      );
       conditions.push(`(${tagFilters.join(' OR ')})`);
     }
 
@@ -341,6 +343,17 @@ export class MeilisearchAdapter implements SearchIndex {
       facets,
       suggestions: [],
     };
+  }
+
+  /**
+   * Escape special characters in a filter value to prevent injection.
+   * Meilisearch filters use double quotes for strings. Backslashes
+   * and double quotes within the string must be escaped.
+   */
+  private escapeFilterValue(value: string): string {
+    // SECURITY: Escape backslashes first, then double quotes to prevent
+    // bypasses using the escape character itself.
+    return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   }
 
   private encodePageToken(page: number): string {
