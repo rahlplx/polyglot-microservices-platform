@@ -6,7 +6,6 @@ Mocks DNS resolution to test various IP ranges without actual network calls.
 """
 
 import pytest
-import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
 from src.adapters.outbound.channels.webhook_sender import WebhookSenderAdapter
 from src.domain.ports.outbound.channel_sender import DeliveryRequest
