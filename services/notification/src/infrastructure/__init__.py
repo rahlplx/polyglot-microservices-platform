@@ -74,7 +74,11 @@ class Container:
         )
 
         # Inbound adapters.
-        self.grpc_handler = GrpcHandler(self.notification_service)
+        self.grpc_handler = GrpcHandler(
+            self.notification_service,
+            self.notification_service,
+            self.notification_service,
+        )
         self.kafka_consumer = KafkaEventConsumer(self.notification_service)
 
 

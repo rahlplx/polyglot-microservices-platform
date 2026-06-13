@@ -14,9 +14,11 @@ import logging
 from typing import Any, Optional
 
 from ...domain.models import (
-    Notification, NotificationChannel, NotificationPriority,
+    NotificationChannel, NotificationPriority,
 )
-from ...domain.ports import SendNotificationPort
+from ...domain.ports import (
+    SendNotificationPort, GetDeliveryStatusPort, GetPreferencesPort,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +30,23 @@ class GrpcHandler:
     translates between gRPC message format and domain types, ensuring
     no gRPC-specific concerns leak into the domain layer."""
 
-    def __init__(self, notification_service: SendNotificationPort) -> None:
+    def __init__(
+        self,
+        notification_service: SendNotificationPort,
+        status_port: GetDeliveryStatusPort,
+        preferences_port: GetPreferencesPort,
+    ) -> None:
         self._service = notification_service
+        self._status_port = status_port
+        self._preferences_port = preferences_port
 
     async def get_notification_status(self, notification_id: str) -> Optional[dict[str, Any]]:
         """Handle GetNotificationStatus RPC.
         Returns the current delivery status and metadata for a notification."""
-        notification = await self._service.get_status(notification_id)
+        from ...domain.ports.inbound.send_notification import GetDeliveryStatusRequest
+
+        request = GetDeliveryStatusRequest(notification_id=notification_id)
+        notification = await self._status_port.get_status(request)
         if not notification:
             return None
         return {
@@ -50,7 +62,11 @@ class GrpcHandler:
     async def get_preferences(self, user_id: str) -> Optional[dict[str, Any]]:
         """Handle GetPreferences RPC.
         Returns notification preferences for a specific user."""
-        prefs = await self._service.get_preferences(user_id)
+        from ...domain.ports.inbound.send_notification import GetPreferencesRequest
+
+        request = GetPreferencesRequest(recipient_id=user_id)
+        response = await self._preferences_port.get_preferences(request)
+        prefs = response.preference
         if not prefs:
             return None
         return {
@@ -125,14 +141,16 @@ class KafkaEventConsumer:
             logger.debug("no template for event type", extra={"event_type": event_type})
             return
 
-        notification = Notification(
-            recipient_id=data.get("customer_id", ""),
+        from ...domain.ports.inbound.send_notification import SendNotificationRequest
+        from ...domain.models.notification import Recipient
+
+        request = SendNotificationRequest(
+            recipient=Recipient(user_id=data.get("customer_id", "")),
             channel=NotificationChannel.EMAIL,
             template_id=template_id,
             template_vars=data,
             priority=NotificationPriority.NORMAL,
-            idempotency_key=event.get("id"),
-            metadata={"source_event": event_type, "event_id": event.get("id")},
+            correlation_id=event.get("id", ""),
         )
 
-        await self._service.send(notification)
+        await self._service.send(request)
