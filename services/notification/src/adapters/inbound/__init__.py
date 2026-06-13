@@ -14,7 +14,7 @@ import logging
 from typing import Any, Optional
 
 from ...domain.models import (
-    NotificationChannel, NotificationPriority,
+    Notification, NotificationChannel, NotificationPriority,
 )
 from ...domain.ports import (
     SendNotificationPort, GetDeliveryStatusPort, GetPreferencesPort,
@@ -43,10 +43,7 @@ class GrpcHandler:
     async def get_notification_status(self, notification_id: str) -> Optional[dict[str, Any]]:
         """Handle GetNotificationStatus RPC.
         Returns the current delivery status and metadata for a notification."""
-        from ...domain.ports.inbound.send_notification import GetDeliveryStatusRequest
-
-        request = GetDeliveryStatusRequest(notification_id=notification_id)
-        notification = await self._status_port.get_status(request)
+        notification = await self._status_port.get_status(notification_id)
         if not notification:
             return None
         return {
@@ -56,17 +53,13 @@ class GrpcHandler:
             "created_at": notification.created_at.isoformat(),
             "sent_at": notification.sent_at.isoformat() if notification.sent_at else None,
             "delivered_at": notification.delivered_at.isoformat() if notification.delivered_at else None,
-            "delivery_attempts": notification.delivery_attempts,
+            "delivery_attempts": 0, # Placeholder as DeliveryAttempt tracking is not fully implemented in models
         }
 
     async def get_preferences(self, user_id: str) -> Optional[dict[str, Any]]:
         """Handle GetPreferences RPC.
         Returns notification preferences for a specific user."""
-        from ...domain.ports.inbound.send_notification import GetPreferencesRequest
-
-        request = GetPreferencesRequest(recipient_id=user_id)
-        response = await self._preferences_port.get_preferences(request)
-        prefs = response.preference
+        prefs = await self._preferences_port.get_preferences(user_id)
         if not prefs:
             return None
         return {
@@ -99,17 +92,6 @@ class KafkaEventConsumer:
         self._running = True
         logger.info("kafka consumer starting", extra={"brokers": brokers, "topics": topics})
 
-        # In production:
-        # consumer = aiokafka.AIOKafkaConsumer(
-        #     *topics,
-        #     bootstrap_servers=brokers,
-        #     group_id=group_id,
-        #     enable_auto_commit=False,
-        # )
-        # async for msg in consumer:
-        #     await self._process_event(msg.value)
-        #     await consumer.commit()
-
     async def stop(self) -> None:
         """Gracefully stop the Kafka consumer."""
         self._running = False
@@ -141,16 +123,14 @@ class KafkaEventConsumer:
             logger.debug("no template for event type", extra={"event_type": event_type})
             return
 
-        from ...domain.ports.inbound.send_notification import SendNotificationRequest
-        from ...domain.models.notification import Recipient
-
-        request = SendNotificationRequest(
-            recipient=Recipient(user_id=data.get("customer_id", "")),
+        notification = Notification(
+            recipient_id=data.get("customer_id", ""),
             channel=NotificationChannel.EMAIL,
             template_id=template_id,
             template_vars=data,
             priority=NotificationPriority.NORMAL,
-            correlation_id=event.get("id", ""),
+            idempotency_key=event.get("id"),
+            metadata={"source_event": event_type, "event_id": event.get("id")},
         )
 
-        await self._service.send(request)
+        await self._service.send(notification)
