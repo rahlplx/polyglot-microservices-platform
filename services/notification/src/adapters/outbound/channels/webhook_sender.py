@@ -151,27 +151,47 @@ class WebhookSenderAdapter:
         """
         return True
 
+    async def _is_safe_url(self, url: str) -> bool:
+        """Verify the URL is safe from SSRF (no private/loopback IPs)."""
+        import ipaddress
+        from urllib.parse import urlparse
+
+        try:
+            parsed = urlparse(url)
+            if not parsed.scheme or parsed.scheme not in ("http", "https"):
+                return False
+            hostname = parsed.hostname
+            if not hostname:
+                return False
+
+            loop = asyncio.get_event_loop()
+            # Resolve hostname to IPs and check each one
+            addr_info = await loop.getaddrinfo(hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
+            for info in addr_info:
+                ip = ipaddress.ip_address(info[4][0])
+                if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_multicast or ip.is_reserved:
+                    logger.warning("SSRF blocked: %s resolves to restricted IP %s", url, ip)
+                    return False
+            return True
+        except Exception as e:
+            logger.error("URL safety check failed for %s: %s", url, e)
+            return False
+
     async def _make_request(
         self,
         url: str,
         payload: dict[str, Any],
         headers: dict[str, str],
     ) -> DeliveryResponse:
-        """Execute a single HTTP POST request to the webhook endpoint.
-
-        Sends the payload as a JSON-encoded POST request with the
-        specified headers. Returns a DeliveryResponse based on the
-        HTTP status code.
-
-        Args:
-            url: The webhook endpoint URL.
-            payload: The request payload dictionary.
-            headers: The HTTP headers dictionary.
-
-        Returns:
-            The delivery response based on the HTTP result.
-        """
+        """Execute a single HTTP POST request to the webhook endpoint."""
         import httpx
+
+        if not await self._is_safe_url(url):
+            return DeliveryResponse(
+                success=False,
+                provider="webhook",
+                error_message="SSRF Protection: URL resolves to a restricted IP address",
+            )
 
         try:
             async with httpx.AsyncClient() as client:

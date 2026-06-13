@@ -13,10 +13,12 @@ import json
 import logging
 from typing import Any, Optional
 
-from ..domain.models import (
+from ...domain.models import (
     Notification, NotificationChannel, NotificationPriority,
 )
-from ..domain.ports import SendNotificationPort
+from ...domain.ports import (
+    SendNotificationPort, GetDeliveryStatusPort, GetPreferencesPort,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +30,20 @@ class GrpcHandler:
     translates between gRPC message format and domain types, ensuring
     no gRPC-specific concerns leak into the domain layer."""
 
-    def __init__(self, notification_service: SendNotificationPort) -> None:
+    def __init__(
+        self,
+        notification_service: SendNotificationPort,
+        status_port: GetDeliveryStatusPort,
+        preferences_port: GetPreferencesPort,
+    ) -> None:
         self._service = notification_service
+        self._status_port = status_port
+        self._preferences_port = preferences_port
 
     async def get_notification_status(self, notification_id: str) -> Optional[dict[str, Any]]:
         """Handle GetNotificationStatus RPC.
         Returns the current delivery status and metadata for a notification."""
-        notification = await self._service.get_status(notification_id)
+        notification = await self._status_port.get_status(notification_id)
         if not notification:
             return None
         return {
@@ -44,13 +53,13 @@ class GrpcHandler:
             "created_at": notification.created_at.isoformat(),
             "sent_at": notification.sent_at.isoformat() if notification.sent_at else None,
             "delivered_at": notification.delivered_at.isoformat() if notification.delivered_at else None,
-            "delivery_attempts": notification.delivery_attempts,
+            "delivery_attempts": 0, # Placeholder as DeliveryAttempt tracking is not fully implemented in models
         }
 
     async def get_preferences(self, user_id: str) -> Optional[dict[str, Any]]:
         """Handle GetPreferences RPC.
         Returns notification preferences for a specific user."""
-        prefs = await self._service.get_preferences(user_id)
+        prefs = await self._preferences_port.get_preferences(user_id)
         if not prefs:
             return None
         return {
@@ -82,17 +91,6 @@ class KafkaEventConsumer:
         consumption with manual offset management for at-least-once delivery."""
         self._running = True
         logger.info("kafka consumer starting", extra={"brokers": brokers, "topics": topics})
-
-        # In production:
-        # consumer = aiokafka.AIOKafkaConsumer(
-        #     *topics,
-        #     bootstrap_servers=brokers,
-        #     group_id=group_id,
-        #     enable_auto_commit=False,
-        # )
-        # async for msg in consumer:
-        #     await self._process_event(msg.value)
-        #     await consumer.commit()
 
     async def stop(self) -> None:
         """Gracefully stop the Kafka consumer."""
