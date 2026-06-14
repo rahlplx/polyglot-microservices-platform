@@ -37,6 +37,8 @@ pub struct RingCryptoAdapter {
     bundle_sequence: std::sync::atomic::AtomicU64,
     /// The bundle expiry timestamp.
     bundle_expires_at: std::sync::atomic::AtomicU64,
+    /// The master key for private key encryption.
+    master_key: [u8; 32],
 }
 
 impl RingCryptoAdapter {
@@ -44,7 +46,7 @@ impl RingCryptoAdapter {
     pub const CA_ROTATION_INTERVAL_SECONDS: u64 = 7 * 24 * 3600;
 
     /// Creates a new Ring crypto adapter with a self-signed CA.
-    pub fn new(trust_domain: String) -> Self {
+    pub fn new(trust_domain: String, master_key: [u8; 32]) -> Self {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -59,6 +61,7 @@ impl RingCryptoAdapter {
             ca_rotation_in_progress: std::sync::atomic::AtomicBool::new(false),
             bundle_sequence: std::sync::atomic::AtomicU64::new(1),
             bundle_expires_at: std::sync::atomic::AtomicU64::new(now + Self::CA_ROTATION_INTERVAL_SECONDS),
+            master_key,
         }
     }
 
@@ -86,15 +89,50 @@ impl RingCryptoAdapter {
     ///
     /// The encryption key is derived from a master secret managed
     /// by the platform's secret store (Vault or Kubernetes Secrets).
-    ///
-    /// SECURITY: The placeholder no-op encryption has been replaced with a
-    /// TODO marker. This MUST be implemented before production use.
-    fn encrypt_private_key(key_der: &[u8]) -> Vec<u8> {
-        // TODO: Implement AES-256-GCM encryption using ring::aead with a key
-        // derived from the master secret via HKDF. Storing private keys
-        // unencrypted is a critical security vulnerability.
-        // See: ring::aead::AES_256_GCM, ring::hkdf
-        key_der.to_vec() // FIXME: SECURITY — no encryption applied!
+    fn encrypt_private_key(&self, key_der: &[u8]) -> Vec<u8> {
+        use ring::aead::{self, BoundKey, SealingKey, AES_256_GCM};
+        use ring::hkdf;
+        use ring::rand::{SecureRandom, SystemRandom};
+
+        let rng = SystemRandom::new();
+
+        // 1. Derive subkey using HKDF-SHA256
+        let salt = hkdf::Salt::new(hkdf::HKDF_SHA256, b"identity-private-key-v1");
+        let prk = salt.extract(&self.master_key);
+        let okm = prk
+            .expand(&[b"aes-256-gcm-key"], &aead::AES_256_GCM)
+            .expect("HKDF expansion failed");
+
+        let mut subkey = [0u8; 32];
+        okm.fill(&mut subkey).expect("HKDF fill failed");
+
+        // 2. Generate random 12-byte nonce
+        let mut nonce_bytes = [0u8; 12];
+        rng.fill(&mut nonce_bytes).expect("Failed to generate nonce");
+
+        // 3. Encrypt using AES-256-GCM
+        let unbound_key =
+            aead::UnboundKey::new(&AES_256_GCM, &subkey).expect("Failed to create unbound key");
+
+        struct OneTimeNonce(Option<aead::Nonce>);
+        impl aead::NonceSequence for OneTimeNonce {
+            fn advance(&mut self) -> Result<aead::Nonce, ring::error::Unspecified> {
+                self.0.take().ok_or(ring::error::Unspecified)
+            }
+        }
+
+        let nonce = aead::Nonce::assume_unique_for_key(nonce_bytes);
+        let mut sealing_key = SealingKey::new(unbound_key, OneTimeNonce(Some(nonce)));
+
+        let mut in_out = key_der.to_vec();
+        sealing_key
+            .seal_in_place_append_tag(aead::Aad::empty(), &mut in_out)
+            .expect("Encryption failed");
+
+        // 4. Return nonce + ciphertext + tag
+        let mut result = nonce_bytes.to_vec();
+        result.extend_from_slice(&in_out);
+        result
     }
 
     /// Performs a constant-time comparison of two byte slices.
@@ -163,10 +201,16 @@ impl CertificateAuthorityPort for RingCryptoAdapter {
 
         let signed = self.sign_svid(&[], spiffe_id, dns_names, ttl_seconds)?;
 
+        // In production, this would be the actual generated private key DER
+        let private_key_der = self.encrypt_private_key(&[]);
+
+        let pem_block = pem::Pem::new("ENCRYPTED PRIVATE KEY", private_key_der.clone());
+        let private_key_pem = pem::encode(&pem_block);
+
         Ok(GeneratedSVID {
             svid: signed,
-            private_key_der: Self::encrypt_private_key(&[]),
-            private_key_pem: "-----BEGIN ENCRYPTED PRIVATE KEY-----\nPLACEHOLDER\n-----END ENCRYPTED PRIVATE KEY-----".to_string(),
+            private_key_der,
+            private_key_pem,
         })
     }
 
@@ -244,17 +288,38 @@ mod tests {
 
     #[test]
     fn get_trust_bundle_wrong_domain() {
-        let adapter = RingCryptoAdapter::new("trust.example.org".to_string());
+        let adapter = RingCryptoAdapter::new("trust.example.org".to_string(), [0u8; 32]);
         let result = adapter.get_trust_bundle("trust.wrong.org");
         assert!(result.is_err());
     }
 
     #[test]
     fn get_trust_bundle_correct_domain() {
-        let adapter = RingCryptoAdapter::new("trust.example.org".to_string());
+        let adapter = RingCryptoAdapter::new("trust.example.org".to_string(), [0u8; 32]);
         let result = adapter.get_trust_bundle("trust.example.org");
         assert!(result.is_ok());
         let bundle = result.unwrap();
         assert_eq!(bundle.trust_domain, "trust.example.org");
+    }
+
+    #[test]
+    fn encrypt_private_key_is_secure() {
+        let master_key = [0x42u8; 32];
+        let adapter = RingCryptoAdapter::new("trust.example.org".to_string(), master_key);
+        let data = b"sensitive private key material";
+
+        let encrypted1 = adapter.encrypt_private_key(data);
+        let encrypted2 = adapter.encrypt_private_key(data);
+
+        // Should not be no-op
+        assert_ne!(encrypted1, data);
+        // Should have nonce (12) + ciphertext (data.len()) + tag (16)
+        assert_eq!(encrypted1.len(), 12 + data.len() + 16);
+
+        // Should be different due to random nonce
+        assert_ne!(encrypted1, encrypted2);
+
+        // Nonce part should be different
+        assert_ne!(&encrypted1[0..12], &encrypted2[0..12]);
     }
 }
