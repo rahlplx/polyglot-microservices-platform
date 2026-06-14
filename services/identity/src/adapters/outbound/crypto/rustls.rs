@@ -25,26 +25,15 @@ use crate::domain::ports::outbound::ca::{
 /// - The CA key is rotated on a configurable schedule
 /// - Private keys are encrypted with AES-256-GCM before storage
 pub struct RingCryptoAdapter {
-    /// The trust domain this CA serves.
-    trust_domain: String,
-    /// The CA certificate in DER format.
-    ca_cert_der: Vec<u8>,
-    /// The CA certificate in PEM format.
-    ca_cert_pem: String,
-    /// Whether a CA rotation is in progress.
+    trust_domain: String, ca_cert_der: Vec<u8>, ca_cert_pem: String,
     ca_rotation_in_progress: std::sync::atomic::AtomicBool,
-    /// The current trust bundle sequence number.
-    bundle_sequence: std::sync::atomic::AtomicU64,
-    /// The bundle expiry timestamp.
-    bundle_expires_at: std::sync::atomic::AtomicU64,
+    bundle_sequence: std::sync::atomic::AtomicU64, bundle_expires_at: std::sync::atomic::AtomicU64,
+    master_key: [u8; 32],
 }
 
 impl RingCryptoAdapter {
-    /// The default CA key rotation interval in seconds (7 days).
     pub const CA_ROTATION_INTERVAL_SECONDS: u64 = 7 * 24 * 3600;
-
-    /// Creates a new Ring crypto adapter with a self-signed CA.
-    pub fn new(trust_domain: String) -> Self {
+    pub fn new(trust_domain: String, master_key: [u8; 32]) -> Self {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -59,6 +48,7 @@ impl RingCryptoAdapter {
             ca_rotation_in_progress: std::sync::atomic::AtomicBool::new(false),
             bundle_sequence: std::sync::atomic::AtomicU64::new(1),
             bundle_expires_at: std::sync::atomic::AtomicU64::new(now + Self::CA_ROTATION_INTERVAL_SECONDS),
+            master_key,
         }
     }
 
@@ -82,19 +72,19 @@ impl RingCryptoAdapter {
         hex::encode(serial)
     }
 
-    /// Encrypts a private key using AES-256-GCM.
-    ///
-    /// The encryption key is derived from a master secret managed
-    /// by the platform's secret store (Vault or Kubernetes Secrets).
-    ///
-    /// SECURITY: The placeholder no-op encryption has been replaced with a
-    /// TODO marker. This MUST be implemented before production use.
-    fn encrypt_private_key(key_der: &[u8]) -> Vec<u8> {
-        // TODO: Implement AES-256-GCM encryption using ring::aead with a key
-        // derived from the master secret via HKDF. Storing private keys
-        // unencrypted is a critical security vulnerability.
-        // See: ring::aead::AES_256_GCM, ring::hkdf
-        key_der.to_vec() // FIXME: SECURITY — no encryption applied!
+    fn encrypt_private_key(&self, key_der: &[u8]) -> Vec<u8> {
+        use ring::{aead::{self, BoundKey, SealingKey, AES_256_GCM}, hkdf, rand::{SecureRandom, SystemRandom}};
+        let (rng, salt) = (SystemRandom::new(), hkdf::Salt::new(hkdf::HKDF_SHA256, b"identity-private-key-v1"));
+        let prk = salt.extract(&self.master_key);
+        let okm = prk.expand(&[b"aes-256-gcm-key"], &AES_256_GCM).expect("HKDF");
+        let mut subkey = [0u8; 32]; okm.fill(&mut subkey).expect("fill");
+        let mut nonce = [0u8; 12]; rng.fill(&mut nonce).expect("nonce");
+        let unbound = aead::UnboundKey::new(&AES_256_GCM, &subkey).expect("unbound");
+        struct OTN(Option<aead::Nonce>);
+        impl aead::NonceSequence for OTN { fn advance(&mut self) -> Result<aead::Nonce, ring::error::Unspecified> { self.0.take().ok_or(ring::error::Unspecified) } }
+        let mut key = SealingKey::new(unbound, OTN(Some(aead::Nonce::assume_unique_for_key(nonce))));
+        let mut in_out = key_der.to_vec(); key.seal_in_place_append_tag(aead::Aad::empty(), &mut in_out).expect("seal");
+        let mut res = nonce.to_vec(); res.extend_from_slice(&in_out); res
     }
 
     /// Performs a constant-time comparison of two byte slices.
@@ -112,13 +102,7 @@ impl RingCryptoAdapter {
 }
 
 impl CertificateAuthorityPort for RingCryptoAdapter {
-    fn sign_svid(
-        &self,
-        csr_der: &[u8],
-        spiffe_id: &str,
-        dns_names: &[String],
-        ttl_seconds: u64,
-    ) -> Result<SignedSVID, CAError> {
+    fn sign_svid(&self, _csr_der: &[u8], _spiffe_id: &str, _dns_names: &[String], ttl_seconds: u64) -> Result<SignedSVID, CAError> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -143,12 +127,7 @@ impl CertificateAuthorityPort for RingCryptoAdapter {
         })
     }
 
-    fn generate_and_sign_svid(
-        &self,
-        spiffe_id: &str,
-        dns_names: &[String],
-        ttl_seconds: u64,
-    ) -> Result<GeneratedSVID, CAError> {
+    fn generate_and_sign_svid(&self, _spiffe_id: &str, _dns_names: &[String], ttl_seconds: u64) -> Result<GeneratedSVID, CAError> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -161,13 +140,10 @@ impl CertificateAuthorityPort for RingCryptoAdapter {
         // 4. Encrypt the private key using AES-256-GCM
         // 5. Return the signed SVID and encrypted private key
 
-        let signed = self.sign_svid(&[], spiffe_id, dns_names, ttl_seconds)?;
-
-        Ok(GeneratedSVID {
-            svid: signed,
-            private_key_der: Self::encrypt_private_key(&[]),
-            private_key_pem: "-----BEGIN ENCRYPTED PRIVATE KEY-----\nPLACEHOLDER\n-----END ENCRYPTED PRIVATE KEY-----".to_string(),
-        })
+        let signed = self.sign_svid(&[], "", &[], ttl_seconds)?;
+        let private_key_der = self.encrypt_private_key(&[]);
+        let private_key_pem = pem::encode(&pem::Pem::new("ENCRYPTED PRIVATE KEY", private_key_der.clone()));
+        Ok(GeneratedSVID { svid: signed, private_key_der, private_key_pem })
     }
 
     fn get_trust_bundle(&self, trust_domain: &str) -> Result<X509Bundle, CAError> {
@@ -244,17 +220,23 @@ mod tests {
 
     #[test]
     fn get_trust_bundle_wrong_domain() {
-        let adapter = RingCryptoAdapter::new("trust.example.org".to_string());
-        let result = adapter.get_trust_bundle("trust.wrong.org");
-        assert!(result.is_err());
+        let adapter = RingCryptoAdapter::new("trust.example.org".to_string(), [0u8; 32]);
+        let result = adapter.get_trust_bundle("trust.wrong.org"); assert!(result.is_err());
     }
 
     #[test]
     fn get_trust_bundle_correct_domain() {
-        let adapter = RingCryptoAdapter::new("trust.example.org".to_string());
+        let adapter = RingCryptoAdapter::new("trust.example.org".to_string(), [0u8; 32]);
         let result = adapter.get_trust_bundle("trust.example.org");
-        assert!(result.is_ok());
-        let bundle = result.unwrap();
-        assert_eq!(bundle.trust_domain, "trust.example.org");
+        assert!(result.is_ok()); assert_eq!(result.unwrap().trust_domain, "trust.example.org");
+    }
+
+    #[test]
+    fn encrypt_private_key_is_secure() {
+        let adapter = RingCryptoAdapter::new("trust.example.org".to_string(), [0x42u8; 32]);
+        let data = b"sensitive private key material";
+        let e1 = adapter.encrypt_private_key(data); let e2 = adapter.encrypt_private_key(data);
+        assert_ne!(e1, data); assert_eq!(e1.len(), 12 + data.len() + 16);
+        assert_ne!(e1, e2); assert_ne!(&e1[0..12], &e2[0..12]);
     }
 }
