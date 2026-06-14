@@ -65,8 +65,6 @@ pub struct Config {
     pub feature_mtls: bool,
     /// Enable audit logging for all SVID operations.
     pub feature_audit_log: bool,
-
-    /// The master key for private key encryption (32 bytes).
     pub master_key: [u8; 32],
 }
 
@@ -108,7 +106,6 @@ impl Config {
             feature_postgres_store: env_or_parse("IDENTITY_FEATURE_POSTGRES_STORE", true),
             feature_mtls: env_or_parse("IDENTITY_FEATURE_MTLS", false),
             feature_audit_log: env_or_parse("IDENTITY_FEATURE_AUDIT_LOG", true),
-
             master_key: env_master_key("IDENTITY_MASTER_KEY"),
         }
     }
@@ -140,10 +137,7 @@ impl Config {
         if self.verification_sample_rate < 0.0 || self.verification_sample_rate > 1.0 {
             errors.push("IDENTITY_VERIFICATION_SAMPLE_RATE must be between 0.0 and 1.0".to_string());
         }
-
-        if self.master_key == [0u8; 32] {
-            errors.push("IDENTITY_MASTER_KEY must be provided and cannot be all zeros".to_string());
-        }
+        if self.master_key == [0u8; 32] { errors.push("IDENTITY_MASTER_KEY required".to_string()); }
 
         if errors.is_empty() {
             Ok(())
@@ -181,23 +175,13 @@ fn env_or(key: &str, default: &str) -> String {
 
 /// Reads an environment variable and parses it, or returns the default value.
 fn env_or_parse<T: std::str::FromStr>(key: &str, default: T) -> T {
-    env::var(key)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
+    env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
 }
 
-/// Reads the master key from an environment variable.
-fn env_master_key(key: &str) -> [u8; 32] {
-    let mut master_key = [0u8; 32];
-    if let Ok(hex_str) = env::var(key) {
-        if let Ok(bytes) = hex::decode(hex_str) {
-            if bytes.len() == 32 {
-                master_key.copy_from_slice(&bytes);
-            }
-        }
-    }
-    master_key
+fn env_master_key(k: &str) -> [u8; 32] {
+    let mut m = [0u8; 32];
+    if let Ok(h) = env::var(k) { if let Ok(b) = hex::decode(h) { if b.len() == 32 { m.copy_from_slice(&b); } } }
+    m
 }
 
 #[cfg(test)]
@@ -207,8 +191,7 @@ mod tests {
     #[test]
     fn default_config_is_valid() {
         std::env::set_var("IDENTITY_MASTER_KEY", "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff");
-        let config = Config::from_env();
-        assert!(config.validate().is_ok());
+        let config = Config::from_env(); assert!(config.validate().is_ok());
     }
 
     #[test]
