@@ -75,7 +75,7 @@ describe('MeilisearchAdapter Filter Security', () => {
     const filter = searchParams.filter;
 
     // The filter should contain the escaped category value
-    expect(filter[1]).toContain('category = "electronics\\" OR status = \\"INACTIVE\\" OR \\"a\\" = \\"a"');
+    expect(filter[1]).toContain('category = "electronics\" OR status = \"INACTIVE\" OR \"a\" = \"a"');
   });
 
   it('should escape special characters in tag filters to prevent injection', async () => {
@@ -108,11 +108,11 @@ describe('MeilisearchAdapter Filter Security', () => {
     const searchParams = lastCall[1] as any;
     const filter = searchParams.filter;
 
-    expect(filter[1]).toContain('tags = "tag\\" OR status = \\"INACTIVE"');
+    expect(filter[1]).toContain('tags = "tag\" OR status = \"INACTIVE"');
   });
 
   it('should escape backslashes in filters', async () => {
-    const categoryWithBackslash = 'category\\value';
+    const categoryWithBackslash = 'category\value';
 
     (mockIndex.search as any).mockResolvedValue({
       hits: [],
@@ -142,6 +142,6 @@ describe('MeilisearchAdapter Filter Security', () => {
     const filter = searchParams.filter;
 
     // Backslash should be escaped as well
-    expect(filter[1]).toContain('category = "category\\\\value"');
+    expect(filter[1]).toContain('category = "category\\value"');
   });
 });

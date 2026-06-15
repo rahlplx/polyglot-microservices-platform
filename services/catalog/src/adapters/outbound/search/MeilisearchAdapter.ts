@@ -37,6 +37,24 @@ interface MeilisearchDocument {
   readonly createdAt: string;
 }
 
+// ---------------------------------------------------------------------------
+// V-13 fix: Adapter-local search document type (was previously in domain port).
+// This is the technology-neutral view of an indexed document that the adapter
+// uses internally. It is NOT part of the domain port — the port accepts
+// `Product` directly and returns `SearchIndexResult`.
+// ---------------------------------------------------------------------------
+
+interface AdapterSearchDocument {
+  readonly productId: string;
+  readonly name: string;
+  readonly description: string;
+  readonly category: string;
+  readonly tags: string[];
+  readonly price: Money;
+  readonly availableQuantity: number;
+  readonly status: string;
+  readonly createdAt: string;
+}
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -265,6 +283,24 @@ export class MeilisearchAdapter implements SearchIndex {
     };
   }
 
+  /**
+   * Reconstruct a domain-compatible search result from a flattened
+   * Meilisearch hit, reassembling the Money value object from the
+   * denormalized fields. (V-13: SearchDocument moved to adapter-local type.)
+   */
+  private toSearchDocument(hit: MeilisearchDocument): AdapterSearchDocument {
+    return {
+      productId: hit.productId,
+      name: hit.name,
+      description: hit.description,
+      category: hit.category,
+      tags: hit.tags,
+      price: Money.create(hit.currencyCode, hit.priceUnits, hit.priceNanos),
+      availableQuantity: hit.availableQuantity,
+      status: hit.status,
+      createdAt: hit.createdAt,
+    };
+  }
 
   private toSearchResult(
     response: SearchResponse<MeilisearchDocument>,
