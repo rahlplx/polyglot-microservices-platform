@@ -13,10 +13,9 @@ import logging
 import time
 from datetime import datetime, timezone
 
-from ..domain.models import (
-    DeliveryAttempt, Notification, NotificationChannel,
-)
-from ..domain.ports import ChannelSenderPort
+from ...domain.models.delivery import DeliveryAttempt
+from ...domain.models.notification import Notification, NotificationChannel
+from ...domain.ports.outbound.channel_sender import ChannelSenderPort
 
 logger = logging.getLogger(__name__)
 
