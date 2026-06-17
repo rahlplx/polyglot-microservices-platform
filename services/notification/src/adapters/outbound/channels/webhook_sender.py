@@ -17,9 +17,12 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
+import socket
 import time
+import urllib.parse
 from typing import Any, Optional
 
 from ....domain.models.notification import NotificationChannel
@@ -91,10 +94,23 @@ class WebhookSenderAdapter:
             The delivery response indicating success or failure.
         """
         start_time = time.monotonic()
+        url = request.recipient_address
+
+        # SECURITY: Validate URL to prevent SSRF before any delivery attempt
+        try:
+            await self._validate_url(url)
+        except ValueError as e:
+            elapsed_ms = int((time.monotonic() - start_time) * 1000)
+            logger.error("SSRF protection blocked webhook to %s: %s", url, e)
+            return DeliveryResponse(
+                success=False,
+                provider="webhook",
+                error_message=f"SSRF protection: {e}",
+                response_time_ms=elapsed_ms,
+            )
 
         payload = self._build_payload(request)
         headers = self._build_headers(request, payload)
-        url = request.recipient_address
 
         last_error: Optional[str] = None
 
@@ -272,3 +288,64 @@ class WebhookSenderAdapter:
             headers["X-Webhook-Signature"] = f"sha256={signature}"
 
         return headers
+
+    async def _validate_url(self, url: str) -> None:
+        """Validate URL to prevent SSRF attacks.
+
+        Checks:
+        1. Scheme must be http or https.
+        2. Hostname must resolve to non-private/non-loopback IP addresses.
+        3. DNS rebinding mitigation by resolving and checking all IPs.
+
+        Args:
+            url: The webhook URL to validate.
+
+        Raises:
+            ValueError: If the URL is invalid or points to a restricted range.
+        """
+        try:
+            parsed = urllib.parse.urlparse(url)
+        except Exception as e:
+            raise ValueError(f"Malformed URL: {e}")
+
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError(f"Invalid URL scheme '{parsed.scheme}'; only http and https are allowed")
+
+        hostname = parsed.hostname
+        if not hostname:
+            raise ValueError("URL is missing a valid hostname")
+
+        # Resolve all IP addresses for the hostname (DNS rebinding protection)
+        try:
+            loop = asyncio.get_event_loop()
+            # We use getaddrinfo to resolve the hostname to all associated IPs.
+            # This is critical for preventing DNS rebinding where a hostname
+            # initially resolves to a public IP but then switches to a private one.
+            addr_info = await loop.getaddrinfo(
+                hostname,
+                parsed.port or (80 if parsed.scheme == "http" else 443),
+                proto=socket.IPPROTO_TCP,
+            )
+        except socket.gaierror as e:
+            raise ValueError(f"Could not resolve hostname '{hostname}': {e}")
+
+        for _, _, _, _, sockaddr in addr_info:
+            ip_str = sockaddr[0]
+            try:
+                ip = ipaddress.ip_address(ip_str)
+            except ValueError:
+                continue  # Skip invalid IP strings if any
+
+            # Block loopback, private, link-local, and other reserved ranges
+            if ip.is_loopback:
+                raise ValueError(f"SSRF detected: loopback address {ip_str} is blocked")
+            if ip.is_private:
+                raise ValueError(f"SSRF detected: private address {ip_str} is blocked")
+            if ip.is_link_local:
+                raise ValueError(f"SSRF detected: link-local address {ip_str} is blocked")
+            if ip.is_multicast:
+                raise ValueError(f"SSRF detected: multicast address {ip_str} is blocked")
+            if ip.is_unspecified:
+                raise ValueError(f"SSRF detected: unspecified address {ip_str} is blocked")
+            if ip.is_reserved:
+                raise ValueError(f"SSRF detected: reserved address {ip_str} is blocked")
