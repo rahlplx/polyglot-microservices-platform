@@ -175,9 +175,9 @@ func mapRefundReason(reason string) models.RefundReason {
 func mapDomainError(err error) error {
 	switch err.(type) {
 	case models.ErrInvalidTransition:
-		return status.Errorf(codes.FailedPrecondition, "%s", err.Error())
+		return status.Errorf(codes.FailedPrecondition, "invalid payment state transition: %s", err.Error())
 	default:
-		return status.Errorf(codes.Internal, "%s", err.Error())
+		return status.Errorf(codes.Internal, "an internal error occurred during payment processing")
 	}
 }
 
