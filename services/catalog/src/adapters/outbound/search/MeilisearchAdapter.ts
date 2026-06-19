@@ -321,7 +321,7 @@ export class MeilisearchAdapter implements SearchIndex {
 
   private decodePageToken(token: string): number {
     try {
-      const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
+      const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf-8')) as { page?: number };
       return typeof decoded.page === 'number' ? decoded.page : 1;
     } catch {
       return 1;
