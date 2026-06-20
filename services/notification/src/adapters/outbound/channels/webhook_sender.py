@@ -17,10 +17,12 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import time
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 from ....domain.models.notification import NotificationChannel
 from ....domain.ports.outbound.channel_sender import (
@@ -151,6 +153,52 @@ class WebhookSenderAdapter:
         """
         return True
 
+    async def _is_safe_url(self, url: str) -> bool:
+        """Verify that the URL is safe to request (SSRF protection).
+
+        Resolves the hostname and checks if the resulting IP addresses are in
+        private, loopback, or reserved ranges. This prevents the service from
+        being used to probe internal infrastructure or cloud metadata services.
+        """
+        try:
+            parsed = urlparse(url)
+            if not parsed.hostname:
+                return False
+
+            # Allow only http and https
+            if parsed.scheme not in ("http", "https"):
+                logger.warning("Blocked request to unsupported scheme: %s", parsed.scheme)
+                return False
+
+            # Resolve hostname to IP addresses
+            loop = asyncio.get_event_loop()
+            # We resolve to get all IP addresses associated with the hostname
+            addr_info = await loop.getaddrinfo(
+                parsed.hostname,
+                parsed.port or (80 if parsed.scheme == "http" else 443),
+            )
+
+            for _, _, _, _, sockaddr in addr_info:
+                ip_str = sockaddr[0]
+                ip = ipaddress.ip_address(ip_str)
+
+                # Check for private, loopback, link-local, and other reserved ranges
+                if (
+                    ip.is_private
+                    or ip.is_loopback
+                    or ip.is_link_local
+                    or ip.is_multicast
+                    or ip.is_reserved
+                    or ip.is_unspecified
+                ):
+                    logger.warning("Blocked request to unsafe IP address: %s", ip_str)
+                    return False
+
+            return True
+        except Exception as e:
+            logger.error("Error validating URL %s for SSRF: %s", url, e)
+            return False
+
     async def _make_request(
         self,
         url: str,
@@ -172,6 +220,14 @@ class WebhookSenderAdapter:
             The delivery response based on the HTTP result.
         """
         import httpx
+
+        # SECURITY: Verify that the URL is safe (SSRF protection)
+        if not await self._is_safe_url(url):
+            return DeliveryResponse(
+                success=False,
+                provider="webhook",
+                error_message=f"SSRF Protection: Blocked request to unsafe URL: {url}",
+            )
 
         try:
             async with httpx.AsyncClient() as client:
