@@ -1507,3 +1507,25 @@ Stage Summary:
 - Circular import resolved in notification service via exceptions.py extraction
 - Hexagonal architecture check improved to avoid false positives on Rust trait definitions and Python docstrings
 - CI script updated with smarter infrastructure import detection
+
+---
+Task ID: sentinel-catalog-meilisearch-injection
+Agent: Sentinel 🛡️
+Project Phase: 3
+Task: Identify and fix a security issue in the codebase.
+
+Work Log:
+- Scanned codebase for high-priority security vulnerabilities.
+- Identified Meilisearch filter injection in Catalog service (`MeilisearchAdapter.ts`).
+- Implemented `escapeFilterValue` helper to sanitize user input in filters.
+- Applied escaping to category and tag filters in `buildFilters`.
+- Created unit test `services/catalog/tests/unit/MeilisearchAdapter.test.ts` to verify the fix.
+- Verified that all Catalog service tests pass (67/67).
+- Logged critical learning in `.jules/sentinel.md`.
+
+Spec Items Verified:
+- 2.8: PASS — Implemented filter sanitization to prevent injection attacks in Meilisearch.
+
+Stage Summary:
+- Fixed a High Severity filter injection vulnerability in the Catalog service.
+- Added automated security regression testing for search filters.
