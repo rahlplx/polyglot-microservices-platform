@@ -110,15 +110,15 @@ func (s *RouterService) Route(ctx context.Context, req models.RouteRequest) (mod
 		status, err := s.limiter.Allow(ctx, key, policy)
 		if err != nil {
 			s.logger.Error("rate limit check failed",
-				slog.String("key", key),
+				slog.String("key", maskString(key)),
 				slog.String("error", err.Error()),
 			)
-			return models.RouteResponse{}, fmt.Errorf("rate limit check failed for key %q: %w", key, err)
+			return models.RouteResponse{}, fmt.Errorf("rate limit check failed for key %q: %w", maskString(key), err)
 		}
 
 		if !status.Allowed {
 			s.logger.Warn("rate limit exceeded",
-				slog.String("key", key),
+				slog.String("key", maskString(key)),
 				slog.Int("remaining", status.Remaining),
 				slog.String("reset_at", status.ResetAt.Format(time.RFC3339)),
 			)
@@ -291,7 +291,7 @@ func (s *RouterService) GetRateLimit(ctx context.Context, req models.RateLimitRe
 	key := s.buildRateLimitKeyFromReq(req, policy)
 	status, err := s.limiter.GetStatus(ctx, key, policy)
 	if err != nil {
-		return models.RateLimitResponse{}, fmt.Errorf("failed to get rate limit status for key %q: %w", key, err)
+		return models.RateLimitResponse{}, fmt.Errorf("failed to get rate limit status for key %q: %w", maskString(key), err)
 	}
 
 	return models.RateLimitResponse{
@@ -347,6 +347,15 @@ func (s *RouterService) GetRouteConfig(ctx context.Context, req models.RouteConf
 }
 
 // --- Helper methods ---
+
+// maskString partially obscures a string to prevent sensitive information
+// from being fully exposed in logs. It shows the first 4 and last 4 characters.
+func maskString(s string) string {
+	if len(s) <= 8 {
+		return "****"
+	}
+	return s[:4] + "****" + s[len(s)-4:]
+}
 
 // matchRoute finds the first route that matches the given method and path.
 func (s *RouterService) matchRoute(method, path string) (models.Route, error) {
@@ -445,7 +454,7 @@ type RateLimitError struct {
 
 func (e *RateLimitError) Error() string {
 	return fmt.Sprintf("rate limit exceeded for key %q under policy %q (retry after %s)",
-		e.Key, e.Policy, e.RetryAfter)
+		maskString(e.Key), e.Policy, e.RetryAfter)
 }
 
 // UpstreamUnavailableError is returned when no healthy upstream endpoints exist.
