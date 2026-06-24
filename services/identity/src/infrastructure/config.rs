@@ -65,6 +65,10 @@ pub struct Config {
     pub feature_mtls: bool,
     /// Enable audit logging for all SVID operations.
     pub feature_audit_log: bool,
+
+    // --- Security ---
+    /// The master key for private key encryption (32 bytes, hex-encoded).
+    pub master_key: String,
 }
 
 impl Config {
@@ -105,6 +109,8 @@ impl Config {
             feature_postgres_store: env_or_parse("IDENTITY_FEATURE_POSTGRES_STORE", true),
             feature_mtls: env_or_parse("IDENTITY_FEATURE_MTLS", false),
             feature_audit_log: env_or_parse("IDENTITY_FEATURE_AUDIT_LOG", true),
+
+            master_key: env_or("IDENTITY_MASTER_KEY", &"00".repeat(32)),
         }
     }
 
@@ -136,6 +142,10 @@ impl Config {
             errors.push("IDENTITY_VERIFICATION_SAMPLE_RATE must be between 0.0 and 1.0".to_string());
         }
 
+        if self.master_key.len() != 64 || hex::decode(&self.master_key).is_err() {
+            errors.push("IDENTITY_MASTER_KEY must be a 64-character hex string (32 bytes)".to_string());
+        }
+
         if errors.is_empty() {
             Ok(())
         } else {
@@ -145,10 +155,16 @@ impl Config {
 
     /// Returns a summary of the configuration for logging.
     pub fn summary(&self) -> String {
+        let masked_key = if self.master_key.len() >= 8 {
+            format!("{}...{}", &self.master_key[0..4], &self.master_key[self.master_key.len()-4..])
+        } else {
+            "****".to_string()
+        };
+
         format!(
             "Config {{ grpc={}, http={}, trust_domain={}, max_ttl={}s, \
              prod_ttl={}s, staging_ttl={}s, dev_ttl={}s, grace={}s, \
-             spire_socket={}, otlp={}, mtls={}, audit={} }}",
+             spire_socket={}, otlp={}, mtls={}, audit={}, master_key={} }}",
             self.grpc_bind_addr,
             self.http_bind_addr,
             self.trust_domain,
@@ -161,6 +177,7 @@ impl Config {
             self.otlp_endpoint,
             self.feature_mtls,
             self.feature_audit_log,
+            masked_key,
         )
     }
 }
