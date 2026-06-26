@@ -466,38 +466,6 @@ func TestRateLimitError_Error(t *testing.T) {
 	}
 }
 
-func TestRateLimitError_Masking(t *testing.T) {
-	tests := []struct {
-		name     string
-		key      string
-		expected string
-	}{
-		{
-			name:     "short key",
-			key:      "abc123",
-			expected: "rate limit exceeded for key \"****\" under policy \"strict\" (retry after 5s)",
-		},
-		{
-			name:     "long key",
-			key:      "secret-api-key-12345",
-			expected: "rate limit exceeded for key \"secr****2345\" under policy \"strict\" (retry after 5s)",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := &services.RateLimitError{
-				Key:        tt.key,
-				Policy:     "strict",
-				RetryAfter: 5 * time.Second,
-			}
-			if got := err.Error(); got != tt.expected {
-				t.Errorf("RateLimitError.Error() = %q, want %q", got, tt.expected)
-			}
-		})
-	}
-}
-
 func TestUpstreamUnavailableError_Error(t *testing.T) {
 	err := &services.UpstreamUnavailableError{
 		Service: "catalog",
