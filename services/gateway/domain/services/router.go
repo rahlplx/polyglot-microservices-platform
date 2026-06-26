@@ -110,15 +110,15 @@ func (s *RouterService) Route(ctx context.Context, req models.RouteRequest) (mod
 		status, err := s.limiter.Allow(ctx, key, policy)
 		if err != nil {
 			s.logger.Error("rate limit check failed",
-				slog.String("key", key),
+				slog.String("key", maskString(key)),
 				slog.String("error", err.Error()),
 			)
-			return models.RouteResponse{}, fmt.Errorf("rate limit check failed for key %q: %w", key, err)
+			return models.RouteResponse{}, fmt.Errorf("rate limit check failed for key %q: %w", maskString(key), err)
 		}
 
 		if !status.Allowed {
 			s.logger.Warn("rate limit exceeded",
-				slog.String("key", key),
+				slog.String("key", maskString(key)),
 				slog.Int("remaining", status.Remaining),
 				slog.String("reset_at", status.ResetAt.Format(time.RFC3339)),
 			)
@@ -291,7 +291,7 @@ func (s *RouterService) GetRateLimit(ctx context.Context, req models.RateLimitRe
 	key := s.buildRateLimitKeyFromReq(req, policy)
 	status, err := s.limiter.GetStatus(ctx, key, policy)
 	if err != nil {
-		return models.RateLimitResponse{}, fmt.Errorf("failed to get rate limit status for key %q: %w", key, err)
+		return models.RateLimitResponse{}, fmt.Errorf("failed to get rate limit status for key %q: %w", maskString(key), err)
 	}
 
 	return models.RateLimitResponse{
@@ -416,6 +416,16 @@ func (s *RouterService) buildRateLimitKeyFromReq(req models.RateLimitRequest, po
 	return key
 }
 
+// maskString obscures sensitive parts of a string while preserving enough
+// for debugging. It shows the first and last 4 characters if the string
+// is long enough, otherwise it returns a fixed mask.
+func maskString(s string) string {
+	if len(s) <= 8 {
+		return "****"
+	}
+	return s[:4] + "****" + s[len(s)-4:]
+}
+
 // SetRoutes replaces the current route table. Used for hot-reloading
 // configuration changes without restarting the service.
 func (s *RouterService) SetRoutes(routes map[string]models.Route) {
@@ -445,7 +455,7 @@ type RateLimitError struct {
 
 func (e *RateLimitError) Error() string {
 	return fmt.Sprintf("rate limit exceeded for key %q under policy %q (retry after %s)",
-		e.Key, e.Policy, e.RetryAfter)
+		maskString(e.Key), e.Policy, e.RetryAfter)
 }
 
 // UpstreamUnavailableError is returned when no healthy upstream endpoints exist.
