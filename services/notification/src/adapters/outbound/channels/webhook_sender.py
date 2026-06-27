@@ -17,10 +17,13 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
+import socket
 import time
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 from ....domain.models.notification import NotificationChannel
 from ....domain.ports.outbound.channel_sender import (
@@ -163,6 +166,8 @@ class WebhookSenderAdapter:
         specified headers. Returns a DeliveryResponse based on the
         HTTP status code.
 
+        SECURITY: Validates the target IP address to prevent SSRF.
+
         Args:
             url: The webhook endpoint URL.
             payload: The request payload dictionary.
@@ -172,6 +177,48 @@ class WebhookSenderAdapter:
             The delivery response based on the HTTP result.
         """
         import httpx
+
+        # SSRF Protection: Resolve and validate the target IP address
+        try:
+            parsed_url = urlparse(url)
+            host = parsed_url.hostname
+            if not host:
+                return DeliveryResponse(
+                    success=False,
+                    provider="webhook",
+                    error_message=f"Invalid webhook URL: {url}",
+                )
+
+            # Resolve hostname to all associated IP addresses
+            loop = asyncio.get_event_loop()
+            addr_info = await loop.getaddrinfo(
+                host, parsed_url.port, proto=socket.IPPROTO_TCP
+            )
+
+            for family, _, _, _, sockaddr in addr_info:
+                ip_addr_str = sockaddr[0]
+                ip_addr = ipaddress.ip_address(ip_addr_str)
+
+                # Block private, loopback, link-local, and reserved ranges
+                if not ip_addr.is_global:
+                    logger.warning(
+                        "SSRF protection blocked request to private/internal IP %s for host %s",
+                        ip_addr_str,
+                        host,
+                    )
+                    return DeliveryResponse(
+                        success=False,
+                        provider="webhook",
+                        error_message=f"Webhook delivery to private or reserved IP {ip_addr_str} is forbidden",
+                    )
+
+        except Exception as e:
+            logger.error("Failed to resolve webhook host %s: %s", host, e)
+            return DeliveryResponse(
+                success=False,
+                provider="webhook",
+                error_message=f"Could not resolve webhook host: {e}",
+            )
 
         try:
             async with httpx.AsyncClient() as client:
