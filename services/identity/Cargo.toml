@@ -38,7 +38,7 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres",
 
 # Observability
 opentelemetry = "0.24"
-opentelemetry_sdk = { version = "0.24", features = ["rt-tokio"] }
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.17", features = ["tonic", "metrics"] }
 opentelemetry-semantic-conventions = "0.16"
 tracing = "0.1"
